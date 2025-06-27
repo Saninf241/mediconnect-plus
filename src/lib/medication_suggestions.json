@@ -1,0 +1,22 @@
+[
+  {
+    "keywords": ["fièvre", "douleur", "température", "inflammation"],
+    "suggestions": ["Paracétamol", "Ibuprofène", "Aspirine"]
+  },
+  {
+    "keywords": ["infection", "angine", "abcès", "bactérien"],
+    "suggestions": ["Amoxicilline", "Ceftriaxone", "Azithromycine"]
+  },
+  {
+    "keywords": ["hypertension", "tension", "cardiaque"],
+    "suggestions": ["Amlodipine", "Lisinopril", "Bisoprolol"]
+  },
+  {
+    "keywords": ["diabète", "glycémie", "hyperglycémie"],
+    "suggestions": ["Metformine", "Insuline", "Gliclazide"]
+  },
+  {
+    "keywords": ["asthme", "bronchite", "respiratoire"],
+    "suggestions": ["Salbutamol", "Becotide", "Montélukast"]
+  }
+]

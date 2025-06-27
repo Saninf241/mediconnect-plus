@@ -1,0 +1,15 @@
+{
+  "kiné": ["Massage thérapeutique", "Rééducation motrice", "Drainage lymphatique"],
+  "ORL": ["Aspiration nasale", "Test auditif", "Traitement des acouphènes"],
+  "gynéco": ["Frottis cervico-utérin", "Consultation grossesse", "Pose de stérilet"],
+  "symptômes": {
+    "toux": ["Examen ORL", "Consultation pneumologue"],
+    "douleur": ["Consultation généraliste", "Prescription antalgique"],
+    "fatigue": ["Bilan sanguin", "Consultation généraliste"]
+  },
+  "diagnostics": {
+    "bronchite": ["Aérosolthérapie", "Consultation ORL"],
+    "grippe": ["Repos", "Traitement symptomatique"],
+    "cystite": ["Antibiothérapie", "Examen urinaire"]
+  }
+}
