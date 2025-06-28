@@ -9,6 +9,8 @@ import { toast } from 'react-toastify';
 import suggestions_base from '../../lib/suggestions_base.json';
 import medicationSuggestions from '../../lib/medication_suggestions.json';
 import { fetchGptSuggestions } from '../../lib/openai';
+import { useSearchParams } from "react-router-dom";
+
 
 export default function NewActPage() {
   const { user } = useUser();
@@ -58,10 +60,19 @@ export default function NewActPage() {
   };
 
   const handleBiometrySuccess = () => {
-    setPatientId('dummy_patient_id');
+  window.location.href = "mediconnectapp://scan?mode=identify";
+};
+
+const [searchParams] = useSearchParams();
+useEffect(() => {
+  const id = searchParams.get("patient_id");
+  if (id) {
+    setPatientId(id);
     setFingerprintMissing(false);
     setStep('consultation');
-  };
+  }
+}, []);
+
 
   const handleBiometryFailure = () => {
     setPatientId(null);

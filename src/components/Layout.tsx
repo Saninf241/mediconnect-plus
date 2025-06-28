@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { EstablishmentUser } from '@/lib/auth';
+import type { EstablishmentUser } from '../lib/auth';
 
 interface LayoutProps {
   children: React.ReactNode;

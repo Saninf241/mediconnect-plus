@@ -58,6 +58,22 @@ export default function App() {
     }
   }, [establishmentUser]);
 
+  useEffect(() => {
+  if (establishmentUser) {
+    if (
+      establishmentUser.role === "doctor" ||
+      establishmentUser.role === "admin" ||
+      establishmentUser.role === "secretary"
+    ) {
+      navigate("/doctor");
+    } else if (establishmentUser.role === "assurer") {
+      navigate("/assureur");
+    } else {
+      setError("Rôle non pris en charge.");
+    }
+  }
+}, [establishmentUser]);
+
   const handleEstablishmentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -77,9 +93,9 @@ export default function App() {
       localStorage.setItem('establishmentUserSession', JSON.stringify(session));
       setEstablishmentUser(user);
 
-      if (user.role === "doctor") navigate("/doctor");
-      else if (user.role === "assurer") navigate("/assureur");
-      else setError("Rôle non pris en charge.");
+      //if (user.role === "doctor") navigate("/doctor");
+      //else if (user.role === "assurer") navigate("/assureur");
+      //else setError("Rôle non pris en charge.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la connexion.");
     }
