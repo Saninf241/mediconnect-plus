@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import ConsultationChat from '../../components/ui/uidoctor/ConsultationChat';
+import ConsultationChat from '../../components/ui/assureur/ConsultationChat';
 
 export default function AssureurConsultationDetailsPage() {
   const { id } = useParams();
@@ -94,8 +94,7 @@ export default function AssureurConsultationDetailsPage() {
         <ConsultationChat
           consultationId={consultation.id}
           senderRole="insurer"
-          senderId={currentUserId}
-        />
+          senderId={currentUserId} doctorId={''}        />
       </div>
     </div>
   );

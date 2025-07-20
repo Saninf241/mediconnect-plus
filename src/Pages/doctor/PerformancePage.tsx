@@ -38,14 +38,14 @@ export default function PerformancePage() {
     fetch();
   }, [user]);
 
-  if (!subscription.includes('premium')) {
-    return (
-      <div className="p-6">
-        <h1 className="text-xl font-bold text-gray-700 mb-4">📊 Tableau de performance</h1>
-        <p className="text-gray-600">Cette fonctionnalité est réservée aux abonnés premium.</p>
-      </div>
-    );
-  }
+  //if (!subscription.includes('premium')) {
+    //return (
+      //<div className="p-6">
+        //<h1 className="text-xl font-bold text-gray-700 mb-4">📊 Tableau de performance</h1>
+        //<p className="text-gray-600">Cette fonctionnalité est réservée aux abonnés premium.</p>
+     // </div>
+    //);
+  //}
 
   if (!performance) {
     return <div className="p-6">Chargement des données de performance...</div>;

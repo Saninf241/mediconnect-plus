@@ -1,13 +1,15 @@
 // src/Pages/doctor/NewPatientPage.tsx
-import React, { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 import { useUser } from '@clerk/clerk-react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { useDoctorContext } from "../../hooks/useDoctorContext";
 
 export default function NewPatientPage() {
   const { user } = useUser();
   const navigate = useNavigate();
+  const doctorContext = useDoctorContext();
 
   const [fingerprintCaptured, setFingerprintCaptured] = useState(false);
   const [formData, setFormData] = useState({
@@ -17,15 +19,40 @@ export default function NewPatientPage() {
     insurance_number: '',
     insurance_name: '',
     phone: '',
+    biometric_id: '',
   });
 
-  const doctorId = user?.id;
+  const doctorId = doctorContext?.doctor_id;
+
+  useEffect(() => {
+    if (doctorContext === null) return;
+    if (!doctorContext?.doctor_id) navigate('/');
+
+    const params = new URLSearchParams(window.location.search);
+    const biometricId = params.get('biometric_id');
+
+    if (biometricId) {
+      setFormData(prev => ({
+        ...prev,
+        biometric_id: biometricId,
+      }));
+      setFingerprintCaptured(true);
+      toast.success("Empreinte reçue avec succès");
+    }
+  }, [doctorContext]);
 
   const handleFingerprintCapture = () => {
-    // 👉 Ici : intégrer ton vrai SDK de scanner
-    // pour le dev : simulation simple
     setFingerprintCaptured(true);
-    toast.success("Empreinte capturée avec succès");
+    toast.success("Empreinte capturée (simulation)");
+  };
+
+  const handleDeepLink = () => {
+    const clinicId = doctorContext?.clinic_id;
+    const doctorId = doctorContext?.doctor_id;
+    const apiKey = import.meta.env.VITE_BIOMETRIC_API_KEY;
+
+    const link = `mediconnect://scan?clinic_id=${clinicId}&doctor_id=${doctorId}&api_key=${apiKey}`;
+    window.location.href = link;
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,7 +72,7 @@ export default function NewPatientPage() {
       .insert([{
         ...formData,
         doctor_id: doctorId,
-        fingerprint_missing: false, // car empreinte capturée
+        fingerprint_missing: !formData.biometric_id,
       }]);
 
     if (error) {
@@ -67,11 +94,24 @@ export default function NewPatientPage() {
             onClick={handleFingerprintCapture}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded"
           >
-            Capturer l’empreinte
+            Capturer l’empreinte (test)
           </button>
+          <button
+            onClick={handleDeepLink}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Scanner avec l’application Android
+          </button>
+          <p className="text-sm text-gray-500">Assurez-vous que le patient est présent pour capturer son empreinte.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
+          {formData.biometric_id && (
+            <p className="text-green-600 font-mono text-sm">
+              ID biométrique capturé : {formData.biometric_id}
+            </p>
+          )}
+
           <div>
             <label>Nom</label>
             <input

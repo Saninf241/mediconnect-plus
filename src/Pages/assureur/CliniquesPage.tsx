@@ -1,7 +1,7 @@
 // src/pages/assureur/CliniquesPage.tsx
 import { useEffect, useState } from "react";
 import { Card } from "../../components/ui/card";
-import { Database } from "@/types/supabase";
+import { Database } from "../../types/supabase";
 import { supabase } from "../../lib/supabaseClient.ts";
 
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];

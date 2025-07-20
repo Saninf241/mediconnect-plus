@@ -67,13 +67,11 @@ export default function SettingsPage() {
     }
   };
 
-  const isPremium = subscriptionPlan?.includes('premium');
-
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-2xl font-bold text-blue-700">⚙️ Paramètres du profil</h1>
 
-      <div className={`space-y-4 ${!isPremium ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+      <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium">Photo de profil</label>
           <input type="file" accept="image/*" onChange={handleFileChange} />
@@ -92,12 +90,6 @@ export default function SettingsPage() {
           Enregistrer
         </Button>
       </div>
-
-      {!isPremium && (
-        <p className="text-sm text-red-600 italic mt-2">
-          Cette section est réservée aux utilisateurs Premium.
-        </p>
-      )}
 
       {/* 👇 Onboarding Vidéo Express */}
       <div className="mt-10 space-y-4">

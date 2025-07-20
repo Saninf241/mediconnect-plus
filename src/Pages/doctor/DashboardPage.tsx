@@ -1,7 +1,7 @@
 // src/pages/doctor/DashboardPage.tsx
 import { useEffect, useRef, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../../lib/supabase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 

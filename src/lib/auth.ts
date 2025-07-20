@@ -1,18 +1,19 @@
 import { supabase } from './supabase';
 
-export interface EstablishmentUser {
+// Liste des emails développeurs autorisés
+const authorizedDevelopers: string[] = [
+  'nkopierre3@gmail.com',
+  'dev2@example.com'
+];
+
+export type EstablishmentUser = {
   id: string;
   name: string;
   role: string;
   email: string;
   clinicId: string;
   clinicName: string;
-}
-
-// console.log("[DEBUG] user identifié :", user); // Removed undefined variable 'user'
-
-// Liste des développeurs autorisés
-const authorizedDevelopers = ['nkopierre3@gmail.com'];
+};
 
 export async function loginEstablishment(
   establishmentName: string,
@@ -20,11 +21,13 @@ export async function loginEstablishment(
   password: string
 ): Promise<EstablishmentUser | null> {
   try {
-    // Vérifier si c'est un développeur autorisé
     const userEmail = localStorage.getItem('userEmail');
+    if (!userEmail) {
+      throw new Error("Email utilisateur introuvable");
+    }
+
     const isDeveloper = authorizedDevelopers.includes(userEmail || '');
 
-    // Pour les développeurs, on crée un utilisateur de test
     if (isDeveloper) {
       return {
         id: 'DEV-TEST-ID',
@@ -36,23 +39,16 @@ export async function loginEstablishment(
       };
     }
 
-    // Pour les assureurs, vérifier dans la table etablissements
     if (role === 'assurer') {
       const { data: etablissement } = await supabase
         .from('etablissements')
         .select('*')
-        .eq('nom', establishmentName)
+        .eq('email', userEmail)
         .eq('type', 'assureur')
         .single();
 
-      if (!etablissement) {
-        throw new Error("Établissement non trouvé");
-      }
-
-      // Vérifier le mot de passe (dans un cas réel, utiliser un hash)
-      if (password !== 'Test2025') {
-        throw new Error("Mot de passe incorrect");
-      }
+      if (!etablissement) throw new Error("Établissement non trouvé");
+      if (password !== 'Test2025') throw new Error("Mot de passe incorrect");
 
       return {
         id: etablissement.id,
@@ -64,30 +60,21 @@ export async function loginEstablishment(
       };
     }
 
-    // Pour les autres utilisateurs, continuer avec la logique normale
-    const { data: clinic } = await supabase
-      .from('clinics')
-      .select('*')
-      .ilike('name', establishmentName)
-      .single();
-
-    if (!clinic) {
-      throw new Error("Établissement non trouvé");
-    }
-
-    const { data: staff } = await supabase
+    // ✅ NOUVELLE LOGIQUE POUR LES CABINETS / CLINIQUES
+    const { data: staff, error: staffError } = await supabase
       .from('clinic_staff')
       .select(`
         *,
         clinics (
+          id,
           name
         )
       `)
-      .eq('clinic_id', clinic.id)
+      .eq('email', userEmail)
       .eq('role', role)
-      .single();
+      .maybeSingle();
 
-    if (!staff) {
+    if (staffError || !staff) {
       throw new Error("Utilisateur non trouvé pour ce rôle");
     }
 
@@ -96,8 +83,8 @@ export async function loginEstablishment(
       name: staff.name,
       role: staff.role,
       email: staff.email,
-      clinicId: clinic.id,
-      clinicName: clinic.name
+      clinicId: staff.clinic_id,
+      clinicName: staff.clinics.name
     };
   } catch (error) {
     console.error('Erreur de connexion:', error);

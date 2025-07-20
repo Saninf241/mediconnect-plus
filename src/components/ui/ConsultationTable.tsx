@@ -1,5 +1,6 @@
 // src/components/ui/ConsultationTable.tsx
 import React from "react";
+import { Link } from "react-router-dom";
 
 interface Consultation {
   id: string;
@@ -10,6 +11,7 @@ interface Consultation {
   amount: number;
   status: string;
   pdf_url?: string;
+  unread_messages_count?: number; // ✅ Nouveau champ
 }
 
 interface Props {
@@ -74,12 +76,19 @@ export default function ConsultationTable({ consultations, onValidate, onReject 
                     Rejeter
                   </button>
                 )}
-                <a
-                  href={`/assureur/consultation/${c.id}`}
-                  className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-center"
-                >
-                  Voir la fiche
-                </a>
+                <div className="relative">
+                  <Link
+                    to={`/assureur/consultation/${c.id}`}
+                    className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-center block"
+                  >
+                    Voir la fiche
+                  </Link>
+                  {c.unread_messages_count && c.unread_messages_count > 0 && (
+                    <span className="absolute top-0 right-0 -mt-2 -mr-2 text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full shadow">
+                      🟠 {c.unread_messages_count}
+                    </span>
+                  )}
+                </div>
               </td>
             </tr>
           ))}

@@ -1,55 +1,36 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui/button";
-import { useUser } from "@clerk/clerk-react";
+import { useDoctorContext } from "../../hooks/useDoctorContext";
 
 interface Consultation {
   id: string;
   created_at: string;
   amount: number;
   status: string;
-  patient_name?: string;
+  patient?: {
+    name?: string;
+  };
 }
 
 export default function ConsultationFollowUpPage() {
-  const { user } = useUser();
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
-  const [subscriptionPlan, setSubscriptionPlan] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchSubscription = async () => {
-      const email = user?.emailAddresses?.[0]?.emailAddress;
-      const { data: staff } = await supabase
-        .from("clinic_staff")
-        .select("clinic_id")
-        .eq("email", email)
-        .maybeSingle();
-
-      if (staff?.clinic_id) {
-        const { data: clinic } = await supabase
-          .from("clinics")
-          .select("subscription_plan")
-          .eq("id", staff.clinic_id)
-          .maybeSingle();
-
-        setSubscriptionPlan(clinic?.subscription_plan ?? null);
-      }
-    };
-
-    fetchSubscription();
-  }, [user]);
+  const doctorInfo = useDoctorContext();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchConsultations = async () => {
       const userId = (await supabase.auth.getUser()).data.user?.id;
-      if (!userId) return;
+      if (!userId || !doctorInfo?.clinic_id) return;
 
       let query = supabase
         .from("consultations")
         .select("id, created_at, amount, status, patient:patients(name)")
         .eq("doctor_id", userId)
+        .eq("clinic_id", doctorInfo.clinic_id)
         .order("created_at", { ascending: false });
 
       if (statusFilter) {
@@ -59,12 +40,12 @@ export default function ConsultationFollowUpPage() {
       const { data, error } = await query;
       if (error || !data) return;
 
-      const formatted = data.map((c) => ({
+      const formatted = data.map((c: any) => ({
         id: c.id,
         created_at: c.created_at,
         amount: c.amount,
         status: c.status,
-        patient_name: c.patient?.name || "—",
+        patient: { name: c.patient?.name || "—" },
       }));
 
       setConsultations(formatted);
@@ -72,7 +53,7 @@ export default function ConsultationFollowUpPage() {
     };
 
     fetchConsultations();
-  }, [statusFilter]);
+  }, [statusFilter, doctorInfo]);
 
   const statuses = ["draft", "sent", "accepted", "rejected", "paid"];
 
@@ -101,14 +82,14 @@ export default function ConsultationFollowUpPage() {
 
     if (!error) {
       setConsultations((prev) =>
-        prev.map((c) =>
-          c.id === id ? { ...c, status: "sent" } : c
-        )
+        prev.map((c) => (c.id === id ? { ...c, status: "sent" } : c))
       );
     }
   };
 
-  const isPremium = subscriptionPlan?.includes("premium");
+  const handleView = (id: string) => {
+    navigate(`/doctor/consultation/${id}`);
+  };
 
   return (
     <div className="p-4 sm:p-6">
@@ -116,34 +97,38 @@ export default function ConsultationFollowUpPage() {
         📋 Suivi des consultations
       </h1>
 
-      {!isPremium && (
-        <div className="bg-yellow-100 border border-yellow-300 text-yellow-800 text-sm p-3 rounded mb-4">
-          🔒 Cette fonctionnalité complète est réservée aux abonnés Premium. Vous pouvez visualiser, mais pas modifier.
-        </div>
-      )}
-
       <div className="flex gap-2 flex-wrap mb-4">
         {statuses.map((s) => (
           <Button
             key={s}
             onClick={() => setStatusFilter(s)}
-            variant={statusFilter === s ? "default" : "outline"}
+            className={
+              statusFilter === s
+                ? "bg-blue-600 text-white"
+                : "bg-white border border-gray-300 text-gray-700"
+            }
           >
             {s.charAt(0).toUpperCase() + s.slice(1)}
           </Button>
         ))}
         <Button
           onClick={() => setStatusFilter("")}
-          variant={statusFilter === "" ? "default" : "outline"}
+          className={
+            !statusFilter
+              ? "bg-blue-600 text-white"
+              : "bg-white border border-gray-300 text-gray-700"
+          }
         >
           Tous
         </Button>
       </div>
 
       {loading ? (
-        <p className="text-center text-gray-500 mt-6">Chargement des consultations...</p>
+        <p className="text-center text-gray-500 mt-6">
+          Chargement des consultations...
+        </p>
       ) : (
-        <div className={`overflow-x-auto ${!isPremium ? 'opacity-50 pointer-events-none select-none' : ''}`}>
+        <div className="overflow-x-auto">
           <table className="min-w-full bg-white border rounded-xl shadow-md text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-gray-600">
@@ -167,7 +152,7 @@ export default function ConsultationFollowUpPage() {
                     <td className="px-4 py-3">
                       {new Date(c.created_at).toLocaleDateString()}
                     </td>
-                    <td className="px-4 py-3">{c.patient_name}</td>
+                    <td className="px-4 py-3">{c.patient?.name}</td>
                     <td className="px-4 py-3">
                       {c.amount?.toLocaleString()} FCFA
                     </td>
@@ -180,16 +165,13 @@ export default function ConsultationFollowUpPage() {
                         {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 flex gap-2">
                       {c.status === "draft" && (
-                        <Button
-                          onClick={() => handleResend(c.id)}
-                          variant="default"
-                          size="sm"
-                        >
-                          Envoyer
-                        </Button>
+                        <Button onClick={() => handleResend(c.id)}>Envoyer</Button>
                       )}
+                      <Button onClick={() => handleView(c.id)}>
+                        Voir
+                      </Button>
                     </td>
                   </tr>
                 ))

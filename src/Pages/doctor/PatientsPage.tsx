@@ -1,9 +1,9 @@
 // src/Pages/doctor/PatientsPage.tsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { supabase } from "../../lib/supabase";
+import { Input } from "../../components/ui/input";
+import { Button } from "../../components/ui/button";
 
 interface Patient {
   id: string;
@@ -66,7 +66,7 @@ export default function PatientsPage() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <Button onClick={handleSearch}>Rechercher</Button>
-        <Button variant="outline" onClick={handleReset}>
+        <Button onClick={handleReset}>
           Réinitialiser
         </Button>
       </div>

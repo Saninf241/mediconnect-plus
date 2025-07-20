@@ -10,7 +10,7 @@ import suggestions_base from '../../lib/suggestions_base.json';
 import medicationSuggestions from '../../lib/medication_suggestions.json';
 import { fetchGptSuggestions } from '../../lib/openai';
 import { useSearchParams } from "react-router-dom";
-
+import { useDoctorContext } from "../../hooks/useDoctorContext";
 
 export default function NewActPage() {
   const { user } = useUser();
@@ -34,6 +34,16 @@ export default function NewActPage() {
   const diagnosisCanvasRef = useRef<SignatureCanvas>(null);
 
   const doctorId = user?.id;
+  const doctorInfo = useDoctorContext();
+
+const handleBiometrySuccess = () => {
+  if (!doctorInfo) return;
+
+  const apiKey = "mediconnect-prod-999-XyZ"; // 🔐 Vraie clé MEDICONNECT_API_KEY
+  const deepLink = `intent://scanfingerprint?clinic_id=${doctorInfo.clinic_id}&doctor_id=${doctorInfo.doctor_id}&api_key=${apiKey}#Intent;scheme=mediconnect;package=com.ndoung.mediconnectscanner;end`;
+
+  window.location.href = deepLink;
+};
 
   useEffect(() => {
     const loadGptSuggestions = async () => {
@@ -59,10 +69,6 @@ export default function NewActPage() {
     }
   };
 
-  const handleBiometrySuccess = () => {
-  window.location.href = "mediconnectapp://scan?mode=identify";
-};
-
 const [searchParams] = useSearchParams();
 useEffect(() => {
   const id = searchParams.get("patient_id");
@@ -71,8 +77,16 @@ useEffect(() => {
     setFingerprintMissing(false);
     setStep('consultation');
   }
-}, []);
 
+  const notFound = searchParams.get("notfound");
+  if (notFound === "true") {
+    // ⛔ Affiche un message
+    toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
+    // ✅ Passe automatiquement en mode consultation avec fingerprint manquant
+    setFingerprintMissing(true);
+    setStep('consultation');
+  }
+}, []);
 
   const handleBiometryFailure = () => {
     setPatientId(null);
@@ -99,6 +113,7 @@ useEffect(() => {
 
     const { error } = await supabase.from('consultations').insert([{
       doctor_id: doctorId,
+      clinic_id: doctorInfo?.clinic_id,
       patient_id: patientId,
       symptoms: symptomsType === 'text' ? symptoms.trim() : null,
       symptoms_drawn: symptomsDrawn,

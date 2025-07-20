@@ -5,6 +5,8 @@ import { supabase } from '../../../lib/supabase';
 interface Props {
   consultationId: string;
   doctorId: string;
+  senderRole: 'doctor' | 'insurer';
+  senderId: string;
 }
 
 export default function ConsultationChatAssureur({ consultationId, doctorId }: Props) {
@@ -13,12 +15,12 @@ export default function ConsultationChatAssureur({ consultationId, doctorId }: P
   const [loading, setLoading] = useState(false);
   const [canChat, setCanChat] = useState<boolean>(true);
 
-  useEffect(() => {
-    const fetchMessages = async () => {
-      const data = await getMessages(consultationId);
-      setMessages(data);
-    };
+  const fetchMessages = async () => {
+    const data = await getMessages(consultationId);
+    setMessages(data);
+  };
 
+  useEffect(() => {
     const checkDoctorSubscription = async () => {
       const { data: staff } = await supabase
         .from('clinic_staff')

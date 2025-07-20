@@ -1,5 +1,6 @@
 // src/components/layouts/AssureurLayout.tsx
 import { Link, Outlet, useLocation } from "react-router-dom";
+import LogoutButton from "../ui/LogoutButton";
 
 const navItems = [
   { name: "Rapports", path: "/assureur/reports" },
@@ -31,6 +32,7 @@ export default function AssureurLayout() {
             </Link>
           ))}
         </nav>
+         <LogoutButton /> {/* 🔴 Ici */}
       </aside>
 
       {/* Main content */}

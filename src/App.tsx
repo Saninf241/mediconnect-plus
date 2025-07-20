@@ -1,19 +1,35 @@
 // src/App.tsx
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { useUser, SignIn } from '@clerk/clerk-react';
-import { Layout } from './components/Layout';
+import { useUser, SignIn, SignUp } from '@clerk/clerk-react';
 import { loginEstablishment, type EstablishmentUser } from './lib/auth';
-import { PrivateRoute } from './components/PrivateRoute';
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
 import DashboardPage from './Pages/doctor/DashboardPage';
 import PatientsPage from './Pages/doctor/PatientsPage';
 import NewActPage from './Pages/doctor/NewActPage';
+import NewPatientPage from './Pages/doctor/NewPatientPage';
 import ConsultationFollowUpPage from './Pages/doctor/ConsultationFollowUpPage';
 import SettingsPage from './Pages/doctor/SettingsPage';
 import { Building, Code, AlertCircle, User } from 'lucide-react';
 import PerformancePage from './Pages/doctor/PerformancePage';
+import MultispecialistDoctorLayout from './components/layouts/MultispecialistDoctorLayout';
+import MultispecialistAdminLayout from './components/layouts/MultispecialistAdminLayout';
+import MultispecialistSecretaryLayout from './components/layouts/MultispecialistSecretaryLayout';
+import DoctorDashboardPage from './Pages/multispecialist/doctor/DoctorDashboardPage';
+import DoctorPatientsPage from './Pages/multispecialist/doctor/DoctorPatientsPage';
+import NewConsultationPage  from './Pages/multispecialist/doctor/NewConsultationPage';
+import AdminDashboardPage  from './Pages/multispecialist/admin/AdminDashboardPage';
+import ManageTeamPage  from './Pages/multispecialist/admin/ManageTeamPage';
+import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage'; 
+import SupportPage from './Pages/multispecialist/secretary/SupportPage';
+import RedirectByRolePage from "./Pages/RedirectByRolePage";
+import PrivateRouteByRole from "./components/auth/PrivateRouteByRole";
+import Unauthorized from './Pages/Unauthorized';
+import NewPatientDoctorPage from './Pages/multispecialist/doctor/NewPatientDoctorPage';
+import ConsultationDoctorFollowUpPage from './Pages/multispecialist/doctor/ConsultationDoctorFollowUpPage';
+import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
+import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
 
 export default function App() {
   const { isLoaded } = useUser();
@@ -21,6 +37,7 @@ export default function App() {
 
   const [establishmentUser, setEstablishmentUser] = useState<EstablishmentUser | null>(() => {
     const sessionRaw = localStorage.getItem('establishmentUserSession');
+    console.log("[DoctorLayout] Contenu localStorage:", sessionRaw);
     if (!sessionRaw) return null;
 
     try {
@@ -40,7 +57,13 @@ export default function App() {
     }
   });
 
-  const [establishmentName, setEstablishmentName] = useState('');
+  useEffect(() => {
+  localStorage.removeItem("establishmentUserSession");
+  localStorage.removeItem("userEmail");
+}, []);
+
+  // Removed unused establishmentName state
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('doctor');
   const [error, setError] = useState<string | null>(null);
@@ -58,58 +81,63 @@ export default function App() {
     }
   }, [establishmentUser]);
 
-  useEffect(() => {
-  if (establishmentUser) {
-    if (
-      establishmentUser.role === "doctor" ||
-      establishmentUser.role === "admin" ||
-      establishmentUser.role === "secretary"
-    ) {
-      navigate("/doctor");
-    } else if (establishmentUser.role === "assurer") {
-      navigate("/assureur");
-    } else {
-      setError("Rôle non pris en charge.");
-    }
-  }
-}, [establishmentUser]);
-
-  const handleEstablishmentLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    try {
-      const user = await loginEstablishment(establishmentName, role, password);
-      if (!user) {
-        setError("Échec de la connexion. Veuillez vérifier les informations.");
-        return;
+    useEffect(() => {
+      if (establishmentUser) {
+        switch (establishmentUser.role) {
+          case "doctor":
+            navigate("/doctor");
+            break;
+          case "admin":
+            navigate("/multispecialist/admin");
+            break;
+          case "secretary":
+            navigate("/multispecialist/secretary");
+            break;
+          case "assurer":
+            navigate("/assureur");
+            break;
+          default:
+            setError("Rôle non pris en charge.");
+        }
       }
+    }, [establishmentUser]);
 
-      const session = {
-        user,
-        timestamp: Date.now()
-      };
+    const handleEstablishmentLogin = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError(null);
 
-      localStorage.setItem('establishmentUserSession', JSON.stringify(session));
-      setEstablishmentUser(user);
+      try {
+        console.log("🔐 Tentative connexion pour :", email);
+        localStorage.setItem("userEmail", email);
 
-      //if (user.role === "doctor") navigate("/doctor");
-      //else if (user.role === "assurer") navigate("/assureur");
-      //else setError("Rôle non pris en charge.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de la connexion.");
-    }
-  };
+        const user = await loginEstablishment(email, role, password);
+        if (!user) {
+          setError("Échec de la connexion. Veuillez vérifier les informations.");
+          return;
+        }
+
+        const session = {
+          user,
+          timestamp: Date.now(),
+        };
+
+        localStorage.setItem("establishmentUserSession", JSON.stringify(session));
+        setEstablishmentUser(user); // Redirection gérée ensuite par useEffect
+
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Erreur lors de la connexion.");
+      }
+    };
 
   const handleLogout = () => {
-    setEstablishmentUser(null);
-    localStorage.removeItem('establishmentUserSession');
-    navigate('/');
-  };
+  localStorage.removeItem('establishmentUserSession');
+  setEstablishmentUser(null);
+  navigate('/');
+ };
 
-  if (!isLoaded) {
-    return <div className="flex items-center justify-center h-screen">Chargement...</div>;
-  }
+if (!isLoaded) {
+  return <div className="flex items-center justify-center h-screen">Chargement...</div>;
+}
 
   const renderLandingPage = () => (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-4">
@@ -137,12 +165,11 @@ export default function App() {
           )}
           <form onSubmit={handleEstablishmentLogin} className="space-y-6">
             <input
-              type="text"
-              value={establishmentName}
-              onChange={(e) => setEstablishmentName(e.target.value)}
-              placeholder="Cabinet Vision Plus"
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-              required
             />
             <select
               value={role}
@@ -203,18 +230,92 @@ export default function App() {
   );
 
   return (
-    <Layout onLogout={handleLogout} establishmentUser={establishmentUser}>
-      <Routes>
-        <Route path="/" element={renderLandingPage()} />
-        <Route path="/doctor" element={<PrivateRoute establishmentUser={establishmentUser}><DoctorLayout><DashboardPage /></DoctorLayout></PrivateRoute>} />
-        <Route path="/doctor/patients" element={<PrivateRoute establishmentUser={establishmentUser}><DoctorLayout><PatientsPage /></DoctorLayout></PrivateRoute>} />
-        <Route path="/doctor/new-act" element={<PrivateRoute establishmentUser={establishmentUser}><DoctorLayout><NewActPage /></DoctorLayout></PrivateRoute>} />
-        <Route path="/doctor/consultation-follow-up" element={<PrivateRoute establishmentUser={establishmentUser}><DoctorLayout><ConsultationFollowUpPage /></DoctorLayout></PrivateRoute>} />
-        <Route path="/doctor/settings" element={<PrivateRoute establishmentUser={establishmentUser}><DoctorLayout><SettingsPage /></DoctorLayout></PrivateRoute>} />
-        <Route path="/assureur/*" element={<PrivateRoute establishmentUser={establishmentUser}><AssureurLayout /></PrivateRoute>} />
-        <Route path="/doctor/performance" element={<PrivateRoute establishmentUser={establishmentUser}><DoctorLayout><PerformancePage /></DoctorLayout></PrivateRoute>}/>
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Layout>
-  );
+  <Routes>
+    {/* ROUTES PUBLIQUES (PAS DE Clerk requis) */}
+    <Route path="/" element={renderLandingPage()} />
+    <Route path="/sign-in" element={<SignIn routing="path" path="/sign-in" redirectUrl="/redirect" />} />
+    <Route path="/sign-up" element={<SignUp routing="path" path="/sign-up" />} />
+    <Route path="/unauthorized" element={<Unauthorized />} />
+
+    {/* REDIRECTION POST-CONNEXION */}
+    <Route path="/redirect" element={<RedirectByRolePage />} />
+
+    {/* ROUTES PROTÉGÉES */}
+    <Route
+  path="/doctor/*"
+  element={
+    <PrivateRouteByRole allowedRole="doctor" establishmentUser={establishmentUser}>
+      <DoctorLayout>
+        <Outlet />
+      </DoctorLayout>
+    </PrivateRouteByRole>
+  }
+>
+  <Route index element={<DashboardPage />} />
+  <Route path="patients" element={<PatientsPage />} />
+  <Route path="patients/new" element={<NewPatientPage />} />
+  <Route path="new-act" element={<NewActPage />} />
+  <Route path="consultation-follow-up" element={<ConsultationFollowUpPage />} />
+  <Route path="settings" element={<SettingsPage />} />
+  <Route path="performance" element={<PerformancePage />} />
+</Route>
+
+    <Route
+      path="/assureur/*"
+      element={
+        <PrivateRouteByRole allowedRole="assurer" establishmentUser={establishmentUser}>
+          <AssureurLayout />
+        </PrivateRouteByRole>
+      }
+    />
+
+    {/* MULTISPECIALIST ROLES */}
+    <Route
+      path="/multispecialist/doctor/*"
+      element={
+        <PrivateRouteByRole allowedRole="doctor" establishmentUser={establishmentUser}>
+          <MultispecialistDoctorLayout />
+        </PrivateRouteByRole>
+      }
+    >
+      <Route path="dashboard" element={<DoctorDashboardPage />} />
+      <Route path="patients" element={<DoctorPatientsPage />} />
+      <Route path="new-consultation" element={<NewConsultationPage />} />
+      <Route path="DoctorPatientsPage/new" element={<NewPatientDoctorPage />} />
+      <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
+      <Route path="settings" element={<SettingsDoctorPage />} />
+      <Route path="performance" element={<PerformanceDoctorPage />} />
+    </Route>
+
+    <Route
+      path="/multispecialist/admin/*"
+      element={
+        <PrivateRouteByRole allowedRole="admin" establishmentUser={establishmentUser}>
+          <MultispecialistAdminLayout />
+        </PrivateRouteByRole>
+      }
+    >
+
+      <Route path="dashboard" element={<AdminDashboardPage />} />
+      <Route path="performance" element={<PerformancePage />} />
+      <Route path="team" element={<ManageTeamPage />} />
+    </Route>
+
+    <Route
+      path="/multispecialist/secretary/*"
+      element={
+        <PrivateRouteByRole allowedRole="secretary" establishmentUser={establishmentUser}>
+          <MultispecialistSecretaryLayout />
+        </PrivateRouteByRole>
+      }
+    >
+      <Route path="patients" element={<SecretaryPatientsPage />} />
+      <Route path="support" element={<SupportPage />} />
+    </Route>
+
+    {/* CATCH-ALL → redirection vers la page d’accueil */}
+    <Route path="*" element={<Navigate to="/" />} />
+  </Routes>
+);
+
 }

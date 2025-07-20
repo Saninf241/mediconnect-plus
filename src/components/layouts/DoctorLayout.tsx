@@ -4,6 +4,22 @@ import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { UserRound, Users, Stethoscope, FileText, Settings } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { ReactNode } from "react";
+import LogoutButton from "../ui/LogoutButton";
+
+type Props = {
+  children: ReactNode;
+};
+
+// 🔧 Nouvelle fonction utilitaire
+function getEffectiveEmail(user: any, parsedUser: any): string | null {
+  if (user?.primaryEmailAddress?.emailAddress) return user.primaryEmailAddress.emailAddress;
+  if (user?.emailAddresses?.[0]?.emailAddress) return user.emailAddresses[0].emailAddress;
+  if (parsedUser?.email) return parsedUser.email;
+  return null;
+}
+
+console.log("[DoctorLayout] ✅ DoctorLayout rendu.");
 
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoaded, isSignedIn } = useUser();
@@ -12,10 +28,12 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [lastChecked, setLastChecked] = useState<number>(Date.now());
   const navigate = useNavigate();
 
-  const localUser = typeof window !== 'undefined' ? localStorage.getItem('establishmentUser') : null;
-  const parsedUser = localUser ? JSON.parse(localUser) : null;
+  const sessionData = typeof window !== 'undefined' ? localStorage.getItem('establishmentUserSession') : null;
+  const parsedUser = sessionData ? JSON.parse(sessionData).user : null;
+  console.log('[DoctorLayout] Utilisateur localStorage :', parsedUser);
 
   useEffect(() => {
+    if (!isLoaded) return;
     if (!isSignedIn && !parsedUser) {
       console.warn('[DoctorLayout] Utilisateur non signé (ni Clerk ni localStorage), redirection vers /');
       navigate('/');
@@ -31,19 +49,33 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         return;
       }
 
-      const email = effectiveUser.emailAddresses?.[0]?.emailAddress ?? effectiveUser.email;
+      const email = getEffectiveEmail(user, parsedUser);
       if (!email) {
         console.warn('[DoctorLayout] Aucun email trouvé');
         return;
       }
 
-      const { data } = await supabase
+      console.log("[DoctorLayout] Email détecté pour recherche Supabase :", email);
+
+      const { data, error } = await supabase
         .from('clinic_staff')
-        .select('clinic_id, is_trusted_doctor')
+        .select('clinic_id, is_trusted_doctor, role')
         .eq('email', email)
         .maybeSingle();
 
-      if (data?.clinic_id) {
+      if (error || !data) {
+        console.warn('[DoctorLayout] Aucune correspondance trouvée dans clinic_staff pour cet email');
+        return;
+      }
+
+      if (data.role !== 'doctor') {
+        console.warn(`[DoctorLayout] L'utilisateur ${email} n'est pas un médecin, rôle détecté : ${data.role}`);
+        console.log("[DoctorLayout] ⚠️ Rôle détecté :", data.role, " → redirection forcée.");
+        navigate('/');
+        return;
+      }
+
+      if (data.clinic_id) {
         const { data: clinic } = await supabase
           .from('clinics')
           .select('name')
@@ -56,7 +88,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
     };
 
     fetchClinic();
-  }, [isLoaded, user, parsedUser]);
+  }, [isLoaded, user, parsedUser, navigate]);
 
   useEffect(() => {
     const checkStatusUpdates = async () => {
@@ -83,9 +115,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       setLastChecked(Date.now());
     };
 
-    const interval = setInterval(checkStatusUpdates, 30000); // toutes les 30s
+    const interval = setInterval(checkStatusUpdates, 30000);
     return () => clearInterval(interval);
   }, [user, parsedUser, lastChecked]);
+
+  console.log("[DoctorLayout] ✅ Layout affiché avec rôle médecin.");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -127,6 +161,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               <FileText className="h-5 w-5" /> Performance
             </button>
           </nav>
+            <LogoutButton /> {/* 🔴 Ici */}
         </aside>
 
         <main className="flex-1 p-6">
