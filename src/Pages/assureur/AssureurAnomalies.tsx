@@ -1,4 +1,4 @@
-// src/Pages/assureur/AssureurAnomaliesPage.tsx
+// src/Pages/assureur/AssureurAnomalies.tsx
 import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { Card } from "../../components/ui/card";
@@ -62,9 +62,12 @@ export default function AnomaliesPage() {
         <p>Aucune anomalie détectée cette semaine.</p>
       ) : (
         anomalies.map((a, index) => (
-          <Card key={index} className="p-4 border-l-4" style={{
-            borderColor: a.type === "error" ? "red" : "orange"
-          }}>
+          <Card
+            key={index}
+            className={`p-4 border-l-4 ${
+              a.type === "error" ? "border-red-500" : "border-orange-400"
+            }`}
+          >
             <p className="font-medium">{a.message}</p>
             {a.consultation_id && (
               <p className="text-sm text-gray-500">

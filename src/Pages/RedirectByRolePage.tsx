@@ -1,67 +1,57 @@
-// src/Pages/RedirectByRolePage.tsx
+// src/pages/RedirectByRolePage.tsx
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
-import { supabase } from "../lib/supabase";
 
 export default function RedirectByRolePage() {
-  const { user, isLoaded } = useUser();
   const navigate = useNavigate();
+  const { isLoaded } = useUser();
 
   useEffect(() => {
-    if (!isLoaded) {
-      console.log("⏳ Clerk pas encore chargé");
+    if (!isLoaded) return;
+
+    const sessionRaw = localStorage.getItem("establishmentUserSession");
+    if (!sessionRaw) {
+      console.warn("❌ Aucune session trouvée. Redirection vers /sign-in");
+      navigate("/sign-in");
       return;
     }
 
-    if (!user) {
-      console.log("⛔ Utilisateur absent après chargement Clerk");
-      navigate('/unauthorized');
-      return;
-    }
+    try {
+      const parsed = JSON.parse(sessionRaw);
+      const role = parsed?.user?.role || parsed?.role;
 
-    const fetchAndRedirect = async () => {
-      console.log("👀 Étape 2 - Utilisateur Clerk : ", user.id);
-
-      const { data: staffData, error } = await supabase
-        .from('clinic_staff')
-        .select('role, clinic_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error) {
-        console.error("❌ Supabase error:", error);
-        navigate('/unauthorized');
-        return;
-      }
-
-      if (!staffData) {
-        console.warn("⚠️ Aucun staffData trouvé");
-        navigate('/unauthorized');
-        return;
-      }
-
-      const { role } = staffData;
-      console.log("🧭 Étape 3 - Rôle détecté :", role);
+      console.log("🎯 Rôle détecté:", role);
 
       switch (role) {
-        case 'admin':
-          navigate('/multispecialist/admin/dashboard');
+        case "doctor":
+          navigate("/doctor/dashboard");
           break;
-        case 'doctor':
-          navigate('/multispecialist/doctor/dashboard');
+        case "admin":
+          navigate("/multispecialist/admin/dashboard");
           break;
-        case 'secretary':
-          navigate('/multispecialist/secretary/patients');
+        case "secretary":
+          navigate("/multispecialist/secretary/dashboard");
+          break;
+        case "pharmacist":
+          navigate("/pharmacy/dashboard");
+          break;
+        case "assurer":
+          navigate("/assureur/dashboard");
           break;
         default:
-          console.warn("🔍 Rôle non reconnu");
-          navigate('/unauthorized');
+          console.warn("🚫 Rôle inconnu. Redirection vers /unauthorized");
+          navigate("/unauthorized");
       }
-    };
+    } catch (err) {
+      console.error("❌ Erreur lors du parsing JSON:", err);
+      navigate("/sign-in");
+    }
+  }, [isLoaded, navigate]);
 
-    fetchAndRedirect();
-  }, [isLoaded, user, navigate]);
-
-  return <p>Redirection en cours...</p>;
+  return (
+    <div className="flex justify-center items-center h-screen text-gray-500 text-lg">
+      Redirection...
+    </div>
+  );
 }

@@ -33,7 +33,7 @@ export default function HistoriqueActesPage() {
           created_at: c.created_at,
           amount: c.amount,
           status: c.status,
-          patient_name: c.patients?.name || '—'
+          patient_name: c.patients?.[0]?.name || '—'
         }));
         setConsultations(formatted);
         setFiltered(formatted);

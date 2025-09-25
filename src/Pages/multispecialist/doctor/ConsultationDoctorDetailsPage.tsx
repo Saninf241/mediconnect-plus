@@ -77,7 +77,7 @@ export default function ConsultationDetailsPage() {
 
       <div className={`${subscriptionPlan !== 'premium' ? 'opacity-50 pointer-events-none select-none' : ''}`}>
         {insurerId ? (
-          <ConsultationChat consultationId={id} insurerId={insurerId} senderRole="doctor" />
+          <ConsultationChat consultationId={id} receiverId={insurerId} senderRole="doctor" senderId={''} />
         ) : (
           <p className="text-gray-500">Aucun assureur identifié pour ce patient.</p>
         )}

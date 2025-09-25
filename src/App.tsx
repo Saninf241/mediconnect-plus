@@ -1,7 +1,10 @@
 // src/App.tsx
 import { Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
+import { SignedIn, SignedOut, RedirectToSignIn } from "@clerk/clerk-react";
+import { useClerk } from "@clerk/clerk-react";
 import { useState, useEffect } from 'react';
 import { useUser, SignIn, SignUp } from '@clerk/clerk-react';
+import ClerkGuard from "./components/auth/ClerkGuard";
 import { loginEstablishment, type EstablishmentUser } from './lib/auth';
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
@@ -19,9 +22,8 @@ import MultispecialistSecretaryLayout from './components/layouts/Multispecialist
 import DoctorDashboardPage from './Pages/multispecialist/doctor/DoctorDashboardPage';
 import DoctorPatientsPage from './Pages/multispecialist/doctor/DoctorPatientsPage';
 import NewConsultationPage  from './Pages/multispecialist/doctor/NewConsultationPage';
-import AdminDashboardPage  from './Pages/multispecialist/admin/AdminDashboardPage';
-import ManageTeamPage  from './Pages/multispecialist/admin/ManageTeamPage';
 import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage'; 
+import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
 import RedirectByRolePage from "./Pages/RedirectByRolePage";
 import PrivateRouteByRole from "./components/auth/PrivateRouteByRole";
@@ -30,114 +32,187 @@ import NewPatientDoctorPage from './Pages/multispecialist/doctor/NewPatientDocto
 import ConsultationDoctorFollowUpPage from './Pages/multispecialist/doctor/ConsultationDoctorFollowUpPage';
 import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
+import { BrowserRouter as Router } from "react-router-dom";
+import PatientLayout from "./components/layouts/PatientLayout";
+import Dashboard from "./Pages/patient/Dashboard";
+import Consultations from "./Pages/patient/Consultations";
+import Ordonnances from "./Pages/patient/Ordonnances";
+import Traitements from "./Pages/patient/Traitements";
+import Antecedents from "./Pages/patient/Antecedents";
+import Pharmacie from "./Pages/patient/Pharmacie";
+import Rendezvous from "./Pages/patient/Rendezvous";
+import Identite from "./Pages/patient/Identite";
+import Settings from "./Pages/patient/Settings";
+import PatientLogin from './Pages/PatientLogin';
+import PharmacyLayout from "./components/layouts/PharmacyLayout";
+import PharmacyDashboard from "./Pages/pharmacy/PharmacyDashboard";
+import PharmacyOrders from "./Pages/pharmacy/Orders";
+import PharmacyHistory from "./Pages/pharmacy/History";
+import PharmacySettings from "./Pages/pharmacy/Settings";
+import { supabase } from './lib/supabase';
+import AssureurReports from './Pages/assureur/AssureurReports';
+import AssureurAnomalies from './Pages/assureur/AssureurAnomalies';
+import FingerprintAlertsPage from './Pages/assureur/FingerprintAlertsPage';
+import AssureurPaiements from './Pages/assureur/PaiementsPage';
+import StatistiquesPage from './Pages/assureur/StatistiquesPage';
+import CliniquesPage from './Pages/assureur/CliniquesPage';
+import AdminDashboardPage from "./Pages/multispecialist/admin/AdminDashboardPage";
+import PerformanceAdminPage from "./Pages/multispecialist/admin/PerformanceAdminPage";
+import StatisticsPage from "./Pages/multispecialist/admin/StatisticsPage";
+import ManageTeamPage from "./Pages/multispecialist/admin/ManageTeamPage";
+import PermissionsPage from "./Pages/multispecialist/admin/PermissionsPage";
+import PatientsAdminPage from "./Pages/multispecialist/admin/PatientsAdminPage";
+import AlertsPage from "./Pages/multispecialist/admin/AlertsPage";
+import PaymentsPage from "./Pages/multispecialist/admin/PaymentsPage";
+import PaymentLogsPage from "./Pages/multispecialist/admin/PaymentLogsPage";
+import SupportInboxPage from "./Pages/multispecialist/admin/SupportInboxPage";
+import { useAuth } from "@clerk/clerk-react";
+import { attachClerkToken } from "./lib/supabase";
+import FingerprintCallback from "./Pages/FingerprintCallback";
+
 
 export default function App() {
   const { isLoaded } = useUser();
+  const { getToken } = useAuth();
   const navigate = useNavigate();
 
-  const [establishmentUser, setEstablishmentUser] = useState<EstablishmentUser | null>(() => {
-    const sessionRaw = localStorage.getItem('establishmentUserSession');
-    console.log("[DoctorLayout] Contenu localStorage:", sessionRaw);
-    if (!sessionRaw) return null;
-
-    try {
-      const session = JSON.parse(sessionRaw);
-      const now = Date.now();
-      const oneHour = 60 * 60 * 1000;
-
-      if (now - session.timestamp > oneHour) {
-        console.warn('[Session] Session expirée. Nettoyage du stockage local.');
-        localStorage.removeItem('establishmentUserSession');
-        return null;
-      }
-
-      return session.user as EstablishmentUser;
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-  localStorage.removeItem("establishmentUserSession");
-  localStorage.removeItem("userEmail");
-}, []);
-
-  // Removed unused establishmentName state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('doctor');
   const [error, setError] = useState<string | null>(null);
-  const [showPatientPortal, setShowPatientPortal] = useState(false);
+
+  const [establishmentUser, setEstablishmentUser] = useState<EstablishmentUser | null>(() => {
+    const sessionRaw = localStorage.getItem('establishmentUserSession');
+    const pharmacyRaw = localStorage.getItem('pharmacyUserSession');
+
+    console.log("[App Init] Contenu localStorage establishment:", sessionRaw);
+    console.log("[App Init] Contenu localStorage pharmacie:", pharmacyRaw);
+
+    try {
+      if (sessionRaw) {
+        const session = JSON.parse(sessionRaw);
+        const now = Date.now();
+        const oneHour = 60 * 60 * 1000;
+
+        if (now - session.timestamp > oneHour) {
+          console.warn('[Session] Expirée - établissement');
+          localStorage.removeItem('establishmentUserSession');
+        } else {
+          return session.user as EstablishmentUser;
+        }
+      }
+
+      if (pharmacyRaw) {
+        return JSON.parse(pharmacyRaw) as EstablishmentUser;
+      }
+    } catch (error) {
+      console.error("[App Init] Erreur parsing:", error);
+    }
+
+    return null;
+  });
+
+
+  useEffect(() => {
+  if (!isLoaded) return; 
+  let mounted = true;
+  const syncToken = async () => {
+    try {
+      // ⚠️ crée un JWT Template "supabase" dans Clerk (Dashboard → JWT Templates)
+      const token = await getToken({ template: "supabase" });
+      if (mounted) attachClerkToken(token);
+    } catch {
+      // Pas de session Clerk → pas d’Authorization header
+      if (mounted) attachClerkToken(null);
+    }
+  };
+
+  syncToken();
+  // Re-synchroniser le token avant son expiry (~1h)
+  const id = setInterval(syncToken, 55 * 60 * 1000);
+  return () => { mounted = false; clearInterval(id); };
+}, [getToken]);
+
+
 
   useEffect(() => {
     if (establishmentUser) {
       const session = {
         user: establishmentUser,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
+
       localStorage.setItem('establishmentUserSession', JSON.stringify(session));
+
+      if (establishmentUser.role === 'pharmacist') {
+        localStorage.setItem('pharmacyUserSession', JSON.stringify(establishmentUser));
+      }
     } else {
       localStorage.removeItem('establishmentUserSession');
+      localStorage.removeItem('pharmacyUserSession');
     }
   }, [establishmentUser]);
 
-    useEffect(() => {
-      if (establishmentUser) {
-        switch (establishmentUser.role) {
-          case "doctor":
-            navigate("/doctor");
-            break;
-          case "admin":
-            navigate("/multispecialist/admin");
-            break;
-          case "secretary":
-            navigate("/multispecialist/secretary");
-            break;
-          case "assurer":
-            navigate("/assureur");
-            break;
-          default:
-            setError("Rôle non pris en charge.");
-        }
-      }
-    }, [establishmentUser]);
-
     const handleEstablishmentLogin = async (e: React.FormEvent) => {
-      e.preventDefault();
-      setError(null);
+    e.preventDefault();
+    setError(null);
 
-      try {
-        console.log("🔐 Tentative connexion pour :", email);
-        localStorage.setItem("userEmail", email);
+    try {
+      console.log("🔐 Tentative de connexion :", email);
+      localStorage.setItem("userEmail", email);
 
-        const user = await loginEstablishment(email, role, password);
-        if (!user) {
-          setError("Échec de la connexion. Veuillez vérifier les informations.");
-          return;
-        }
-
-        const session = {
-          user,
-          timestamp: Date.now(),
-        };
-
-        localStorage.setItem("establishmentUserSession", JSON.stringify(session));
-        setEstablishmentUser(user); // Redirection gérée ensuite par useEffect
-
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erreur lors de la connexion.");
+      const staff = await loginEstablishment(email, role, password);
+      if (!staff) {
+        setError("Échec de la connexion. Veuillez vérifier les informations.");
+        return;
       }
-    };
+
+      // alimente l'état + localStorage (ton useEffect s’en charge déjà)
+      setEstablishmentUser(staff);
+
+      // 👉 redirige IMMÉDIATEMENT selon le rôle (plus de /redirect)
+      switch (staff.role) {
+        case "secretary":
+          // L’espace secrétaire est protégé par ClerkGuard.
+          // Si l’utilisateur n’est pas signé Clerk, il sera envoyé à /sign-in.
+          navigate("/multispecialist/secretary/patients");
+          break;
+        case "doctor":
+          navigate("/doctor/patients");
+          break;
+        case "assurer":
+          navigate("/assureur/reports");
+          break;
+        case "admin":
+          navigate("/multispecialist/admin/dashboard");
+          break;
+        case "pharmacist":
+          navigate("/pharmacy");
+          break;
+        default:
+          navigate("/unauthorized");
+      }
+    } catch (err) {
+      console.error("❌ Erreur lors du login :", err);
+      setError(err instanceof Error ? err.message : "Erreur inconnue.");
+    }
+  };
 
   const handleLogout = () => {
-  localStorage.removeItem('establishmentUserSession');
-  setEstablishmentUser(null);
-  navigate('/');
- };
+    localStorage.removeItem('establishmentUserSession');
+    localStorage.removeItem('pharmacyUserSession');
+    attachClerkToken(null);
+    setEstablishmentUser(null);
+    navigate('/');
+  };
 
-if (!isLoaded) {
-  return <div className="flex items-center justify-center h-screen">Chargement...</div>;
-}
+  if (!isLoaded) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        Chargement...
+      </div>
+    );
+  }
 
   const renderLandingPage = () => (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-4">
@@ -180,6 +255,7 @@ if (!isLoaded) {
               <option value="admin">Administrateur</option>
               <option value="secretary">Secrétaire</option>
               <option value="assurer">Assureur</option>
+              <option value="pharmacist">Pharmacie</option>
             </select>
             <input
               type="password"
@@ -201,121 +277,162 @@ if (!isLoaded) {
               <p className="text-emerald-100">Accédez à vos consultations</p>
             </div>
           </div>
-          <button onClick={() => setShowPatientPortal(true)} className="w-full px-4 py-2 bg-white text-emerald-600 rounded-lg">Accéder à mon espace</button>
+        <button
+          onClick={() => navigate("/patient/login")}
+          className="w-full px-4 py-2 bg-white text-emerald-600 rounded-lg hover:bg-emerald-100 transition">
+          Accéder à mon espace patient
+          </button>
         </div>
 
-        {/* Espace développeur */}
-        <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-xl p-8 text-white">
-          <div className="flex items-center justify-center mb-6">
-            <Code className="h-10 w-10 mr-3" />
-            <div>
-              <h2 className="text-2xl font-bold">Espace Développeur</h2>
-              <p className="text-indigo-100">Commencez à utiliser MediConnect+</p>
-            </div>
-          </div>
-          <SignIn />
+{/* Espace développeur */}
+<div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-xl p-8 text-white">
+  <div className="flex items-center justify-center mb-6">
+    <Code className="h-10 w-10 mr-3" />
+    <div>
+      <h2 className="text-2xl font-bold">Espace Développeur</h2>
+      <p className="text-indigo-100">Commencez à utiliser MediConnect+</p>
+    </div>
+  </div>
+    <button
+      onClick={() => openSignIn({ redirectUrl: "/multispecialist/secretary/patients" })}
+      className="w-full px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 transition"
+    >
+      Se connecter avec Clerk
+    </button>
         </div>
       </div>
-
-      {/* Portail patient */}
-      {showPatientPortal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-xl p-6 max-w-md w-full">
-            {/* À compléter plus tard */}
-            <button onClick={() => setShowPatientPortal(false)} className="mt-4 w-full bg-red-500 text-white py-2 rounded-lg">Fermer</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 
   return (
   <Routes>
-    {/* ROUTES PUBLIQUES (PAS DE Clerk requis) */}
-    <Route path="/" element={renderLandingPage()} />
-    <Route path="/sign-in" element={<SignIn routing="path" path="/sign-in" redirectUrl="/redirect" />} />
-    <Route path="/sign-up" element={<SignUp routing="path" path="/sign-up" />} />
-    <Route path="/unauthorized" element={<Unauthorized />} />
+  {/* PUBLIC */}
+  <Route path="/" element={renderLandingPage()} />
+  <Route path="/unauthorized" element={<Unauthorized />} />
 
-    {/* REDIRECTION POST-CONNEXION */}
-    <Route path="/redirect" element={<RedirectByRolePage />} />
+  {/* Clerk auth : 1 seule route, SANS forceRedirectUrl */}
+  <Route
+    path="/sign-in/*"
+    element={
+      <SignIn routing="path" path="/sign-in" fallbackRedirectUrl="/" />
+    }
+  />
+  <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
 
-    {/* ROUTES PROTÉGÉES */}
-    <Route
-  path="/doctor/*"
-  element={
-    <PrivateRouteByRole allowedRole="doctor" establishmentUser={establishmentUser}>
-      <DoctorLayout>
-        <Outlet />
-      </DoctorLayout>
-    </PrivateRouteByRole>
-  }
->
-  <Route index element={<DashboardPage />} />
-  <Route path="patients" element={<PatientsPage />} />
-  <Route path="patients/new" element={<NewPatientPage />} />
-  <Route path="new-act" element={<NewActPage />} />
-  <Route path="consultation-follow-up" element={<ConsultationFollowUpPage />} />
-  <Route path="settings" element={<SettingsPage />} />
-  <Route path="performance" element={<PerformancePage />} />
-</Route>
+  {/* DOCTOR — sans ClerkGuard */}
+  <Route
+    path="/doctor/*"
+    element={
+      <PrivateRouteByRole allowedRole="doctor" establishmentUser={establishmentUser}>
+        <DoctorLayout><Outlet /></DoctorLayout>
+      </PrivateRouteByRole>
+    }
+  >
+    <Route index element={<DashboardPage />} />
+    <Route path="patients" element={<PatientsPage />} />
+    <Route path="patients/new" element={<NewPatientPage />} />
+    <Route path="new-act" element={<NewActPage />} />
+    <Route path="consultation-follow-up" element={<ConsultationFollowUpPage />} />
+    <Route path="settings" element={<SettingsPage />} />
+    <Route path="performance" element={<PerformancePage />} />
+  </Route>
 
-    <Route
-      path="/assureur/*"
-      element={
-        <PrivateRouteByRole allowedRole="assurer" establishmentUser={establishmentUser}>
-          <AssureurLayout />
-        </PrivateRouteByRole>
-      }
-    />
+  {/* ASSUREUR — sans ClerkGuard */}
+  <Route
+    path="/assureur/*"
+    element={
+      <PrivateRouteByRole allowedRole="assurer" establishmentUser={establishmentUser}>
+        <AssureurLayout />
+      </PrivateRouteByRole>
+    }
+  >
+    <Route path="reports" element={<AssureurReports />} />
+    <Route path="anomalies" element={<AssureurAnomalies />} />
+    <Route path="fingerprint-alerts" element={<FingerprintAlertsPage />} />
+    <Route path="paiements" element={<AssureurPaiements />} />
+    <Route path="cliniques" element={<CliniquesPage />} />
+    <Route path="statistiques" element={<StatistiquesPage />} />
+  </Route>
 
-    {/* MULTISPECIALIST ROLES */}
-    <Route
-      path="/multispecialist/doctor/*"
-      element={
-        <PrivateRouteByRole allowedRole="doctor" establishmentUser={establishmentUser}>
-          <MultispecialistDoctorLayout />
-        </PrivateRouteByRole>
-      }
-    >
-      <Route path="dashboard" element={<DoctorDashboardPage />} />
-      <Route path="patients" element={<DoctorPatientsPage />} />
-      <Route path="new-consultation" element={<NewConsultationPage />} />
-      <Route path="DoctorPatientsPage/new" element={<NewPatientDoctorPage />} />
-      <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
-      <Route path="settings" element={<SettingsDoctorPage />} />
-      <Route path="performance" element={<PerformanceDoctorPage />} />
-    </Route>
+  {/* MULTISPECIALIST DOCTOR — sans ClerkGuard */}
+  <Route
+    path="/multispecialist/doctor/*"
+    element={
+      <PrivateRouteByRole allowedRole="doctor" establishmentUser={establishmentUser}>
+        <MultispecialistDoctorLayout />
+      </PrivateRouteByRole>
+    }
+  >
+    <Route path="dashboard" element={<DoctorDashboardPage />} />
+    <Route path="patients" element={<DoctorPatientsPage />} />
+    <Route path="new-consultation" element={<NewConsultationPage />} />
+    <Route path="DoctorPatientsPage/new" element={<NewPatientDoctorPage />} />
+    <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
+    <Route path="settings" element={<SettingsDoctorPage />} />
+    <Route path="performance" element={<PerformanceDoctorPage />} />
+  </Route>
 
-    <Route
-      path="/multispecialist/admin/*"
-      element={
-        <PrivateRouteByRole allowedRole="admin" establishmentUser={establishmentUser}>
-          <MultispecialistAdminLayout />
-        </PrivateRouteByRole>
-      }
-    >
+  {/* MULTISPECIALIST ADMIN — sans ClerkGuard */}
+  <Route
+    path="/multispecialist/admin/*"
+    element={
+      <PrivateRouteByRole allowedRole="admin" establishmentUser={establishmentUser}>
+        <MultispecialistAdminLayout />
+      </PrivateRouteByRole>
+    }
+  >
+    <Route path="dashboard" element={<AdminDashboardPage />} />
+    <Route path="performance" element={<PerformanceAdminPage />} />
+    <Route path="team" element={<ManageTeamPage />} />
+    <Route path="statistics" element={<StatisticsPage />} />
+    <Route path="permissions" element={<PermissionsPage />} />
+    <Route path="patients" element={<PatientsAdminPage />} />
+    <Route path="alerts" element={<AlertsPage />} />
+    <Route path="payments" element={<PaymentsPage />} />
+    <Route path="payment-logs" element={<PaymentLogsPage />} />
+    <Route path="support-inbox" element={<SupportInboxPage />} />
+  </Route>
 
-      <Route path="dashboard" element={<AdminDashboardPage />} />
-      <Route path="performance" element={<PerformancePage />} />
-      <Route path="team" element={<ManageTeamPage />} />
-    </Route>
-
-    <Route
-      path="/multispecialist/secretary/*"
-      element={
+  {/* MULTISPECIALIST SECRETARY — le SEUL espace avec ClerkGuard */}
+  <Route
+    path="/multispecialist/secretary/*"
+    element={
+      <ClerkGuard>
         <PrivateRouteByRole allowedRole="secretary" establishmentUser={establishmentUser}>
           <MultispecialistSecretaryLayout />
         </PrivateRouteByRole>
-      }
-    >
-      <Route path="patients" element={<SecretaryPatientsPage />} />
-      <Route path="support" element={<SupportPage />} />
-    </Route>
+      </ClerkGuard>
+    }
+  >
+    <Route index element={<SecretaryPatientsPage />} />
+    <Route path="patients" element={<SecretaryPatientsPage />} />
+    <Route path="new" element={<NewPatientWizard />} />
+    <Route path="support" element={<SupportPage />} />
+  </Route>
 
-    {/* CATCH-ALL → redirection vers la page d’accueil */}
-    <Route path="*" element={<Navigate to="/" />} />
-  </Routes>
+  {/* PHARMACY — sans ClerkGuard */}
+  <Route
+    path="/pharmacy/*"
+    element={
+      <PrivateRouteByRole allowedRole="pharmacist" establishmentUser={establishmentUser}>
+        <PharmacyLayout />
+      </PrivateRouteByRole>
+    }
+  >
+    <Route index element={<PharmacyDashboard />} />
+    <Route path="orders" element={<PharmacyOrders />} />
+    <Route path="history" element={<PharmacyHistory />} />
+    <Route path="settings" element={<PharmacySettings />} />
+  </Route>
+
+  <Route path="/fp-callback" element={<FingerprintCallback />} />
+  
+  <Route path="*" element={<Navigate to="/" />} />
+</Routes>
+  
 );
-
+};
+function openSignIn(arg0: { redirectUrl: string; }): void {
+  throw new Error('Function not implemented.');
 }
+

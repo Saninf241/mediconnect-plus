@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
-import { useMultispecialistDoctorContext }from "../../../hooks/useMultispecialistDoctorContext";
+import { useMultispecialistDoctorContext } from "../../../hooks/useMultispecialistDoctorContext";
+import ConsultationStatusFilters from "../../../components/ui/uidoctor/ConsultationStatusFilters";
 
 interface Consultation {
   id: string;
@@ -17,20 +18,22 @@ interface Consultation {
 export default function ConsultationFollowUpPage() {
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const doctorInfo = useMultispecialistDoctorContext();
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchConsultations = async () => {
-      const userId = (await supabase.auth.getUser()).data.user?.id;
-      if (!userId || !doctorInfo?.clinic_id) return;
+      const doctorId = doctorInfo?.doctor_id;
+      const clinicId = doctorInfo?.clinic_id;
+
+      if (!doctorId || !clinicId) return;
 
       let query = supabase
         .from("consultations")
         .select("id, created_at, amount, status, patient:patients(name)")
-        .eq("doctor_id", userId)
-        .eq("clinic_id", doctorInfo.clinic_id)
+        .eq("doctor_id", doctorId)
+        .eq("clinic_id", clinicId)
         .order("created_at", { ascending: false });
 
       if (statusFilter) {
@@ -38,24 +41,22 @@ export default function ConsultationFollowUpPage() {
       }
 
       const { data, error } = await query;
-      if (error || !data) return;
+      if (error) {
+        console.error("❌ Erreur Supabase :", error);
+        return;
+      }
 
-      const formatted = data.map((c: any) => ({
-        id: c.id,
-        created_at: c.created_at,
-        amount: c.amount,
-        status: c.status,
-        patient: { name: c.patient?.name || "—" },
-      }));
-
-      setConsultations(formatted);
+      setConsultations(
+        (data || []).map((c: any) => ({
+          ...c,
+          patient: Array.isArray(c.patient) ? c.patient[0] : c.patient,
+        }))
+      );
       setLoading(false);
     };
 
     fetchConsultations();
   }, [statusFilter, doctorInfo]);
-
-  const statuses = ["draft", "sent", "accepted", "rejected", "paid"];
 
   const getBadgeColor = (status: string) => {
     switch (status) {
@@ -84,6 +85,8 @@ export default function ConsultationFollowUpPage() {
       setConsultations((prev) =>
         prev.map((c) => (c.id === id ? { ...c, status: "sent" } : c))
       );
+      // Optionnel : feedback visuel
+      // toast.success("Consultation envoyée à l'assureur.");
     }
   };
 
@@ -97,31 +100,10 @@ export default function ConsultationFollowUpPage() {
         📋 Suivi des consultations
       </h1>
 
-      <div className="flex gap-2 flex-wrap mb-4">
-        {statuses.map((s) => (
-          <Button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={
-              statusFilter === s
-                ? "bg-blue-600 text-white"
-                : "bg-white border border-gray-300 text-gray-700"
-            }
-          >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
-          </Button>
-        ))}
-        <Button
-          onClick={() => setStatusFilter("")}
-          className={
-            !statusFilter
-              ? "bg-blue-600 text-white"
-              : "bg-white border border-gray-300 text-gray-700"
-          }
-        >
-          Tous
-        </Button>
-      </div>
+      <ConsultationStatusFilters
+        current={statusFilter}
+        onChange={setStatusFilter}
+      />
 
       {loading ? (
         <p className="text-center text-gray-500 mt-6">
@@ -167,7 +149,9 @@ export default function ConsultationFollowUpPage() {
                     </td>
                     <td className="px-4 py-3 flex gap-2">
                       {c.status === "draft" && (
-                        <Button onClick={() => handleResend(c.id)}>Envoyer</Button>
+                        <Button onClick={() => handleResend(c.id)}>
+                          Envoyer
+                        </Button>
                       )}
                       <Button onClick={() => handleView(c.id)}>Voir</Button>
                     </td>

@@ -33,7 +33,7 @@ export function useRedirectByRole() {
         case "admin":
           navigate("/multispecialist/admin/dashboard");
           break;
-        case "secretaire":
+        case "secretary":
           navigate("/multispecialist/secretary/patients");
           break;
         case "assureur":

@@ -1,11 +1,24 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"; 
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
+import { jwtVerify } from "https://deno.land/x/jose@v4.14.4/index.ts";
+
+const JWKS_URL = "https://awaited-mayfly-26.clerk.accounts.dev/.well-known/jwks.json";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
+async function getJWKS() {
+  const res = await fetch(JWKS_URL);
+  if (!res.ok) throw new Error("Impossible de récupérer les JWKS Clerk");
+  return res.json();
+}
+
+function getKey(jwks, kid) {
+  return jwks.keys.find((key) => key.kid === kid);
+}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -18,25 +31,32 @@ serve(async (req: Request) => {
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3eGVncWV2dGh6ZnBoZHF0amV3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczOTExMjI5OSwiZXhwIjoyMDU0Njg4Mjk5fQ.qXu29r14dphkDnehU0IkoEb5RW6ZNTqScBQuGuroNlg"
     );
 
-    // Get the authenticated user
+    // Authentification Clerk
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Missing authorization header');
-    }
+    if (!authHeader) throw new Error('Missing Authorization header');
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const token = authHeader.replace('Bearer ', '');
+    const { payload, protectedHeader } = await jwtVerify(token, async (header) => {
+      const jwks = await getJWKS();
+      const keyData = getKey(jwks, header.kid);
+      if (!keyData) throw new Error("JWT Key non trouvée dans JWKS Clerk");
+      return crypto.subtle.importKey(
+        "jwk",
+        keyData,
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["verify"]
+      );
+    });
 
-    if (authError || !user) {
-      throw new Error('Unauthorized');
-    }
+    const user_id = payload.sub;
+    if (!user_id) throw new Error("Token Clerk invalide : pas de 'sub'");
 
-    // Get assurer details
+    // Vérification rôle assureur
     const { data: assurer, error: assurerError } = await supabase
       .from('clinic_staff')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', user_id)
       .eq('role', 'assurer')
       .single();
 

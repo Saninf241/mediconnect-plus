@@ -1,0 +1,30 @@
+import { useEffect, useState } from "react";
+import { useUser } from "@clerk/clerk-react";
+import { supabase } from "../lib/supabase";
+
+export function usePatientContext() {
+  const { user } = useUser();
+  const [patientId, setPatientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchPatient = async () => {
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .single();
+
+      if (data?.id) {
+        setPatientId(data.id);
+      } else {
+        console.warn("⚠️ Patient non trouvé pour l’auth_user_id :", user.id, error);
+      }
+    };
+
+    fetchPatient();
+  }, [user]);
+
+  return patientId;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useUser } from '@clerk/clerk-react';
 import { Input } from '../../../components/ui/input';
@@ -15,6 +15,7 @@ import { useDoctorContext } from "../../../hooks/useDoctorContext";
 export default function NewActPage() {
   const { user } = useUser();
   const [step, setStep] = useState<'biometry' | 'consultation' | 'done'>('biometry');
+  const [consultationId, setConsultationId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
   const [acts, setActs] = useState<string[]>([]);
   const [currentAct, setCurrentAct] = useState('');
@@ -36,15 +37,88 @@ export default function NewActPage() {
   const doctorId = user?.id;
   const doctorInfo = useDoctorContext();
 
-const handleBiometrySuccess = () => {
-  if (!doctorInfo) return;
+  //CHANGEMENT: utilitaire pour créer le brouillon si nécessaire
+  const ensureDraftConsultation = useCallback(async () => {
+    if (consultationId) return consultationId;
+    if (!doctorId || !doctorInfo?.clinic_id) {
+      toast.error("Contexte médecin/clinique manquant");
+      return null;
+    }
 
-  const apiKey = "mediconnect-prod-999-XyZ"; // 🔐 Vraie clé MEDICONNECT_API_KEY
-  const deepLink = `intent://scanfingerprint?clinic_id=${doctorInfo.clinic_id}&doctor_id=${doctorInfo.doctor_id}&api_key=${apiKey}#Intent;scheme=mediconnect;package=com.ndoung.mediconnectscanner;end`;
+    const { data, error } = await supabase
+      .from('consultations')
+      .insert([{
+        doctor_id: doctorId,
+        clinic_id: doctorInfo.clinic_id,
+        status: 'draft',
+      }])
+      .select('id')
+      .single();
 
-  window.location.href = deepLink;
+    if (error || !data) {
+      console.error(error);
+      toast.error("Impossible de créer la consultation brouillon");
+      return null;
+    }
+    setConsultationId(data.id);
+    return data.id as string;
+  }, [consultationId, doctorId, doctorInfo?.clinic_id]);
+
+  // Clic “Empreinte capturée” → brouillon + deeplink avec consultation_id
+  const handleBiometrySuccess = async () => {
+  const id = await ensureDraftConsultation();
+  if (!id || !doctorInfo) return;
+
+  // 1) URL de retour (DOIT être accessible depuis le téléphone)
+  const originForPhone =
+    // mets ici ton URL publique (ngrok) OU l'IP LAN de ton PC
+    // ex: "http://192.168.1.42:3000" ou "https://xxx.ngrok.app"
+    window.location.origin.includes("localhost")
+      ? "http://192.168.1.42:3000" // <-- change cette IP !
+      : window.location.origin;
+
+  const redirectTarget = `${originForPhone}/fp-callback`;
+  const params = new URLSearchParams({
+    consultation_id: id,
+  });
+  const redirectUrl = encodeURIComponent(`${redirectTarget}?${params.toString()}`);
+
+  // 2) Clé API (optionnel, si tu veux vérifier côté app)
+  const apiKey = "mediconnect-prod-999-XyZ";
+
+  // 3) Deeplink (schéma custom)
+  const deeplink =
+    `mediconnect://scanfingerprint` +
+    `?consultation_id=${encodeURIComponent(id)}` +
+    `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
+    `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
+    `&redirect_url=${redirectUrl}` +
+    `&api_key=${encodeURIComponent(apiKey)}`;
+
+  // 4) Fallback Chrome (intent://)
+  const intentUri =
+    `intent://scanfingerprint` +
+    `?consultation_id=${encodeURIComponent(id)}` +
+    `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
+    `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
+    `&redirect_url=${redirectUrl}` +
+    `&api_key=${encodeURIComponent(apiKey)}` +
+    `#Intent;scheme=mediconnect;package=com.example.zkfinger10demo;end`;
+
+  // 5) On tente d'abord le schéma (fonctionne dans Samsung Internet, etc.)
+  //    Si Chrome bloque, l’utilisateur cliquera sur le lien fallback qu’on affiche.
+  try {
+    window.location.href = deeplink;
+    // Optionnel: après 1s, afficher un toast avec un lien fallback si rien ne se passe.
+    setTimeout(() => {
+      // par ex. afficher une bannière invitant à cliquer sur intentUri
+    }, 1000);
+  } catch {
+    window.location.href = intentUri;
+  }
 };
 
+  // GPT suggestions (inchangé)
   useEffect(() => {
     const loadGptSuggestions = async () => {
       if (diagnosis.trim().length < 3) return;
@@ -69,33 +143,39 @@ const handleBiometrySuccess = () => {
     }
   };
 
-const [searchParams] = useSearchParams();
-useEffect(() => {
-  const id = searchParams.get("patient_id");
-  if (id) {
-    setPatientId(id);
-    setFingerprintMissing(false);
-    setStep('consultation');
-  }
+// CHANGEMENT: on récupère les retours du scanner
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const cid = searchParams.get("consultation_id");
+    if (cid) setConsultationId(cid);
 
-  const notFound = searchParams.get("notfound");
-  if (notFound === "true") {
-    // ⛔ Affiche un message
-    toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
-    // ✅ Passe automatiquement en mode consultation avec fingerprint manquant
-    setFingerprintMissing(true);
-    setStep('consultation');
-  }
-}, []);
+    const pid = searchParams.get("patient_id");
+    if (pid) {
+      setPatientId(pid);
+      setFingerprintMissing(false);
+      setStep('consultation');
+    }
 
-  const handleBiometryFailure = () => {
-    setPatientId(null);
+    const notFound = searchParams.get("notfound");
+    if (notFound === "true") {
+      toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
+      setFingerprintMissing(true);
+      setStep('consultation');
+    }
+  }, []);
+
+ //clic “Continuer sans empreinte” → brouillon + flag
+  const handleBiometryFailure = async () => {
+    const id = await ensureDraftConsultation();
+    if (!id) return;
     setFingerprintMissing(true);
     setStep('consultation');
   };
 
+// CHANGEMENT: à l’enregistrement → UPDATE (pas INSERT)
   const createConsultation = async () => {
     if (!doctorId) return toast.error("Utilisateur médecin introuvable");
+    if (!consultationId) return toast.error("Consultation brouillon manquante");
 
     const parsedAmount = parseInt(amount);
     if (acts.length === 0) return toast.error("Ajoutez au moins un acte.");
@@ -111,30 +191,29 @@ useEffect(() => {
     if (!hasDiagnosis) return toast.error("Renseignez le diagnostic");
     if (!patientId && !fingerprintMissing) return toast.error("Aucun patient sélectionné");
 
-    const { error } = await supabase.from('consultations').insert([{
-      doctor_id: doctorId,
-      clinic_id: doctorInfo?.clinic_id,
-      patient_id: patientId,
-      symptoms: symptomsType === 'text' ? symptoms.trim() : null,
-      symptoms_drawn: symptomsDrawn,
-      diagnosis: diagnosisType === 'text' ? diagnosis.trim() : null,
-      diagnosis_drawn: diagnosisDrawn,
-      actes: acts.map(type => ({ type })),
-      medications,
-      amount: parsedAmount,
-      status: 'draft',
-      fingerprint_missing: fingerprintMissing,
-    }]);
+    const { error } = await supabase
+      .from('consultations')
+      .update({
+        patient_id: patientId,                        // peut être null si fingerprintMissing
+        symptoms: symptomsType === 'text' ? symptoms.trim() : null,
+        symptoms_drawn: symptomsDrawn,
+        diagnosis: diagnosisType === 'text' ? diagnosis.trim() : null,
+        diagnosis_drawn: diagnosisDrawn,
+        actes: acts.map(type => ({ type })),
+        medications,
+        amount: parsedAmount,
+        status: 'validated',                          // ou 'pending' selon ton workflow
+        fingerprint_missing: fingerprintMissing,      // utile pour le suivi
+      })
+      .eq('id', consultationId);
 
-    if (error) toast.error('Erreur lors de la création');
+    if (error) toast.error('Erreur lors de la mise à jour');
     else {
       toast.success('Consultation enregistrée');
-      setActs([]);
-      setCurrentAct('');
-      setMedications([]);
-      setCurrentMedication('');
-      setSymptoms('');
-      setDiagnosis('');
+      // reset
+      setActs([]); setCurrentAct('');
+      setMedications([]); setCurrentMedication('');
+      setSymptoms(''); setDiagnosis('');
       setAmount('');
       setPatientId(null);
       setStep('done');

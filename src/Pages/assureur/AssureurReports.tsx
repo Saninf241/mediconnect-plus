@@ -11,25 +11,38 @@ export default function AssureurReports() {
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const fetchConsultations = async () => {
+    const payload = { search, status, clinicId, dateStart, dateEnd };
+    console.log("▶️ Payload envoyé :", payload);
+    setIsLoading(true);
+
     try {
-      const res = await fetch("https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ search, status, clinicId, dateStart, dateEnd }),
-      });
+      const res = await fetch(
+        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
-      const { data } = await res.json(); // <- important
-
-      if (!Array.isArray(data)) {
-        throw new Error("Les données de consultation ne sont pas un tableau.");
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur HTTP ${res.status} : ${text}`);
       }
 
+      const { data } = await res.json();
+      if (!Array.isArray(data)) throw new Error("Réponse invalide : pas un tableau");
       setConsultations(data);
     } catch (err) {
-      console.error("Erreur lors de la récupération des consultations :", err);
+      console.error("⛔ Erreur lors de la récupération :", err);
       setConsultations([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -54,8 +67,12 @@ export default function AssureurReports() {
   };
 
   useEffect(() => {
+    getAllClinics()
+      .then(setClinics)
+      .catch(console.error);
+
+    // Premier chargement sans filtre
     fetchConsultations();
-    getAllClinics().then(setClinics).catch(console.error);
   }, []);
 
   return (
@@ -71,8 +88,9 @@ export default function AssureurReports() {
         <button
           onClick={fetchConsultations}
           className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          disabled={isLoading}
         >
-          Rechercher
+          {isLoading ? "Chargement..." : "Rechercher"}
         </button>
       </div>
 
