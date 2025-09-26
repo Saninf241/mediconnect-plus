@@ -66,57 +66,48 @@ export default function NewActPage() {
 
   // Clic “Empreinte capturée” → brouillon + deeplink avec consultation_id
   const handleBiometrySuccess = async () => {
-  const id = await ensureDraftConsultation();
-  if (!id || !doctorInfo) return;
+    const id = await ensureDraftConsultation();
+    if (!id || !doctorInfo) return;
 
-  // 1) URL de retour (DOIT être accessible depuis le téléphone)
-  const originForPhone =
-    // mets ici ton URL publique (ngrok) OU l'IP LAN de ton PC
-    // ex: "http://192.168.1.42:3000" ou "https://xxx.ngrok.app"
-    window.location.origin.includes("localhost")
-      ? "http://192.168.1.42:3000" // <-- change cette IP !
-      : window.location.origin;
+    // 1) URL de retour accessible depuis le téléphone
+    const originForPhone = "https://mediconnect-plus.com";
 
-  const redirectTarget = `${originForPhone}/fp-callback`;
-  const params = new URLSearchParams({
-    consultation_id: id,
-  });
-  const redirectUrl = encodeURIComponent(`${redirectTarget}?${params.toString()}`);
+    const redirectTarget = `${originForPhone}/fp-callback`;
+    const redirectUrl = encodeURIComponent(`${redirectTarget}?consultation_id=${encodeURIComponent(id)}`);
 
-  // 2) Clé API (optionnel, si tu veux vérifier côté app)
-  const apiKey = "mediconnect-prod-999-XyZ";
+    // 2) (optionnel) clé API
+    const apiKey = "mediconnect-prod-999-XyZ";
 
-  // 3) Deeplink (schéma custom)
-  const deeplink =
-    `mediconnect://scanfingerprint` +
-    `?consultation_id=${encodeURIComponent(id)}` +
-    `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
-    `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
-    `&redirect_url=${redirectUrl}` +
-    `&api_key=${encodeURIComponent(apiKey)}`;
+    // 3) Schéma custom (marche dans Samsung Internet / via lien cliqué dans Chrome)
+    const deeplink =
+      `mediconnect://scanfingerprint` +
+      `?consultation_id=${encodeURIComponent(id)}` +
+      `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
+      `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
+      `&redirect_url=${redirectUrl}` +
+      `&api_key=${encodeURIComponent(apiKey)}`;
 
-  // 4) Fallback Chrome (intent://)
-  const intentUri =
-    `intent://scanfingerprint` +
-    `?consultation_id=${encodeURIComponent(id)}` +
-    `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
-    `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
-    `&redirect_url=${redirectUrl}` +
-    `&api_key=${encodeURIComponent(apiKey)}` +
-    `#Intent;scheme=mediconnect;package=com.example.zkfinger10demo;end`;
+    // 4) Fallback Chrome (intent://)
+    const intentUri =
+      `intent://scanfingerprint` +
+      `?consultation_id=${encodeURIComponent(id)}` +
+      `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
+      `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
+      `&redirect_url=${redirectUrl}` +
+      `&api_key=${encodeURIComponent(apiKey)}` +
+      `#Intent;scheme=mediconnect;package=com.example.zkfinger10demo;end`;
 
-  // 5) On tente d'abord le schéma (fonctionne dans Samsung Internet, etc.)
-  //    Si Chrome bloque, l’utilisateur cliquera sur le lien fallback qu’on affiche.
-  try {
-    window.location.href = deeplink;
-    // Optionnel: après 1s, afficher un toast avec un lien fallback si rien ne se passe.
-    setTimeout(() => {
-      // par ex. afficher une bannière invitant à cliquer sur intentUri
-    }, 1000);
-  } catch {
-    window.location.href = intentUri;
-  }
-};
+    // 5) Essai schéma, sinon fallback intent
+    try {
+      window.location.href = deeplink;
+      setTimeout(() => {
+        // ici tu peux afficher un toast avec un bouton <a href={intentUri}>Si rien ne se passe, cliquez ici</a>
+      }, 900);
+    } catch {
+      window.location.href = intentUri;
+    }
+  };
+
 
   // GPT suggestions (inchangé)
   useEffect(() => {
@@ -231,7 +222,7 @@ export default function NewActPage() {
       {step === 'biometry' && (
         <div className="space-y-4">
           <p>Veuillez scanner l’empreinte du patient :</p>
-          <div className="flex gap-4">
+          <div className="flex gap-4 ">
             <Button onClick={handleBiometrySuccess}>Empreinte capturée</Button>
             <Button onClick={handleBiometryFailure} className="bg-orange-600">Continuer sans empreinte</Button>
           </div>

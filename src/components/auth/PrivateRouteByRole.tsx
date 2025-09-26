@@ -2,6 +2,7 @@
 import * as React from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../lib/supabase";
+import { normalizeRole } from "./role-utils";
 
 type Props = {
   allowedRole: "secretary" | "doctor" | "admin" | "assurer" | "pharmacist";
@@ -10,6 +11,7 @@ type Props = {
 };
 
 export default function PrivateRouteByRole({ allowedRole, establishmentUser, children }: Props) {
+  const wanted = normalizeRole(allowedRole);
   const { isLoaded: authLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
 
@@ -30,7 +32,7 @@ export default function PrivateRouteByRole({ allowedRole, establishmentUser, chi
 
       // 1) Rôle déjà fourni en prop (depuis App)
       if (establishmentUser?.role) {
-        const ok = establishmentUser.role === allowedRole;
+        const ok = normalizeRole(establishmentUser.role) === wanted;
         if (!cancelled) setState({ phase: ok ? "ok" : "forbidden", role: establishmentUser.role });
         return;
       }
@@ -41,7 +43,7 @@ export default function PrivateRouteByRole({ allowedRole, establishmentUser, chi
         if (raw) {
           const s = JSON.parse(raw);
           if (s?.role) {
-            const ok = s.role === allowedRole;
+            const ok = normalizeRole(s.role) === wanted;
             if (!cancelled) setState({ phase: ok ? "ok" : "forbidden", role: s.role });
             return;
           }
@@ -69,16 +71,11 @@ export default function PrivateRouteByRole({ allowedRole, establishmentUser, chi
       }
 
       // on normalise et on met en cache local pour la suite
-      const sessionObj = {
-        id: data.id,
-        role: data.role,
-        email: data.email,
-        clinicId: data.clinic_id,
-      };
+      const sessionObj = { id: data.id, role: normalizeRole(data.role), email: data.email, clinicId: data.clinic_id };
       localStorage.setItem("establishmentUserSession", JSON.stringify(sessionObj));
 
-      const ok = data.role === allowedRole;
-      setState({ phase: ok ? "ok" : "forbidden", role: data.role });
+      const ok = sessionObj.role === wanted;
+      setState({ phase: ok ? "ok" : "forbidden", role: sessionObj.role });
     }
 
     resolveRole();
