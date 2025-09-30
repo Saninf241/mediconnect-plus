@@ -69,6 +69,7 @@ import SupportInboxPage from "./Pages/multispecialist/admin/SupportInboxPage";
 import { useAuth } from "@clerk/clerk-react";
 import { attachClerkToken } from "./lib/supabase";
 import FingerprintCallback from "./Pages/FingerprintCallback";
+import { normalizeRole } from "./components/auth/role-utils";
 
 
 export default function App() {
@@ -82,36 +83,31 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const [establishmentUser, setEstablishmentUser] = useState<EstablishmentUser | null>(() => {
-    const sessionRaw = localStorage.getItem('establishmentUserSession');
-    const pharmacyRaw = localStorage.getItem('pharmacyUserSession');
-
-    console.log("[App Init] Contenu localStorage establishment:", sessionRaw);
-    console.log("[App Init] Contenu localStorage pharmacie:", pharmacyRaw);
-
     try {
-      if (sessionRaw) {
-        const session = JSON.parse(sessionRaw);
-        const now = Date.now();
-        const oneHour = 60 * 60 * 1000;
-
-        if (now - session.timestamp > oneHour) {
-          console.warn('[Session] Expirée - établissement');
-          localStorage.removeItem('establishmentUserSession');
-        } else {
-          return session.user as EstablishmentUser;
+      const raw = localStorage.getItem("establishmentUserSession");
+      if (raw) {
+        const s = JSON.parse(raw);
+        // expect FLAT shape
+        if (s?.role && s?.id) {
+          const maxAge = 60 * 60 * 1000; // 1h
+          if (Date.now() - (s.timestamp ?? 0) < maxAge) {
+            return s as EstablishmentUser;
+          }
         }
+        localStorage.removeItem("establishmentUserSession");
       }
 
-      if (pharmacyRaw) {
-        return JSON.parse(pharmacyRaw) as EstablishmentUser;
+      const rawPharma = localStorage.getItem("pharmacyUserSession");
+      if (rawPharma) {
+        const p = JSON.parse(rawPharma);
+        if (p?.role === "pharmacist") return p as EstablishmentUser;
+        localStorage.removeItem("pharmacyUserSession");
       }
-    } catch (error) {
-      console.error("[App Init] Erreur parsing:", error);
+    } catch (e) {
+      console.warn("[Session] parse error:", e);
     }
-
     return null;
   });
-
 
   useEffect(() => {
   if (!isLoaded) return; 
@@ -133,25 +129,20 @@ export default function App() {
   return () => { mounted = false; clearInterval(id); };
 }, [getToken]);
 
-
-
-  useEffect(() => {
-    if (establishmentUser) {
-      const session = {
-        user: establishmentUser,
-        timestamp: Date.now(),
-      };
-
-      localStorage.setItem('establishmentUserSession', JSON.stringify(session));
-
-      if (establishmentUser.role === 'pharmacist') {
-        localStorage.setItem('pharmacyUserSession', JSON.stringify(establishmentUser));
+    useEffect(() => {
+      if (establishmentUser) {
+        const flat = { ...establishmentUser, timestamp: Date.now() }; // FLAT
+        localStorage.setItem("establishmentUserSession", JSON.stringify(flat));
+        if (flat.role === "pharmacist") {
+          localStorage.setItem("pharmacyUserSession", JSON.stringify(flat));
+        } else {
+          localStorage.removeItem("pharmacyUserSession");
+        }
+      } else {
+        localStorage.removeItem("establishmentUserSession");
+        localStorage.removeItem("pharmacyUserSession");
       }
-    } else {
-      localStorage.removeItem('establishmentUserSession');
-      localStorage.removeItem('pharmacyUserSession');
-    }
-  }, [establishmentUser]);
+    }, [establishmentUser]);
 
     const handleEstablishmentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,36 +158,41 @@ export default function App() {
         return;
       }
 
-      // alimente l'état + localStorage (ton useEffect s’en charge déjà)
-      setEstablishmentUser(staff);
+        // normalize & save FLAT
+        const flat: EstablishmentUser = {
+          id: staff.id,
+          name: staff.name,
+          role: staff.role,           // "admin" | "doctor" | "assurer" | "secretary" | "pharmacist"
+          email: staff.email,
+          clinicId: staff.clinicId,
+          clinicName: staff.clinicName,
+        };
+        setEstablishmentUser(flat); // triggers the useEffect above
+        localStorage.setItem("establishmentUserSession", JSON.stringify({ ...flat, timestamp: Date.now() }));
+        if (flat.role === "pharmacist") {
+          localStorage.setItem("pharmacyUserSession", JSON.stringify({ ...flat, timestamp: Date.now() }));
+        }
 
-      // 👉 redirige IMMÉDIATEMENT selon le rôle (plus de /redirect)
-      switch (staff.role) {
-        case "secretary":
-          // L’espace secrétaire est protégé par ClerkGuard.
-          // Si l’utilisateur n’est pas signé Clerk, il sera envoyé à /sign-in.
-          navigate("/multispecialist/secretary/patients");
-          break;
-        case "doctor":
-          navigate("/doctor/patients");
-          break;
-        case "assurer":
-          navigate("/assureur/reports");
-          break;
-        case "admin":
-          navigate("/multispecialist/admin/dashboard");
-          break;
-        case "pharmacist":
-          navigate("/pharmacy");
-          break;
-        default:
-          navigate("/unauthorized");
-      }
-    } catch (err) {
-      console.error("❌ Erreur lors du login :", err);
-      setError(err instanceof Error ? err.message : "Erreur inconnue.");
-    }
-  };
+        // redirect by role
+        switch (flat.role) {
+          case "secretary":
+            navigate("/multispecialist/secretary/patients"); break;
+          case "doctor":
+            navigate("/doctor/patients"); break;
+          case "assurer":
+            navigate("/assureur/reports"); break;
+          case "admin":
+            navigate("/multispecialist/admin/dashboard"); break;
+          case "pharmacist":
+            navigate("/pharmacy"); break;
+          default:
+            navigate("/unauthorized");
+        }
+            } catch (err) {
+              setError("Une erreur est survenue lors de la connexion.");
+              console.error(err);
+            }
+            };
 
   const handleLogout = () => {
     localStorage.removeItem('establishmentUserSession');
