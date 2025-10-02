@@ -1,50 +1,36 @@
 // src/lib/deeplink.ts
-export function buildZKDeeplink(params: {
-  mode: "enroll" | "match" | "verify"; // ton app mobile peut choisir quoi faire
+export function buildZKDeeplink(opts: {
+  mode: "enroll" | "identify";
   clinicId: string;
-  operatorId: string;            // l'id staff (secrétaire), si utile côté app
-  patientId?: string;            // pour verify/match d'un existant
-  redirectOriginForPhone: string; // ex: http://192.168.1.42:5173 ou ton ngrok/public
-  redirectPath: string;          // ex: "/fp-callback"
-  extra?: Record<string, string | number | boolean>;
+  operatorId: string;
+  patientId: string;
+  redirectOriginForPhone: string; 
+  redirectPath: string;           // ex: /fp-callback
 }) {
-  const { mode, clinicId, operatorId, patientId, redirectOriginForPhone, redirectPath, extra } = params;
+  const retUrl = `${opts.redirectOriginForPhone}${opts.redirectPath}` +
+    `?status=pending&patientId=${encodeURIComponent(opts.patientId)}`;
 
-  const redirectTarget = `${redirectOriginForPhone}${redirectPath}`;
-  const q = new URLSearchParams({
-    mode,
-    clinic_id: clinicId,
-    operator_id: operatorId,
-    ...(patientId ? { patient_id: patientId } : {}),
-  });
+  // Schéma custom (si l’app le gère)
+  const deeplink = `medi-zk9500://${opts.mode}` +
+    `?clinicId=${encodeURIComponent(opts.clinicId)}` +
+    `&operatorId=${encodeURIComponent(opts.operatorId)}` +
+    `&patientId=${encodeURIComponent(opts.patientId)}` +
+    `&return=${encodeURIComponent(retUrl)}`;
 
-  // tu peux ajouter des meta si besoin
-  if (extra) {
-    Object.entries(extra).forEach(([k, v]) => q.append(k, String(v)));
-  }
-
-  const redirectUrl = encodeURIComponent(`${redirectTarget}?${q.toString()}`);
-
-  const apiKey = "mediconnect-prod-999-XyZ"; // si tu veux sécuriser côté app
-
-  const deeplink =
-    `mediconnect://scanfingerprint` +
-    `?mode=${encodeURIComponent(mode)}` +
-    `&clinic_id=${encodeURIComponent(clinicId)}` +
-    `&operator_id=${encodeURIComponent(operatorId)}` +
-    (patientId ? `&patient_id=${encodeURIComponent(patientId)}` : "") +
-    `&redirect_url=${redirectUrl}` +
-    `&api_key=${encodeURIComponent(apiKey)}`;
-
+  // INTENT Android avec package *de ton app ZK9500*
+  // et fallback qui renvoie au même URL (au pire on revient sur le web proprement).
   const intentUri =
-    `intent://scanfingerprint` +
-    `?mode=${encodeURIComponent(mode)}` +
-    `&clinic_id=${encodeURIComponent(clinicId)}` +
-    `&operator_id=${encodeURIComponent(operatorId)}` +
-    (patientId ? `&patient_id=${encodeURIComponent(patientId)}` : "") +
-    `&redirect_url=${redirectUrl}` +
-    `&api_key=${encodeURIComponent(apiKey)}` +
-    `#Intent;scheme=mediconnect;package=com.example.zkfinger10demo;end`;
+    `intent://${opts.mode}#Intent;` +
+    `scheme=medi-zk9500;` +
+    `package=com.mediconnect.zk9500;` + // ← remplace par le package réel de ton APK
+    `S.clinicId=${encodeURIComponent(opts.clinicId)};` +
+    `S.operatorId=${encodeURIComponent(opts.operatorId)};` +
+    `S.patientId=${encodeURIComponent(opts.patientId)};` +
+    `S.return=${encodeURIComponent(retUrl)};` +
+    `S.mode=${opts.mode};` +
+    `S.browser_fallback_url=${encodeURIComponent(retUrl)};` +
+    `end`;
 
   return { deeplink, intentUri };
 }
+

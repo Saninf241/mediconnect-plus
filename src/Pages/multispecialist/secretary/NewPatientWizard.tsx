@@ -196,18 +196,19 @@ export default function NewPatientWizard() {
   }
 
   // Prépare ctx + patientId automatiquement quand on arrive à l’étape 3
-  useEffect(() => {
-    if (step !== 3) return;
-    (async () => {
-      try {
-        const pid = await ensureDraftPatient();
-        setPatientId(pid);
-      } catch (e: any) {
-        setMessage(e.message || "Impossible de préparer la capture.");
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+    useEffect(() => {
+      if (step !== 3) return;
+      (async () => {
+        try {
+          const pid = await ensureDraftPatient();
+          const c = await resolveSecretaryContext();
+          setPatientId(pid);
+          setCtx(c);
+        } catch (e) {
+          setMessage((e as Error).message);
+        }
+      })();
+    }, [step]);
 
   // Étape 4 : eligibility & finalisation
   async function handleEligibilityAndSave() {
@@ -435,6 +436,7 @@ export default function NewPatientWizard() {
               className={button}
               onClick={() => {
                 if (!ctx || !patientId) { setMessage("Préparation en cours, réessaie dans 1-2 sec."); return; }
+                const originForPhone = window.location.origin; 
                 const { deeplink, intentUri } = buildZKDeeplink({
                   mode: "enroll",
                   clinicId: ctx.clinicId,
@@ -457,8 +459,11 @@ export default function NewPatientWizard() {
                 clinicId={ctx.clinicId}
                 operatorId={ctx.staffId}
                 patientId={patientId}
-                redirectOriginForPhone={getOriginForPhone()}
-              />
+                redirectOriginForPhone={window.location.origin}
+                className={button}
+              >
+                Scanner l’empreinte
+              </ScanFingerprintButton>
             )}
 
             <button className={ghostBtn} onClick={() => setForm((f) => ({ ...f, biometrics: { status: "skipped" } }))}>
