@@ -19,8 +19,6 @@ function getEffectiveEmail(user: any, parsedUser: any): string | null {
   return null;
 }
 
-console.log("[DoctorLayout] ✅ DoctorLayout rendu.");
-
 export default function DoctorLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoaded, isSignedIn } = useUser();
   const [clinicName, setClinicName] = useState('');
@@ -30,7 +28,6 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
   const sessionData = typeof window !== 'undefined' ? localStorage.getItem('establishmentUserSession') : null;
   const parsedUser = sessionData ? JSON.parse(sessionData).user : null;
-  console.log('[DoctorLayout] Utilisateur localStorage :', parsedUser);
 
   useEffect(() => {
     if (!isLoaded) return;
