@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mediconnect-plus.com/sitemap.xml
