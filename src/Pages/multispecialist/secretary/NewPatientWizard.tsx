@@ -50,11 +50,10 @@ const ghostBtn = "px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50";
 const label = "text-sm font-medium text-gray-700";
 const input = "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/40";
 
-// Utilitaire commun pour l’origin cible téléphone
-const getOriginForPhone = () =>
-  window.location.origin.includes("localhost")
-    ? (import.meta.env.VITE_LAN_ORIGIN as string) || window.location.origin
-    : (import.meta.env.VITE_PROD_ORIGIN as string) || window.location.origin;
+// Helpers
+  const getOriginForPhone = () =>
+  import.meta.env.VITE_LAN_ORIGIN?.trim() ||
+  window.location.origin;
 
 export default function NewPatientWizard() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -431,21 +430,44 @@ export default function NewPatientWizard() {
           </p>
 
           <div className="flex items-center gap-3">
-            {/* Variante composant */}
-            {ctx && patientId && (
-              <ScanFingerprintButton
-                mode="enroll"
-                clinicId={ctx.clinicId}
-                operatorId={ctx.staffId}
-                patientId={patientId}
-                redirectOriginForPhone={window.location.origin}
-                className={button}
-              >
-                Scanner l’empreinte
-              </ScanFingerprintButton>
-            )}
+            <button
+              className={button}
+              onClick={async () => {
+                try {
+                  setLoading(true); setMessage("");
+                  // 1) Avoir un patient_id (draft) + contexte
+                  const patientId = await ensureDraftPatient();
+                  const ctx = await resolveSecretaryContext();
 
-            <button className={ghostBtn} onClick={() => setForm((f) => ({ ...f, biometrics: { status: "skipped" } }))}>
+                  // 2) Construire les liens qui MATCHENT le Manifest
+                  const { deeplink, intentUri } = buildZKDeeplink({
+                    mode: "enroll",
+                    clinicId: ctx.clinicId,
+                    operatorId: ctx.staffId,
+                    patientId,
+                    redirectOriginForPhone: getOriginForPhone(),
+                    redirectPath: "/fp-callback",
+                  });
+
+                  // 3) Naviguer (user gesture)
+                  window.location.href = deeplink || intentUri;
+
+                  setMessage("Capture lancée sur la tablette. Revenez ici après la lecture de l’empreinte.");
+                } catch (e: any) {
+                  setMessage(e.message || "Échec du lancement de la capture biométrique.");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              {loading ? "Initialisation..." : "Scanner l’empreinte"}
+            </button>
+
+            <button
+              className={ghostBtn}
+              onClick={() => setForm((f) => ({ ...f, biometrics: { status: "skipped" } }))}
+            >
               Ignorer (temporaire)
             </button>
           </div>
