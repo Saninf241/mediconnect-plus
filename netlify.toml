@@ -1,0 +1,25 @@
+# netlify.toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Fallback SPA (React/Vite)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Canonique: redirige www -> domaine nu (inverse si tu préfères www)
+[[redirects]]
+  from = "https://www.mediconnect-plus.com/*"
+  to = "https://mediconnect-plus.com/:splat"
+  status = 301
+  force = true
+
+# (Optionnel) Quelques headers de base
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
