@@ -1,35 +1,39 @@
 // src/lib/deeplink.ts
-export function buildZKDeeplink(opts: {
+type DeeplinkOpts = {
   mode: "enroll" | "identify";
   clinicId: string;
   operatorId: string;
   patientId: string;
-  redirectOriginForPhone: string; 
+  redirectOriginForPhone: string; // ex: https://app.mediconnect.plus ou http://192.168.1.42:5173
   redirectPath: string;           // ex: /fp-callback
-}) {
-  const retUrl = `${opts.redirectOriginForPhone}${opts.redirectPath}` +
-    `?status=pending&patientId=${encodeURIComponent(opts.patientId)}`;
+};
 
-  // Schéma custom (si l’app le gère)
-  const deeplink = `medi-zk9500://${opts.mode}` +
-    `?clinicId=${encodeURIComponent(opts.clinicId)}` +
-    `&operatorId=${encodeURIComponent(opts.operatorId)}` +
-    `&patientId=${encodeURIComponent(opts.patientId)}` +
-    `&return=${encodeURIComponent(retUrl)}`;
+const ANDROID_PACKAGE = "com.example.zkfinger10demo"; // ← ton package
 
-  // INTENT Android avec package *de ton app ZK9500*
-  // et fallback qui renvoie au même URL (au pire on revient sur le web proprement).
+export function buildZKDeeplink(opts: DeeplinkOpts) {
+  const {
+    mode,
+    clinicId,
+    operatorId,
+    patientId,
+    redirectOriginForPhone,
+    redirectPath,
+  } = opts;
+
+  const q = new URLSearchParams({
+    clinic_id: clinicId,
+    operator_id: operatorId,
+    patient_id: patientId,
+    redirect_url: `${redirectOriginForPhone.replace(/\/$/, "")}${redirectPath}`,
+  }).toString();
+
+  // 1) Schéma custom (si ton appli a bien `intent-filter` sur le scheme "zkfp")
+  const deeplink = `zkfp://${mode}?${q}`;
+
+  // 2) Fallback Chrome: intent:// + package EXACT
   const intentUri =
-    `intent://${opts.mode}#Intent;` +
-    `scheme=medi-zk9500;` +
-    `package=com.mediconnect.zk9500;` + // ← remplace par le package réel de ton APK
-    `S.clinicId=${encodeURIComponent(opts.clinicId)};` +
-    `S.operatorId=${encodeURIComponent(opts.operatorId)};` +
-    `S.patientId=${encodeURIComponent(opts.patientId)};` +
-    `S.return=${encodeURIComponent(retUrl)};` +
-    `S.mode=${opts.mode};` +
-    `S.browser_fallback_url=${encodeURIComponent(retUrl)};` +
-    `end`;
+    `intent://${mode}?${q}` +
+    `#Intent;scheme=zkfp;package=${ANDROID_PACKAGE};end`;
 
   return { deeplink, intentUri };
 }

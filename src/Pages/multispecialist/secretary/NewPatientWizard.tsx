@@ -431,27 +431,6 @@ export default function NewPatientWizard() {
           </p>
 
           <div className="flex items-center gap-3">
-            {/* Variante “redirect direct” */}
-            <button
-              className={button}
-              onClick={() => {
-                if (!ctx || !patientId) { setMessage("Préparation en cours, réessaie dans 1-2 sec."); return; }
-                const originForPhone = window.location.origin; 
-                const { deeplink, intentUri } = buildZKDeeplink({
-                  mode: "enroll",
-                  clinicId: ctx.clinicId,
-                  operatorId: ctx.staffId,
-                  patientId,
-                  redirectOriginForPhone: getOriginForPhone(),
-                  redirectPath: "/fp-callback",
-                });
-                window.location.href = deeplink || intentUri;
-              }}
-              disabled={!ctx || !patientId}
-            >
-              Scanner l’empreinte
-            </button>
-
             {/* Variante composant */}
             {ctx && patientId && (
               <ScanFingerprintButton
