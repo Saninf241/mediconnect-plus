@@ -51,9 +51,22 @@ const label = "text-sm font-medium text-gray-700";
 const input = "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/40";
 
 // Helpers
-  const getOriginForPhone = () =>
-  import.meta.env.VITE_LAN_ORIGIN?.trim() ||
-  window.location.origin;
+const getOriginForPhone = () => {
+  // on n’utilise l’IP LAN QUE quand on est déjà en local
+  const host = window.location.hostname;
+  const isLocal =
+    host === "localhost" ||
+    /^127\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^10\./.test(host);
+
+  if (isLocal) {
+    // dev local → essaye VITE_LAN_ORIGIN, sinon localhost
+    return (import.meta.env.VITE_LAN_ORIGIN?.trim()) || window.location.origin;
+  }
+  // prod → toujours le domaine public actuel
+  return window.location.origin;
+};
 
 export default function NewPatientWizard() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
@@ -445,9 +458,10 @@ export default function NewPatientWizard() {
                     clinicId: ctx.clinicId,
                     operatorId: ctx.staffId,
                     patientId,
-                    redirectOriginForPhone: getOriginForPhone(),
+                    redirectOriginForPhone: getOriginForPhone(),   // ← utilise le helper corrigé
                     redirectPath: "/fp-callback",
                   });
+                  window.location.href = deeplink || intentUri;
 
                   // 3) Naviguer (user gesture)
                   window.location.href = deeplink || intentUri;

@@ -1,37 +1,23 @@
-# netlify.toml
+# netlify.toml — MINIMAL SPA + cache
 [build]
   command = "npm run build"
   publish = "dist"
 
-# Fallback SPA (React/Vite)
+# SPA fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# Canonique: redirige www -> domaine nu (inverse si tu préfères www)
-[[redirects]]
-  from = "https://www.mediconnect-plus.com/*"
-  to = "https://mediconnect-plus.com/:splat"
-  status = 301
-  force = true
-
-# (Optionnel) Quelques headers de base
+# Cache sûr par défaut pour HTML
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "SAMEORIGIN"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
+  Cache-Control = "public, max-age=0, must-revalidate"
 
-# Long cache pour les assets fingerprintés
+# Cache long pour les assets fingerprintés Vite
 [[headers]]
   for = "/assets/*"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+  Cache-Control = "public, max-age=31536000, immutable"
 
-# HTML non mis en cache agressivement
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
