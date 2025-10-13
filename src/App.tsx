@@ -70,31 +70,39 @@ import FingerprintCallback from "./Pages/FingerprintCallback";
 import { normalizeRole } from "./components/auth/role-utils";
 import RoleRedirect from "./components/auth/RoleRedirect";
 import React from 'react';
+import SignInPage from "./components/auth/SignInPage";
+import { useLocation } from "react-router-dom";
+
 
 function GlobalHeader() {
-  const { user } = useUser();
+  const { pathname } = useLocation();         
+  const hideSignInOnHome = pathname === "/";
+
   return (
-    <header className="w-full flex items-center justify-between px-4 py-2 border-b bg-white">
-      <Link to="/" className="font-semibold">MediConnect+</Link>
+    <header className="w-full flex items-center justify-between px-4 py-3 border-b bg-white">
+      {/* Logo depuis /public/logo.png */}
+      <Link to="/" className="flex items-center gap-2">
+        <img src="/logo.png" alt="MediConnect+ logo" className="h-7 w-auto" />
+        <span className="sr-only">MediConnect+</span>
+      </Link>
 
       <div className="flex items-center gap-3">
         <SignedIn>
-          <span className="text-sm text-gray-600">
-            {user?.primaryEmailAddress?.emailAddress} — rôle : {String(user?.publicMetadata?.role)}
-          </span>
-          {/* Ouvre un menu avec Switch account / Sign out */}
           <UserButton afterSignOutUrl="/" />
         </SignedIn>
 
-        <SignedOut>
-          <Link to="/sign-in" className="text-indigo-600 underline">
-            Se connecter
-          </Link>
-        </SignedOut>
+        {!hideSignInOnHome && (
+          <SignedOut>
+            <Link to="/sign-in" className="text-indigo-600 underline">
+              Se connecter
+            </Link>
+          </SignedOut>
+        )}
       </div>
     </header>
   );
 }
+
 
 export default function App() {
   const { isLoaded } = useUser();
@@ -146,71 +154,112 @@ export default function App() {
   return <div className="p-4">Déconnexion…</div>;
 }
 
-  const renderLandingPage = () => (
-    <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-4">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent mb-4">MediConnect+</h1>
-        <p className="text-xl text-gray-600">La solution complète pour la gestion de votre établissement de santé</p>
-      </div>
-      <div className="w-full max-w-6xl grid md:grid-cols-3 gap-8">
+  const renderLandingPage = () => {
+    // petit helper pour ouvrir Clerk en pré-sélectionnant la destination
+    const go = (to: string) => navigate(`/sign-in?to=${encodeURIComponent(to)}`);
 
-      {/* Espace établissement */}
-      <div className="bg-white rounded-2xl shadow-xl p-8">
-        <div className="flex items-center justify-center mb-6">
-          <Building className="h-10 w-10 text-indigo-600 mr-3" />
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Espace Établissement</h2>
-            <p className="text-gray-600">Accédez à votre interface professionnelle</p>
+    return (
+      <div className="min-h-[calc(100vh-4rem)] flex flex-col items-center justify-center p-4">
+        {/* HERO */}
+        <div className="text-center mb-12 max-w-3xl">
+          <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-3">
+            Arrêtez la fraude. Accélérez les soins.
+          </h1>
+          <p className="text-lg md:text-xl text-gray-600">
+            Biométrie, vérification d’assurance en temps réel, dossier patient &amp; facturation —
+            pour cliniques, assureurs et pharmacies.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2 justify-center">
+            <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm">-30% fraude</span>
+            <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-sm">2× plus vite à l’accueil</span>
+            <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-sm">Moins d’impayés</span>
           </div>
         </div>
 
-        <button
-          onClick={() => navigate("/sign-in")}
-          className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg"
-        >
-          Se connecter (Clerk)
-        </button>
-
-        <p className="text-xs text-gray-500 mt-3">
-          Après connexion vous serez redirigé automatiquement selon votre rôle.
-        </p>
-      </div>
-
-        {/* Espace patient */}
-        <div className="bg-gradient-to-br from-emerald-600 to-sky-600 rounded-2xl shadow-xl p-8 text-white">
-          <div className="flex items-center justify-center mb-6">
-            <User className="h-10 w-10 mr-3" />
-            <div>
-              <h2 className="text-2xl font-bold">Espace Patient</h2>
-              <p className="text-emerald-100">Accédez à vos consultations</p>
+        <div className="w-full max-w-6xl grid md:grid-cols-3 gap-8">
+          {/* ESPACE ÉTABLISSEMENT */}
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            <div className="flex items-center justify-center mb-6">
+              <Building className="h-10 w-10 text-indigo-600 mr-3" />
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Espace Établissement</h2>
+                <p className="text-gray-600">Accédez à votre interface professionnelle</p>
+              </div>
             </div>
-          </div>
-        <button
-          onClick={() => navigate("/patient/login")}
-          className="w-full px-4 py-2 bg-white text-emerald-600 rounded-lg hover:bg-emerald-100 transition">
-          Accéder à mon espace patient
-          </button>
-        </div>
 
-{/* Espace développeur */}
-<div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-xl p-8 text-white">
-  <div className="flex items-center justify-center mb-6">
-    <Code className="h-10 w-10 mr-3" />
-    <div>
-      <h2 className="text-2xl font-bold">Espace Développeur</h2>
-      <p className="text-indigo-100">Commencez à utiliser MediConnect+</p>
-    </div>
-  </div>
-    <button
-      onClick={() => navigate("/sign-in")}
-      className="w-full px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 transition"
-    >
-      Se connecter
-    </button>
+            {/* 4 CTA par rôle */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => go("/multispecialist/secretary/patients")}
+                className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg"
+              >
+                Secrétaire
+              </button>
+              <button
+                onClick={() => go("/doctor/patients")}
+                className="w-full bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg border"
+              >
+                Médecin
+              </button>
+              <button
+                onClick={() => go("/assureur/reports")}
+                className="w-full bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg border"
+              >
+                Assureur
+              </button>
+              <button
+                onClick={() => go("/pharmacy")}
+                className="w-full bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg border"
+              >
+                Pharmacie
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500 mt-3">
+              Après connexion, vous serez redirigé vers l’espace sélectionné.
+            </p>
+          </div>
+
+          {/* ESPACE PATIENT */}
+          <div className="bg-gradient-to-br from-emerald-600 to-sky-600 rounded-2xl shadow-xl p-8 text-white">
+            <div className="flex items-center justify-center mb-6">
+              <User className="h-10 w-10 mr-3" />
+              <div>
+                <h2 className="text-2xl font-bold">Espace Patient</h2>
+                <p className="text-emerald-100">Accédez à vos consultations</p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate("/patient/login")}
+              className="w-full px-4 py-2 bg-white text-emerald-700 rounded-lg hover:bg-emerald-100 transition"
+            >
+              Accéder à mon espace patient
+            </button>
+          </div>
+
+          {/* ESPACE DÉVELOPPEUR */}
+          <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl shadow-xl p-8 text-white">
+            <div className="flex items-center justify-center mb-6">
+              <Code className="h-10 w-10 mr-3" />
+              <div>
+                <h2 className="text-2xl font-bold">Espace Développeur</h2>
+                <p className="text-indigo-100">Sandbox de démonstration</p>
+              </div>
+            </div>
+            <button
+              onClick={() => go("/assureur/reports")}
+              className="w-full px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 transition"
+            >
+              Ouvrir la démo (Assureur)
+            </button>
+            <p className="text-xs text-indigo-100 mt-3 opacity-90">
+              Utilise Clerk en mode dev — aucun risque pour vos données.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <>
@@ -221,10 +270,7 @@ export default function App() {
     <Route path="/unauthorized" element={<Unauthorized />} />
 
     {/* Clerk auth */}
-    <Route
-      path="/sign-in/*"
-      element={<SignIn routing="path" path="/sign-in" afterSignInUrl="/role-redirect" />}
-    />
+    <Route path="/sign-in/*" element={<SignInPage />} />
     <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
     <Route
       path="/sign-out"
@@ -346,10 +392,5 @@ export default function App() {
   </Routes>
   </>
 );
-
-function openSignIn(arg0: { redirectUrl: string; }): void {
-  throw new Error('Function not implemented.');
 }
-};
-
 
