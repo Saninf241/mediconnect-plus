@@ -1,84 +1,65 @@
 // src/Pages/FingerprintCallback.tsx
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 export default function FingerprintCallback() {
-  const [params] = useSearchParams();
+  const { search } = useLocation();
   const navigate = useNavigate();
-  const [msg, setMsg] = useState("Traitement en cours...");
+  const [msg, setMsg] = useState("Biométrie");
 
   useEffect(() => {
     (async () => {
-      const status = params.get("status") || "ok";
-      const mode = (params.get("mode") || "enroll") as "enroll" | "verify" | "match";
-      const clinicId = params.get("clinic_id") || "";
-      const operatorId = params.get("operator_id") || "";
-      const patientId = params.get("patient_id") || undefined;
-      const matchPatientId = params.get("match_patient_id") || undefined;
+      const p = new URLSearchParams(search);
+      const mode   = p.get("mode");           // "enroll" | "identify"
+      const status = p.get("status");         // "captured" | "error" (enroll)
+      const found  = p.get("found");          // "true" | "false" (identify)
+      const pid    = p.get("patient_id");     // renvoyé par l’app
+      const err    = p.get("error");
 
-      const fpToken = params.get("fp_token") || params.get("fp_template_id"); // selon ton app
+      // Log utile pour debug
+      console.log("[FP CALLBACK]", { mode, status, found, pid, err });
 
-      if (status !== "ok") {
-        setMsg(params.get("message") || "Opération annulée");
-        return;
-      }
-      if (!fpToken) {
+      if (mode === "enroll") {
+        if (status === "captured" && pid) {
+          // Marque l’empreinte comme capturée
+          await supabase
+            .from("patients")
+            .update({ fingerprint_enrolled: true, fingerprint_missing: false })
+            .eq("id", pid);
+
+          // Laisse une trace pour le wizard (étape 3→4)
+          sessionStorage.setItem("fp:last", JSON.stringify({ type: "enroll", patient_id: pid, ok: true }));
+
+          setMsg("Empreinte capturée ✅");
+          // retourne au wizard (ou à la liste) selon ton flux
+          setTimeout(() => navigate("/multispecialist/secretary/new"), 700);
+          return;
+        }
+
+        // cas d’erreur d’enrôlement
+        sessionStorage.setItem("fp:last", JSON.stringify({ type: "enroll", patient_id: pid, ok: false, error: err || "unknown" }));
         setMsg("Aucune empreinte reçue.");
         return;
       }
 
-      try {
-        if (mode === "enroll") {
-          // Cas 1 : on vient d’enrôler une empreinte pour un NOUVEAU patient.
-          // L’UI secrétaire doit avoir créé le patient AVANT de cliquer “Scanner”.
-          // Si patientId est présent → on attache l’empreinte à ce patient,
-          // sinon on stocke dans un “staging” puis on associe après création (optionnel).
-          if (!patientId) {
-            setMsg("Patient inconnu (patient_id manquant).");
-            return;
-          }
-
-          const { error } = await supabase
-            .from("patient_fingerprints")
-            .insert({ patient_id: patientId, fp_external_id: fpToken });
-          if (error) throw error;
-
-          setMsg("Empreinte enregistrée avec succès.");
-          navigate(`/multispecialist/secretary/patients?added=${patientId}`, { replace: true });
-          return;
-        }
-
-        if (mode === "verify") {
-          // Cas 2 : on vérifie que l’empreinte correspond au patientId.
-          // Ici c’est plutôt l’app mobile qui renvoie ok/ko, mais à défaut
-          // tu peux juste enregistrer la tentative.
-          setMsg("Vérification effectuée.");
-          navigate(`/multispecialist/secretary/patients/${patientId}`, { replace: true });
-          return;
-        }
-
-        if (mode === "match") {
-          // Cas 3 : l’app a trouvé un patient existant
-          if (!matchPatientId) {
-            setMsg("Aucun patient correspondant.");
-            return;
-          }
-          setMsg("Patient existant retrouvé.");
-          navigate(`/multispecialist/secretary/patients/${matchPatientId}`, { replace: true });
-          return;
-        }
-      } catch (e: any) {
-        console.error(e);
-        setMsg(e.message || "Erreur lors du traitement de l’empreinte.");
+      if (mode === "identify") {
+        // Tu pourras brancher ici le “match patient existant”
+        const ok = found === "true";
+        sessionStorage.setItem("fp:last", JSON.stringify({ type: "identify", ok, score: p.get("score") || null }));
+        setMsg(ok ? "Empreinte reconnue ✅" : "Empreinte non reconnue.");
+        setTimeout(() => navigate("/multispecialist/secretary/new"), 700);
+        return;
       }
+
+      setMsg("Aucune empreinte reçue.");
     })();
-  }, [params, navigate]);
+  }, [search, navigate]);
 
   return (
     <div className="p-6">
-      <h2 className="text-xl font-semibold mb-2">Biométrie</h2>
-      <p>{msg}</p>
+      <h1 className="text-2xl font-semibold">Biométrie</h1>
+      <p className="mt-2 text-gray-700">{msg}</p>
     </div>
   );
 }

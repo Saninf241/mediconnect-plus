@@ -4,7 +4,6 @@ import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
 import { checkEligibility, createPatientDraft, finalizeUninsured } from "../../../lib/api/secretary";
 import { v4 as uuidv4 } from "uuid";
-import ScanFingerprintButton from "../../../components/fp/ScanFingerprintButton";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
 type PatientType = "insured_card" | "insured_no_card" | "uninsured";
@@ -16,14 +15,17 @@ type PatientForm = {
   national_id?: string;
   email?: string;
   phone: string;
+
   insurer_id?: string;
   insurer_name?: string;
   member_no?: string;
   plan_code?: string;
   coverage_start?: string;
   coverage_end?: string;
+
   consents: { data: boolean; share_insurer: boolean; biometric: boolean };
   biometrics?: { status: "pending" | "captured" | "failed" | "skipped"; quality?: number; template_hash?: string };
+
   verification_level?: "N1" | "N2" | "N3";
 };
 
@@ -52,19 +54,12 @@ const input = "mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 focus:out
 
 // Helpers
 const getOriginForPhone = () => {
-  // on n’utilise l’IP LAN QUE quand on est déjà en local
   const host = window.location.hostname;
   const isLocal =
-    host === "localhost" ||
-    /^127\./.test(host) ||
-    /^192\.168\./.test(host) ||
-    /^10\./.test(host);
-
+    host === "localhost" || /^127\./.test(host) || /^192\.168\./.test(host) || /^10\./.test(host);
   if (isLocal) {
-    // dev local → essaye VITE_LAN_ORIGIN, sinon localhost
-    return (import.meta.env.VITE_LAN_ORIGIN?.trim()) || window.location.origin;
+    return import.meta.env.VITE_LAN_ORIGIN?.trim() || window.location.origin;
   }
-  // prod → toujours le domaine public actuel
   return window.location.origin;
 };
 
@@ -78,9 +73,27 @@ export default function NewPatientWizard() {
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
 
-  // états nécessaires à l’étape 3 sans “hooks dans une IIFE”
+  // nécessaires pour l’étape 3
   const [ctx, setCtx] = useState<{ clinicId: string; staffId: string } | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
+
+  // ✅ Au retour de /fp-callback, marquer “capturé” + réutiliser le patient_id
+  useEffect(() => {
+    const raw = sessionStorage.getItem("fp:last");
+    if (!raw) return;
+    try {
+      const info = JSON.parse(raw);
+      if (info?.type === "enroll") {
+        if (info.ok) {
+          setForm((f) => ({ ...f, biometrics: { status: "captured" } }));
+          if (info.patient_id) setPatientId(info.patient_id);
+        } else {
+          setForm((f) => ({ ...f, biometrics: { status: "failed" } }));
+        }
+      }
+    } catch {}
+    sessionStorage.removeItem("fp:last");
+  }, []);
 
   // token Clerk (template supabase si possible)
   async function getSupabaseToken(): Promise<string> {
@@ -92,7 +105,7 @@ export default function NewPatientWizard() {
     return t2;
   }
 
-  // maintenant que la colonne clerk_user_id existe, version simple + fallback email
+  // contexte secrétaire
   async function resolveSecretaryContext() {
     if (!isLoaded) throw new Error("Session en cours de chargement.");
     if (!isSignedIn) throw new Error("Veuillez vous reconnecter.");
@@ -111,7 +124,6 @@ export default function NewPatientWizard() {
 
     const { data, error } = await q.maybeSingle();
     if (error || !data?.clinic_id) {
-      // dernier filet: par email
       if (email) {
         const { data: d2 } = await supabase
           .from("clinic_staff")
@@ -127,14 +139,13 @@ export default function NewPatientWizard() {
     return { clinicId: data.clinic_id as string, staffId: data.id as string };
   }
 
+  // assureurs (optionnel)
   const [insurers, setInsurers] = useState<{ id: string; name: string; level?: "N1" | "N2" | "N3" }[]>([]);
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from("insurers").select("id,name,verification_level");
       if (!error && data) {
-        setInsurers(
-          data.map((x: any) => ({ id: x.id, name: x.name, level: (x.verification_level as "N1" | "N2" | "N3") ?? "N3" }))
-        );
+        setInsurers(data.map((x: any) => ({ id: x.id, name: x.name, level: (x.verification_level as "N1" | "N2" | "N3") ?? "N3" })));
       } else {
         setInsurers([
           { id: "ascoma", name: "Ascoma", level: "N1" },
@@ -146,15 +157,9 @@ export default function NewPatientWizard() {
     })();
   }, []);
 
-  function next() {
-    setStep((s) => Math.min(s + 1, 4));
-  }
-  function back() {
-    setStep((s) => Math.max(s - 1, 1));
-  }
-  function update<K extends keyof PatientForm>(k: K, v: PatientForm[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
-  }
+  function next() { setStep((s) => Math.min(s + 1, 4)); }
+  function back() { setStep((s) => Math.max(s - 1, 1)); }
+  function update<K extends keyof PatientForm>(k: K, v: PatientForm[K]) { setForm((f) => ({ ...f, [k]: v })); }
 
   function resolveVerificationLevel(): "N1" | "N2" | "N3" | undefined {
     if (!form.insurer_id && !form.insurer_name) return undefined;
@@ -162,13 +167,23 @@ export default function NewPatientWizard() {
     return found?.level ?? "N3";
   }
 
-  // brouillon patient (et dédup NIN)
+  // ✅ Création brouillon idempotente (réutilise si déjà créé, cache session + dédup NIN)
   async function ensureDraftPatient(): Promise<string> {
-    if (!form.full_name || !form.dob || !form.phone) throw new Error("Nom, date de naissance et téléphone sont requis.");
+    // réutiliser si déjà présent
+    if (patientId) return patientId;
+
+    if (!form.full_name || !form.dob || !form.phone)
+      throw new Error("Nom, date de naissance et téléphone sont requis.");
 
     const ctxNow = await resolveSecretaryContext();
     setCtx(ctxNow);
 
+    // clé de cache par session
+    const sessionKey = `wizardDraft:${ctxNow.clinicId}:${form.full_name}:${form.dob}:${form.phone}`;
+    const cached = sessionStorage.getItem(sessionKey);
+    if (cached) { setPatientId(cached); return cached; }
+
+    // dédup NIN
     if (form.national_id) {
       const { data: dup } = await supabase
         .from("patients")
@@ -178,6 +193,7 @@ export default function NewPatientWizard() {
         .maybeSingle();
       if (dup?.id) {
         setPatientId(dup.id);
+        sessionStorage.setItem(sessionKey, dup.id);
         return dup.id;
       }
     }
@@ -192,6 +208,7 @@ export default function NewPatientWizard() {
       phone: form.phone,
       is_assured: !!form.insurer_id || !!form.insurer_name,
     };
+
     const { patient_id } = await createPatientDraft(minimalPatient, token, {
       clinic_id: ctxNow.clinicId,
       full_name: form.full_name,
@@ -204,23 +221,24 @@ export default function NewPatientWizard() {
     });
 
     setPatientId(patient_id);
+    sessionStorage.setItem(sessionKey, patient_id);
     return patient_id;
   }
 
-  // Prépare ctx + patientId automatiquement quand on arrive à l’étape 3
-    useEffect(() => {
-      if (step !== 3) return;
-      (async () => {
-        try {
-          const pid = await ensureDraftPatient();
-          const c = await resolveSecretaryContext();
-          setPatientId(pid);
-          setCtx(c);
-        } catch (e) {
-          setMessage((e as Error).message);
-        }
-      })();
-    }, [step]);
+  // Préparer ctx + patientId quand on arrive à l’étape 3
+  useEffect(() => {
+    if (step !== 3) return;
+    (async () => {
+      try {
+        const pid = await ensureDraftPatient();
+        const c = await resolveSecretaryContext();
+        setPatientId(pid);
+        setCtx(c);
+      } catch (e) {
+        setMessage((e as Error).message);
+      }
+    })();
+  }, [step]); // OK
 
   // Étape 4 : eligibility & finalisation
   async function handleEligibilityAndSave() {
@@ -264,8 +282,7 @@ export default function NewPatientWizard() {
           await supabase.from("patients").update({ status: "verified" }).eq("id", pid);
         } // sinon pending → rester verifying
 
-        const UUID_RE =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
         const insurerIdOrNull = UUID_RE.test(form.insurer_id || "") ? form.insurer_id : null;
 
         const { error: memErr } = await supabase.from("insurer_memberships").insert({
@@ -293,7 +310,7 @@ export default function NewPatientWizard() {
           fingerprint_missing: fingerprintMissing,
           fingerprint_enrolled: !fingerprintMissing,
         })
-        .eq("id", patientId ?? "");
+        .eq("id", pid);
       if (updErr) throw updErr;
 
       setMessage("Patient enregistré avec succès ✅");
@@ -335,19 +352,24 @@ export default function NewPatientWizard() {
         <section className={`${card} space-y-4`}>
           <h3 className="font-semibold">Informations patient</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><label className={label}>Nom complet *</label>
+            <div>
+              <label className={label}>Nom complet *</label>
               <input className={input} value={form.full_name} onChange={(e) => update("full_name", e.target.value)} />
             </div>
-            <div><label className={label}>Date de naissance (YYYY-MM-DD) *</label>
+            <div>
+              <label className={label}>Date de naissance (YYYY-MM-DD) *</label>
               <input className={input} value={form.dob} onChange={(e) => update("dob", e.target.value)} placeholder="1990-01-31" />
             </div>
-            <div><label className={label}>Téléphone *</label>
+            <div>
+              <label className={label}>Téléphone *</label>
               <input className={input} value={form.phone} onChange={(e) => update("phone", e.target.value)} />
             </div>
-            <div><label className={label}>N° d’identification (NIN)</label>
+            <div>
+              <label className={label}>N° d’identification (NIN)</label>
               <input className={input} value={form.national_id} onChange={(e) => update("national_id", e.target.value)} />
             </div>
-            <div><label className={label}>Email</label>
+            <div>
+              <label className={label}>Email</label>
               <input className={input} value={form.email} onChange={(e) => update("email", e.target.value)} />
             </div>
           </div>
@@ -373,10 +395,12 @@ export default function NewPatientWizard() {
                     <p className="text-xs text-gray-500 mt-1">Niveau détecté : <b>{form.verification_level}</b></p>
                   )}
                 </div>
-                <div><label className={label}>N° d’adhérent</label>
+                <div>
+                  <label className={label}>N° d’adhérent</label>
                   <input className={input} value={form.member_no} onChange={(e) => update("member_no", e.target.value)} />
                 </div>
-                <div><label className={label}>Code plan</label>
+                <div>
+                  <label className={label}>Code plan</label>
                   <input className={input} value={form.plan_code} onChange={(e) => update("plan_code", e.target.value)} />
                 </div>
               </div>
@@ -410,18 +434,27 @@ export default function NewPatientWizard() {
           {/* Consentements */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
             <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={form.consents.data}
-                onChange={(e) => setForm((f) => ({ ...f, consents: { ...f.consents, data: e.target.checked } }))} />
+              <input
+                type="checkbox"
+                checked={form.consents.data}
+                onChange={(e) => setForm((f) => ({ ...f, consents: { ...f.consents, data: e.target.checked } }))}
+              />
               <span>Consentement traitement des données</span>
             </label>
             <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={form.consents.share_insurer}
-                onChange={(e) => setForm((f) => ({ ...f, consents: { ...f.consents, share_insurer: e.target.checked } }))} />
+              <input
+                type="checkbox"
+                checked={form.consents.share_insurer}
+                onChange={(e) => setForm((f) => ({ ...f, consents: { ...f.consents, share_insurer: e.target.checked } }))}
+              />
               <span>Partage avec l’assureur</span>
             </label>
             <label className="inline-flex items-center gap-2">
-              <input type="checkbox" checked={form.consents.biometric}
-                onChange={(e) => setForm((f) => ({ ...f, consents: { ...f.consents, biometric: e.target.checked } }))} />
+              <input
+                type="checkbox"
+                checked={form.consents.biometric}
+                onChange={(e) => setForm((f) => ({ ...f, consents: { ...f.consents, biometric: e.target.checked } }))}
+              />
               <span>Capture biométrique</span>
             </label>
           </div>
@@ -448,22 +481,19 @@ export default function NewPatientWizard() {
               onClick={async () => {
                 try {
                   setLoading(true); setMessage("");
-                  // 1) Avoir un patient_id (draft) + contexte
-                  const patientId = await ensureDraftPatient();
-                  const ctx = await resolveSecretaryContext();
+                  const pid = await ensureDraftPatient();
+                  const c = ctx ?? (await resolveSecretaryContext());
 
-                  // 2) Construire les liens qui MATCHENT le Manifest
                   const { deeplink, intentUri } = buildZKDeeplink({
                     mode: "enroll",
-                    clinicId: ctx.clinicId,
-                    operatorId: ctx.staffId,
-                    patientId,
-                    redirectOriginForPhone: getOriginForPhone(),   // ← utilise le helper corrigé
+                    clinicId: c.clinicId,
+                    operatorId: c.staffId,
+                    patientId: pid,
+                    redirectOriginForPhone: getOriginForPhone(),
                     redirectPath: "/fp-callback",
                   });
-                  window.location.href = deeplink || intentUri;
 
-                  // 3) Naviguer (user gesture)
+                  // une seule redirection
                   window.location.href = deeplink || intentUri;
 
                   setMessage("Capture lancée sur la tablette. Revenez ici après la lecture de l’empreinte.");
@@ -477,6 +507,10 @@ export default function NewPatientWizard() {
             >
               {loading ? "Initialisation..." : "Scanner l’empreinte"}
             </button>
+
+            {form.biometrics?.status === "captured" && (
+              <p className="text-sm text-green-700">Empreinte capturée ✅ — passe à l’étape suivante.</p>
+            )}
 
             <button
               className={ghostBtn}
