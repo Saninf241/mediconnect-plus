@@ -6,14 +6,6 @@ import { checkEligibility, createPatientDraft, finalizeUninsured } from "../../.
 import { v4 as uuidv4 } from "uuid";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
-useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("fp") === "captured") {
-    setForm((f) => ({ ...f, biometrics: { status: "captured" } }));
-    postMessage("Empreinte enregistrée avec succès ✅");
-  }
-}, []);
-
 type PatientType = "insured_card" | "insured_no_card" | "uninsured";
 
 type PatientForm = {
@@ -80,6 +72,32 @@ export default function NewPatientWizard() {
   const [form, setForm] = useState<PatientForm>({ ...defaultForm });
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
+
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+
+  const fp =
+    params.get("fp") ||           // ex. ?fp=captured
+    params.get("fp_status");      // ex. ?fp_status=captured
+
+  if (fp === "captured") {
+    setForm((f) => ({
+      ...f,
+      biometrics: { ...(f.biometrics ?? {}), status: "captured" },
+    }));
+    setMessage("Empreinte enregistrée avec succès ✅");
+  } else if (fp === "error") {
+    setForm((f) => ({
+      ...f,
+      biometrics: { ...(f.biometrics ?? {}), status: "failed" },
+    }));
+    setMessage("Erreur lors de la capture d’empreinte.");
+  }
+
+  // Nettoie l’URL pour éviter de retrigger au prochain render
+  const clean = window.location.pathname + window.location.hash;
+  window.history.replaceState(null, "", clean);
+}, []);
 
   // nécessaires pour l’étape 3
   const [ctx, setCtx] = useState<{ clinicId: string; staffId: string } | null>(null);
