@@ -6,6 +6,14 @@ import { checkEligibility, createPatientDraft, finalizeUninsured } from "../../.
 import { v4 as uuidv4 } from "uuid";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("fp") === "captured") {
+    setForm((f) => ({ ...f, biometrics: { status: "captured" } }));
+    postMessage("Empreinte enregistrée avec succès ✅");
+  }
+}, []);
+
 type PatientType = "insured_card" | "insured_no_card" | "uninsured";
 
 type PatientForm = {
@@ -552,3 +560,7 @@ export default function NewPatientWizard() {
     </div>
   );
 }
+function setForm(arg0: (f: any) => any) {
+  throw new Error("Function not implemented.");
+}
+
