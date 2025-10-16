@@ -72,6 +72,7 @@ import RoleRedirect from "./components/auth/RoleRedirect";
 import React from 'react';
 import SignInPage from "./components/auth/SignInPage";
 import { useLocation } from "react-router-dom";
+import { Facebook, Linkedin, Twitter, Mail, MessageCircle } from "lucide-react";
 
 
 function GlobalHeader() {
@@ -79,26 +80,94 @@ function GlobalHeader() {
   const hideSignInOnHome = pathname === "/";
 
   return (
-    <header className="w-full flex items-center justify-between px-4 py-3 border-b bg-white">
-      <Link to="/" className="flex items-center gap-2">
-        <img src="/logo.png" alt="MediConnect+ logo" className="h-7 w-auto" />
-        <span className="sr-only">MediConnect+</span>
-      </Link>
+    <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur">
+      <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+        {/* Marque */}
+        <Link to="/" className="flex items-center gap-3">
+          <img
+            src="/logo.png"               // DOIT exister dans /public
+            alt="MediConnect+"
+            className="h-12 sm:h-14 md:h-16 w-auto"
+            loading="eager"
+            decoding="async"
+          />
+          {/* Si tu veux un mot-symbole à côté, décommente la ligne ci-dessous
+          <span className="hidden sm:inline text-lg md:text-xl font-semibold text-gray-900">
+            MediConnect+
+          </span> */}
+        </Link>
 
-      <div className="flex items-center gap-3">
-        <SignedIn>
-          <UserButton afterSignOutUrl="/" />
-        </SignedIn>
+        {/* Côté droit */}
+        <div className="flex items-center gap-3">
+          <SignedIn>
+            <UserButton afterSignOutUrl="/" />
+          </SignedIn>
 
-        {!hideSignInOnHome && (
-          <SignedOut>
-            <Link to="/sign-in" className="text-indigo-600 underline">
-              Se connecter
-            </Link>
-          </SignedOut>
-        )}
+          {!hideSignInOnHome && (
+            <SignedOut>
+              <Link to="/sign-in" className="text-indigo-600 hover:text-indigo-700 font-medium">
+                Se connecter
+              </Link>
+            </SignedOut>
+          )}
+        </div>
       </div>
     </header>
+  );
+}
+
+
+function SiteFooter() {
+  return (
+    <footer className="mt-16 border-t bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-sm text-gray-500">
+          © {new Date().getFullYear()} MediConnect+
+        </p>
+
+        <div className="flex items-center gap-4">
+          {/* Remplace les href par tes vrais liens */}
+          <a
+            href="https://www.linkedin.com/company/mediconnect-plus"
+            target="_blank" rel="noreferrer"
+            aria-label="LinkedIn"
+            className="text-gray-500 hover:text-indigo-600"
+            title="LinkedIn"
+          >
+            <Linkedin className="h-5 w-5" />
+          </a>
+
+          <a
+            href="https://facebook.com/mediconnectplus"
+            target="_blank" rel="noreferrer"
+            aria-label="Facebook"
+            className="text-gray-500 hover:text-indigo-600"
+            title="Facebook"
+          >
+            <Facebook className="h-5 w-5" />
+          </a>
+
+          <a
+            href="https://wa.me/0033782525687?text=Je%20souhaite%20participer%20%C3%A0%20la%20phase%20pilote%20MARS%202026"
+            target="_blank" rel="noreferrer"
+            aria-label="WhatsApp"
+            className="text-gray-500 hover:text-indigo-600"
+            title="WhatsApp"
+          >
+            <MessageCircle className="h-5 w-5" />
+          </a>
+
+          <a
+            href="mailto:contact@ndoungconsulting.com?subject=Inscription%20phase%20pilote&body=Bonjour%2C%20je%20souhaite%20participer%20%C3%A0%20la%20phase%20pilote."
+            className="text-gray-500 hover:text-indigo-600"
+            aria-label="Email"
+            title="Email"
+          >
+            <Mail className="h-5 w-5" />
+          </a>
+        </div>
+      </div>
+    </footer>
   );
 }
 
@@ -300,25 +369,49 @@ const renderLandingPage = () => {
       </section>
 
       {/* CTA FINAL */}
-      <section className="w-full py-10">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="rounded-2xl bg-indigo-600 text-white p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
-            <div>
-              <h3 className="text-xl font-semibold">Prêt à tester ?</h3>
-              <p className="opacity-90">Enregistrez-vous afin de participer à la phase pilote en MARS 2026</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => go("/assureur/reports")} className="px-4 py-2 rounded-lg bg-white text-indigo-700">
-                Demandez à participer
-              </button>
-              <button onClick={() => go("/doctor/patients")} className="px-4 py-2 rounded-lg border border-white hover:bg-white hover:text-indigo-700 transition">
-                En savoir plus
-              </button>
+{/* CTA FINAL */}
+<section className="w-full py-10">
+  <div className="max-w-7xl mx-auto px-4">
+    <div className="rounded-2xl bg-indigo-600 text-white p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
+      <div>
+        <h3 className="text-xl font-semibold">Prêt à tester ?</h3>
+        <p className="opacity-90">
+          Enregistrez-vous afin de participer à la phase pilote en <b>MARS 2026</b>.
+        </p>
+      </div>
 
-            </div>
-          </div>
+        {/* Boutons */}
+        <div className="flex gap-3">
+          {(() => {
+            const whatsappNumber = "0033782525687"; // ← mets ton numéro ici (format international, sans + ni espaces)
+            const defaultMsg =
+              "Bonjour, je souhaite rejoindre la phase pilote MediConnect+ (Mars 2026). " +
+              "Nom: ____ | Structure: ____ | Rôle: (clinique/cabinet/assureur/pharmacie) | Ville: ____ | Pays: ____ ";
+            const whatsappHref = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(defaultMsg)}`;
+            return (
+              <>
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-lg bg-white text-indigo-700"
+                >
+                  Demandez à participer
+                </a>
+
+                <a
+                  href="/a-propos#pilot"  // ou une vraie page de détails si tu en as une
+                  className="px-4 py-2 rounded-lg border border-white/70 text-white hover:bg-white/10"
+                >
+                  En savoir plus
+                </a>
+              </>
+            );
+          })()}
         </div>
-      </section>
+      </div>
+    </div>
+  </section>
     </>
   );
 };
@@ -453,6 +546,7 @@ const renderLandingPage = () => {
 
     <Route path="*" element={<Navigate to="/" />} />
   </Routes>
+  <SiteFooter />
   </>
 );
 }

@@ -75,28 +75,21 @@ export default function NewPatientWizard() {
 
 useEffect(() => {
   const params = new URLSearchParams(window.location.search);
-
-  const fp =
-    params.get("fp") ||           // ex. ?fp=captured
-    params.get("fp_status");      // ex. ?fp_status=captured
+  const fp = params.get("fp") || params.get("fp_status");
 
   if (fp === "captured") {
-    setForm((f) => ({
-      ...f,
-      biometrics: { ...(f.biometrics ?? {}), status: "captured" },
-    }));
+    setForm(f => ({ ...f, biometrics: { ...(f.biometrics ?? {}), status: "captured" } }));
     setMessage("Empreinte enregistrée avec succès ✅");
   } else if (fp === "error") {
-    setForm((f) => ({
-      ...f,
-      biometrics: { ...(f.biometrics ?? {}), status: "failed" },
-    }));
+    setForm(f => ({ ...f, biometrics: { ...(f.biometrics ?? {}), status: "failed" } }));
     setMessage("Erreur lors de la capture d’empreinte.");
   }
 
-  // Nettoie l’URL pour éviter de retrigger au prochain render
-  const clean = window.location.pathname + window.location.hash;
-  window.history.replaceState(null, "", clean);
+  // ne garde que le pathname + search sans nos paramètres
+  if (fp) {
+    const clean = window.location.pathname + window.location.hash; // pas de search
+    window.history.replaceState(null, "", clean);
+  }
 }, []);
 
   // nécessaires pour l’étape 3
@@ -577,8 +570,5 @@ useEffect(() => {
       )}
     </div>
   );
-}
-function setForm(arg0: (f: any) => any) {
-  throw new Error("Function not implemented.");
 }
 
