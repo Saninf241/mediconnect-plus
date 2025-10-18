@@ -73,24 +73,41 @@ export default function NewPatientWizard() {
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
 
-useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  const fp = params.get("fp") || params.get("fp_status");
+  // Restaurer l’étape si on revient du scanner
+  useEffect(() => {
+    const saved = sessionStorage.getItem("wizard:returnStep");
+    if (saved) {
+      const n = Number(saved);
+      if (!Number.isNaN(n) && n >= 1 && n <= 4) setStep(n);
+      sessionStorage.removeItem("wizard:returnStep");
+    }
+  }, []);
 
-  if (fp === "captured") {
-    setForm(f => ({ ...f, biometrics: { ...(f.biometrics ?? {}), status: "captured" } }));
-    setMessage("Empreinte enregistrée avec succès ✅");
-  } else if (fp === "error") {
-    setForm(f => ({ ...f, biometrics: { ...(f.biometrics ?? {}), status: "failed" } }));
-    setMessage("Erreur lors de la capture d’empreinte.");
-  }
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fp = params.get("fp") || params.get("fp_status");
 
-  // ne garde que le pathname + search sans nos paramètres
-  if (fp) {
-    const clean = window.location.pathname + window.location.hash; // pas de search
-    window.history.replaceState(null, "", clean);
-  }
-}, []);
+    if (fp === "captured") {
+      setForm(f => ({ ...f, biometrics: { ...(f.biometrics ?? {}), status: "captured" } }));
+      setMessage("Empreinte enregistrée avec succès ✅");
+    } else if (fp === "error") {
+      setForm(f => ({ ...f, biometrics: { ...(f.biometrics ?? {}), status: "failed" } }));
+      setMessage("Erreur lors de la capture d’empreinte.");
+    }
+
+    // ne garde que le pathname + search sans nos paramètres
+    if (fp) {
+      const clean = window.location.pathname + window.location.hash; // pas de search
+      window.history.replaceState(null, "", clean);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (form.biometrics?.status === "captured" && step < 4) {
+      // si tu préfères, mets 3 au lieu de 4
+      setStep(4);
+    }
+  }, [form.biometrics?.status]);
 
   // nécessaires pour l’étape 3
   const [ctx, setCtx] = useState<{ clinicId: string; staffId: string } | null>(null);
@@ -511,6 +528,15 @@ useEffect(() => {
                     redirectOriginForPhone: getOriginForPhone(),
                     redirectPath: "/fp-callback",
                   });
+
+                  // mémoriser l’étape en cours (3) pour revenir au bon endroit
+                  sessionStorage.setItem("wizard:returnStep", String(3));
+
+                  // mémorise l'endroit où revenir après la capture
+                  sessionStorage.setItem(
+                    "fp:return",
+                    window.location.pathname + window.location.search + window.location.hash
+                  );
 
                   // une seule redirection
                   window.location.href = deeplink || intentUri;
