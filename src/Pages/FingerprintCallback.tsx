@@ -9,11 +9,11 @@ export default function FingerprintCallback() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const mode = url.searchParams.get("mode");
-    const status = url.searchParams.get("status");
-    const patientId = url.searchParams.get("patient_id");
-    const templateHash = url.searchParams.get("template_hash");
-    const error = url.searchParams.get("error");
+    const mode        = url.searchParams.get("mode");           // "enroll" | "identify"
+    const status      = url.searchParams.get("status");         // "captured" | "error"
+    const patientId   = url.searchParams.get("patient_id");
+    const templateHash= url.searchParams.get("template_hash");
+    const error       = url.searchParams.get("error");
 
     async function handleResult() {
       if (!mode) {
@@ -21,9 +21,27 @@ export default function FingerprintCallback() {
         return;
       }
 
+      // Par défaut, on revient sur le wizard "Ajouter un patient"
+      const fallbackPath = "/multispecialist/secretary/new";
+      const back = sessionStorage.getItem("fp:return") || fallbackPath;
+
       if (mode === "enroll") {
-        if (status === "captured" && patientId) {
-          // 🔹 Mise à jour Supabase : empreinte enregistrée
+        const ok = status === "captured" && !!patientId;
+
+        // 1) Mémo pour le wizard
+        sessionStorage.setItem(
+          "fp:last",
+          JSON.stringify({
+            type: "enroll",
+            ok,
+            patient_id: patientId || null,
+            template_hash: templateHash || null,
+            error: error || null,
+          })
+        );
+
+        // 2) Mise à jour Supabase côté patient si succès
+        if (ok) {
           await supabase
             .from("patients")
             .update({
@@ -31,21 +49,25 @@ export default function FingerprintCallback() {
               fingerprint_missing: false,
               fingerprint_hash: templateHash || null,
             })
-            .eq("id", patientId);
-
-          // ✅ Message visuel
+            .eq("id", patientId!);
           setMessage("Empreinte enregistrée avec succès ✅");
-
-          // ⏳ Attendre un peu, puis retourner à la page secrétaire
-          setTimeout(() => {
-            navigate("/multispecialist/secretary/new-patient?fp=captured");
-          }, 1500);
         } else {
           setMessage(`Échec capture : ${error || "Aucune donnée reçue."}`);
         }
-      } else if (mode === "identify") {
-        // Pour plus tard
+
+        // 3) Revenir à la page d'origine (ou fallback) avec un flag visuel
+        const suffix = ok ? "?fp=captured" : "?fp=error";
+        sessionStorage.removeItem("fp:return");
+        setTimeout(() => {
+          // navigate remplace l'historique pour éviter “back” qui rejoue le callback
+          navigate(back + suffix, { replace: true });
+        }, 800);
+        return;
+      }
+
+      if (mode === "identify") {
         setMessage("Mode identification reçu (non encore implémenté).");
+        return;
       }
     }
 
