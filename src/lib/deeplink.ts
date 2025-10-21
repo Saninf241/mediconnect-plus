@@ -1,41 +1,28 @@
 // src/lib/deeplink.ts
-type DeeplinkArgs = {
+export function buildZKDeeplink(opts: {
   mode: "enroll" | "identify";
   clinicId: string;
   operatorId: string;
-  patientId: string;
-  redirectOriginForPhone: string; // ex: https://mediconnect-plus.com
-  redirectPath: string;           // ex: /fp-callback
-};
+  patientId?: string;
+  redirectOriginForPhone: string;
+  redirectPath: string;
+}) {
+  const redirectUrl = `${opts.redirectOriginForPhone}${opts.redirectPath}`;
 
-export function buildZKDeeplink(args: DeeplinkArgs) {
-  const {
-    mode, clinicId, operatorId, patientId,
-    redirectOriginForPhone, redirectPath,
-  } = args;
+  const qp = new URLSearchParams({
+    redirect_url: redirectUrl,
+    clinic_id: opts.clinicId,
+    operator_id: opts.operatorId,
+    source: "web",
+    v: "1", // version de protocole, pour évoluer sans casse
+  });
+  if (opts.patientId) qp.set("patient_id", opts.patientId);
 
-  // 1) URL de retour complète vers le web (ex: https://mediconnect-plus.com/fp-callback)
-  const redirectUrl = new URL(redirectPath, redirectOriginForPhone).toString();
-  const encRedirect = encodeURIComponent(redirectUrl);
-
-  // 2) DEEPLINK (nouveau schéma/host que ton Manifest attend)
-  const deeplink =
-    `zkfinger://open?mode=${encodeURIComponent(mode)}` +
-    `&patient_id=${encodeURIComponent(patientId)}` +
-    `&operator_id=${encodeURIComponent(operatorId)}` +
-    `&clinic_id=${encodeURIComponent(clinicId)}` +
-    `&redirect_url=${encRedirect}`;
-
-  // 3) (optionnel) Intent URI Android — utile sur certains navigateurs
-  // NB: les "S.xxx" transportent des extras String.
-  const intentUri =
-    `intent://open` +
-    `?mode=${encodeURIComponent(mode)}` +
-    `&patient_id=${encodeURIComponent(patientId)}` +
-    `&operator_id=${encodeURIComponent(operatorId)}` +
-    `&clinic_id=${encodeURIComponent(clinicId)}` +
-    `&redirect_url=${encRedirect}` +
-    `#Intent;scheme=zkfinger;action=android.intent.action.VIEW;end`;
+  const deeplink   = `mediconnect://fingerprint/${opts.mode}?${qp.toString()}`;
+  const intentUri  =
+    `intent://fingerprint/${opts.mode}?${qp.toString()}` +
+    `#Intent;scheme=mediconnect;package=com.example.zkfinger10demo;` +
+    `S.browser_fallback_url=${encodeURIComponent(redirectUrl)};end`;
 
   return { deeplink, intentUri };
 }
