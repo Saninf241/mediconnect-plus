@@ -9,11 +9,16 @@ export default function FingerprintCallback() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    const mode        = url.searchParams.get("mode");           // "enroll" | "identify"
-    const status      = url.searchParams.get("status");         // "captured" | "error"
-    const patientId   = url.searchParams.get("patient_id");
-    const templateHash= url.searchParams.get("template_hash");
-    const error       = url.searchParams.get("error");
+
+    const mode         = url.searchParams.get("mode");            // "enroll" | "identify"
+    const status       = url.searchParams.get("status");          // "captured" | "error"
+    const found        = url.searchParams.get("found");           // "true" | "false"
+    const patientId    = url.searchParams.get("patient_id");
+    const userId       = url.searchParams.get("user_id");         // = patient_id renvoyé par l’app en identify
+    // compat: l’app peut envoyer template_b64 dans template_hash pour MVP
+    const templateB64  = url.searchParams.get("template_b64")
+                      || url.searchParams.get("template_hash");
+    const error        = url.searchParams.get("error");
 
     async function handleResult() {
       if (!mode) {
@@ -21,52 +26,76 @@ export default function FingerprintCallback() {
         return;
       }
 
-      // Par défaut, on revient sur le wizard "Ajouter un patient"
+      // route de retour
       const fallbackPath = "/multispecialist/secretary/new";
       const back = sessionStorage.getItem("fp:return") || fallbackPath;
 
       if (mode === "enroll") {
         const ok = status === "captured" && !!patientId;
 
-        // 1) Mémo pour le wizard
+        // 1) mémo pour le wizard
         sessionStorage.setItem(
           "fp:last",
           JSON.stringify({
             type: "enroll",
             ok,
             patient_id: patientId || null,
-            template_hash: templateHash || null,
+            template_b64: templateB64 || null,
             error: error || null,
           })
         );
 
-        // 2) Mise à jour Supabase côté patient si succès
+        // 2) mise à jour patient (flags UI/DB)
         if (ok) {
           await supabase
             .from("patients")
             .update({
               fingerprint_enrolled: true,
               fingerprint_missing: false,
-              fingerprint_hash: templateHash || null,
+              // on garde fingerprint_hash pour compat si tu veux afficher quelque chose
+              fingerprint_hash: templateB64 || null,
             })
             .eq("id", patientId!);
+
           setMessage("Empreinte enregistrée avec succès ✅");
         } else {
           setMessage(`Échec capture : ${error || "Aucune donnée reçue."}`);
         }
 
-        // 3) Revenir à la page d'origine (ou fallback) avec un flag visuel
+        // 3) retour
         const suffix = ok ? "?fp=captured" : "?fp=error";
         sessionStorage.removeItem("fp:return");
-        setTimeout(() => {
-          // navigate remplace l'historique pour éviter “back” qui rejoue le callback
-          navigate(back + suffix, { replace: true });
-        }, 800);
+        setTimeout(() => navigate(back + suffix, { replace: true }), 600);
         return;
       }
 
       if (mode === "identify") {
-        setMessage("Mode identification reçu (non encore implémenté).");
+        // expected: ?found=true&user_id=<patient_id>
+        const ok = found === "true" && !!userId;
+
+        // 1) mémo d’identification
+        sessionStorage.setItem(
+          "fp:last",
+          JSON.stringify({
+            type: "identify",
+            ok,
+            patient_id: ok ? userId : null,
+            error: error || null,
+          })
+        );
+
+        if (ok) {
+          setMessage("Patient reconnu ✅");
+          // Ici 2 options :
+          // (a) retour au back (secrétaire) avec flag
+          // (b) rediriger vers la page médecin/consultation pour ouvrir le dossier
+          // Par défaut: retour avec flag
+          sessionStorage.removeItem("fp:return");
+          setTimeout(() => navigate(back + "?id_found=" + userId, { replace: true }), 600);
+        } else {
+          setMessage("Aucun patient correspondant.");
+          setTimeout(() => navigate(back + "?id_not_found=1", { replace: true }), 900);
+        }
         return;
       }
     }
