@@ -11,6 +11,8 @@ import medicationSuggestions from '../../../lib/medication_suggestions.json';
 import { fetchGptSuggestions } from '../../../lib/openai';
 import { useSearchParams } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
+import { buildZKDeeplink } from "../../../lib/deeplink";
+
 
 export default function NewActPage() {
   const { user } = useUser();
@@ -21,6 +23,10 @@ export default function NewActPage() {
   const [currentAct, setCurrentAct] = useState('');
   const [amount, setAmount] = useState('');
   const [fingerprintMissing, setFingerprintMissing] = useState(false);
+  const [provisional, setProvisional] = useState<boolean>(false);
+  const [provisionalAmount, setProvisionalAmount] = useState<string>('');
+  const [isCheckingRights, setIsCheckingRights] = useState(false);
+
 
   const [symptomsType, setSymptomsType] = useState<'text' | 'drawn'>('text');
   const [diagnosisType, setDiagnosisType] = useState<'text' | 'drawn'>('text');
@@ -64,44 +70,35 @@ export default function NewActPage() {
     return data.id as string;
   }, [consultationId, doctorId, doctorInfo?.clinic_id]);
 
+    function getOriginForPhone() {
+    // sur tablette/téléphone, on veut le domaine public
+    return "https://mediconnect-plus.com";
+  }
+
   // Clic “Empreinte capturée” → brouillon + deeplink avec consultation_id
   const handleBiometrySuccess = async () => {
     const id = await ensureDraftConsultation();
     if (!id || !doctorInfo) return;
 
-    // 1) URL de retour accessible depuis le téléphone
-    const originForPhone = "https://mediconnect-plus.com";
+    // mémoriser où revenir une fois le scan fini
+    const returnPath = `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`;
+    sessionStorage.setItem("fp:return", returnPath);
 
-    const redirectTarget = `${originForPhone}/fp-callback`;
-    const redirectUrl = encodeURIComponent(`${redirectTarget}?consultation_id=${encodeURIComponent(id)}`);
+    // Construire le deeplink attendu par l'app Android
+    const { deeplink, intentUri } = buildZKDeeplink({
+      mode: "identify",
+      clinicId: String(doctorInfo.clinic_id),
+      operatorId: String(doctorInfo.doctor_id), // côté app: "operator_id"
+      redirectOriginForPhone: getOriginForPhone(),
+      redirectPath: "/fp-callback",             // la page web qui traite le retour
+    });
 
-    // 2) (optionnel) clé API
-    const apiKey = "mediconnect-prod-999-XyZ";
-
-    // 3) Schéma custom (marche dans Samsung Internet / via lien cliqué dans Chrome)
-    const deeplink =
-      `mediconnect://scanfingerprint` +
-      `?consultation_id=${encodeURIComponent(id)}` +
-      `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
-      `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
-      `&redirect_url=${redirectUrl}` +
-      `&api_key=${encodeURIComponent(apiKey)}`;
-
-    // 4) Fallback Chrome (intent://)
-    const intentUri =
-      `intent://scanfingerprint` +
-      `?consultation_id=${encodeURIComponent(id)}` +
-      `&clinic_id=${encodeURIComponent(String(doctorInfo.clinic_id))}` +
-      `&doctor_id=${encodeURIComponent(String(doctorInfo.doctor_id))}` +
-      `&redirect_url=${redirectUrl}` +
-      `&api_key=${encodeURIComponent(apiKey)}` +
-      `#Intent;scheme=mediconnect;package=com.example.zkfinger10demo;end`;
-
-    // 5) Essai schéma, sinon fallback intent
+    // Lancer d’abord le schéma custom, puis fallback intent
     try {
       window.location.href = deeplink;
       setTimeout(() => {
-        // ici tu peux afficher un toast avec un bouton <a href={intentUri}>Si rien ne se passe, cliquez ici</a>
+        // Si rien ne se passe (Chrome), proposer le fallback
+        window.location.href = intentUri;
       }, 900);
     } catch {
       window.location.href = intentUri;
@@ -134,26 +131,61 @@ export default function NewActPage() {
     }
   };
 
-// CHANGEMENT: on récupère les retours du scanner
+  // CHANGEMENT: on récupère les retours du scanner
   const [searchParams] = useSearchParams();
+
   useEffect(() => {
-    const cid = searchParams.get("consultation_id");
-    if (cid) setConsultationId(cid);
+    async function run() {
+      // 1) Récupère les params
+      const cid = searchParams.get("consultation_id");
+      if (cid) setConsultationId(cid);
 
-    const pid = searchParams.get("patient_id");
-    if (pid) {
-      setPatientId(pid);
-      setFingerprintMissing(false);
-      setStep('consultation');
+      const mode = searchParams.get("mode");
+      const found = searchParams.get("found");
+      const userId = searchParams.get("user_id");
+      const error = searchParams.get("error");
+
+      // 2) Cas identify (retour appli mobile)
+      if (mode === "identify") {
+        if (found === "true" && userId) {
+          setPatientId(userId);
+          setFingerprintMissing(false);
+          setStep("consultation");
+          toast.success("Patient reconnu ✅");
+
+          // ⬇️ Mise à jour DB : status = pending_rights
+          if (cid) {
+            try {
+              await supabase
+                .from("consultations")
+                .update({ status: "pending_rights", patient_id: userId })
+                .eq("id", cid);
+            } catch (e) {
+              console.error("Erreur update pending_rights:", e);
+            }
+          }
+        } else {
+          setPatientId(null);
+          setFingerprintMissing(true);
+          setStep("consultation");
+          toast.warn("Empreinte inconnue, poursuivre sans empreinte.");
+          if (error) console.warn("identify error:", error);
+        }
+      }
+
+      // 3) Compatibilité ancienne (si tu gardes notfound)
+      const notFound = searchParams.get("notfound");
+      if (notFound === "true") {
+        toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
+        setFingerprintMissing(true);
+        setStep("consultation");
+      }
     }
 
-    const notFound = searchParams.get("notfound");
-    if (notFound === "true") {
-      toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
-      setFingerprintMissing(true);
-      setStep('consultation');
-    }
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
 
  //clic “Continuer sans empreinte” → brouillon + flag
   const handleBiometryFailure = async () => {
@@ -182,6 +214,8 @@ export default function NewActPage() {
     if (!hasDiagnosis) return toast.error("Renseignez le diagnostic");
     if (!patientId && !fingerprintMissing) return toast.error("Aucun patient sélectionné");
 
+    const targetStatus = provisional ? 'pending_rights' : 'validated';
+
     const { error } = await supabase
       .from('consultations')
       .update({
@@ -193,7 +227,7 @@ export default function NewActPage() {
         actes: acts.map(type => ({ type })),
         medications,
         amount: parsedAmount,
-        status: 'validated',                          // ou 'pending' selon ton workflow
+        status: targetStatus,
         fingerprint_missing: fingerprintMissing,      // utile pour le suivi
       })
       .eq('id', consultationId);
@@ -231,6 +265,69 @@ export default function NewActPage() {
       {step === 'consultation' && (
         <div className="space-y-4">
           <p className="text-sm text-gray-600">Patient : {patientId ? '✅ patient identifié' : '❌ patient non identifié (sans empreinte)'}</p>
+
+              {provisional && (
+              <div className="p-3 rounded bg-yellow-50 border border-yellow-300 text-yellow-800">
+                <div className="font-semibold">Tarif provisoire — droits à vérifier</div>
+                <p className="text-sm">
+                  Les droits assureur ne sont pas encore confirmés. Le montant saisi ci-dessous est provisoire.
+                  Vous pouvez vérifier les droits maintenant.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    disabled={isCheckingRights || !patientId}
+                    onClick={async () => {
+                      try {
+                        setIsCheckingRights(true);
+                        const resp = await fetch("/.netlify/functions/insurer-rights-sync", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            patient_id: patientId,
+                            clinic_id: doctorInfo?.clinic_id,
+                            consultation_id: consultationId,
+                          }),
+                        });
+
+                        if (!resp.ok) throw new Error("sync_failed");
+                        const data = await resp.json();
+                        setProvisional(false);
+                        setAmount(String((data.insurer_amount || 0) + (data.patient_amount || 0)));
+
+                        await supabase.from('consultations').update({
+                          status: 'draft',
+                          insurer_amount: data.insurer_amount ?? null,
+                          patient_amount: data.patient_amount ?? null,
+                          insurer_id: data.insurer_id ?? null,
+                          rights_checked_at: new Date().toISOString(),
+                        }).eq('id', consultationId!);
+
+                        toast.success("Droits confirmés. Montant mis à jour.");
+                      } catch (e) {
+                        toast.error("Échec de la vérification des droits.");
+                      } finally {
+                        setIsCheckingRights(false);
+                      }
+                    }}
+                    className="bg-amber-600"
+                  >
+                    {isCheckingRights ? "Vérification..." : "Vérifier les droits"}
+                  </Button>
+
+                  {!!patientId && (
+                    <Button
+                      onClick={() => {
+                        const url = `/multispecialist/doctor/patients?focus=${encodeURIComponent(patientId)}&return=${encodeURIComponent(`/multispecialist/doctor/new-consultation?consultation_id=${consultationId}`)}`;
+                        window.open(url, "_blank", "noreferrer");
+                      }}
+                      className="border border-gray-300"
+                    >
+                      Voir dossier patient
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
 
           <div>
             <label className="font-semibold">Symptômes :</label>

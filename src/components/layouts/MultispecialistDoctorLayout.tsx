@@ -1,25 +1,37 @@
-import { Outlet } from 'react-router-dom';
-import LogoutButton from "../ui/LogoutButton";
+// MultispecialistDoctorLayout.tsx
+import { Outlet, NavLink } from "react-router-dom";
+import { Stethoscope, Users, PlusSquare, History, Gauge, Settings } from "lucide-react";
 
 export default function MultispecialistDoctorLayout() {
-  return (
-    <div className="flex">
-      <aside className="w-64 bg-blue-800 text-white h-screen p-4">
-        <h2 className="text-xl font-bold mb-6">Espace Médecin</h2>
-        <ul className="space-y-4">
-          <li><a href="/multispecialist/doctor/dashboard">Dashboard</a></li>
-          <li><a href="/multispecialist/doctor/patients">Mes Patients</a></li>
-          <li><a href="/multispecialist/doctor/new-consultation">Nouvelle consultation</a></li>
-          <li><a href="/multispecialist/doctor/consultation-follow-up">Suivi des consultations</a></li>
-          <li><a href="/multispecialist/doctor/performance">Performance</a></li>
-          <li><a href="/multispecialist/doctor/settings">Paramètres</a></li>
-        </ul>
+  const item = (to:string, Icon:any, label:string) => (
+    <NavLink
+      to={to}
+      className={({isActive}) =>
+        `flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10 transition ${
+          isActive ? "bg-white/15 font-semibold" : "opacity-90"
+        }`
+      }
+    >
+      <Icon className="w-5 h-5" />
+      <span>{label}</span>
+    </NavLink>
+  );
 
-        <div className="mt-6">
-          <LogoutButton />
-        </div>
+  return (
+    <div className="flex min-h-screen bg-gray-100">
+      <aside className="w-72 bg-blue-800 text-white p-5 space-y-4">
+        <div className="text-xl font-bold mb-4">Espace Médecin</div>
+        <nav className="space-y-2">
+          {item("/multispecialist/doctor/dashboard", Gauge, "Dashboard")}
+          {item("/multispecialist/doctor/patients", Users, "Mes patients")}
+          {item("/multispecialist/doctor/new-consultation", PlusSquare, "Nouvelle consultation")}
+          {item("/multispecialist/doctor/consultation-follow-up", History, "Suivi des consultations")}
+          {item("/multispecialist/doctor/performance", Stethoscope, "Performance")}
+          {item("/multispecialist/doctor/settings", Settings, "Paramètres")}
+        </nav>
+        {/* Pas de bouton de déconnexion local : on laisse Clerk gérer */}
       </aside>
-      <main className="flex-1 p-6 bg-gray-100">
+      <main className="flex-1 p-6">
         <Outlet />
       </main>
     </div>

@@ -528,6 +528,7 @@ export default function NewPatientWizard() {
                     redirectOriginForPhone: getOriginForPhone(),
                     redirectPath: "/fp-callback",
                   });
+                  window.location.href = deeplink || intentUri;
 
                   // mémoriser l’étape en cours (3) pour revenir au bon endroit
                   sessionStorage.setItem("wizard:returnStep", String(3));
