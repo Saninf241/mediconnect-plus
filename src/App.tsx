@@ -30,6 +30,7 @@ import NewPatientDoctorPage from './Pages/multispecialist/doctor/NewPatientDocto
 import ConsultationDoctorFollowUpPage from './Pages/multispecialist/doctor/ConsultationDoctorFollowUpPage';
 import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
+import DoctorPatientDetailsPage from "./Pages/multispecialist/doctor/DoctorPatientDetailsPage";
 import { BrowserRouter as Router } from "react-router-dom";
 import PatientLayout from "./components/layouts/PatientLayout";
 import Dashboard from "./Pages/patient/Dashboard";
@@ -487,6 +488,7 @@ const renderLandingPage = () => {
       <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
       <Route path="settings" element={<SettingsDoctorPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
+      <Route path="/multispecialist/doctor/patient/:id" element={<DoctorPatientDetailsPage />} />
     </Route>
 
     {/* MULTISPECIALIST ADMIN */}
