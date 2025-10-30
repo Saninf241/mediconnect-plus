@@ -488,7 +488,7 @@ const renderLandingPage = () => {
       <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
       <Route path="settings" element={<SettingsDoctorPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
-      <Route path="/multispecialist/doctor/patient/:id" element={<DoctorPatientDetailsPage />} />
+      <Route path="patient/:id" element={<DoctorPatientDetailsPage />} />
     </Route>
 
     {/* MULTISPECIALIST ADMIN */}
