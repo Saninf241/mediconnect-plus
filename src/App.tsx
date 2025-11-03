@@ -442,7 +442,7 @@ const renderLandingPage = () => {
       path="/doctor/*"
       element={
         <PrivateRouteByRole allowedRole="doctor">
-          <DoctorLayout><Outlet /></DoctorLayout>
+          <DoctorLayout/>
         </PrivateRouteByRole>
       }
     >
@@ -481,13 +481,12 @@ const renderLandingPage = () => {
         </PrivateRouteByRole>
       }
     >
-      <Route path="dashboard" element={<DoctorDashboardPage />} />
+      <Route index element={<DoctorDashboardPage />} />
       <Route path="patients" element={<DoctorPatientsPage />} />
       <Route path="new-consultation" element={<NewConsultationPage />} />
-      <Route path="DoctorPatientsPage/new" element={<NewPatientDoctorPage />} />
       <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
-      <Route path="settings" element={<SettingsDoctorPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
+      <Route path="settings" element={<SettingsDoctorPage />} />
       <Route path="patient/:id" element={<DoctorPatientDetailsPage />} />
     </Route>
 

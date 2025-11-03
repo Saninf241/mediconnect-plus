@@ -1,47 +1,60 @@
 // src/components/layouts/MultispecialistDoctorLayout.tsx
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, useLocation } from "react-router-dom";
 import { Stethoscope, Users, PlusSquare, History, Gauge, Settings } from "lucide-react";
-// Si tu veux l’avatar Clerk dans un header top bar plus tard :
-// import { UserButton } from "@clerk/clerk-react";
+
+const Item = ({
+  to,
+  icon: Icon,
+  label,
+  exact,
+}: {
+  to: string;
+  icon: any;
+  label: string;
+  exact?: boolean;
+}) => (
+  <NavLink
+    to={to}
+    end={!!exact}
+    className={({ isActive }) =>
+      `flex items-center gap-3 px-3 py-2 rounded-lg transition
+       hover:bg-white/10 ${isActive ? "bg-white/15 font-semibold" : "opacity-90"}`
+    }
+  >
+    <Icon className="w-5 h-5" />
+    <span>{label}</span>
+  </NavLink>
+);
 
 export default function MultispecialistDoctorLayout() {
-  const Item = (to: string, Icon: any, label: string) => (
-    <NavLink
-      to={to} // 🔹 chemin RELATIF (important)
-      className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2 rounded-lg transition
-         hover:bg-white/10 ${isActive ? "bg-white/15 font-semibold" : "opacity-90"}`
-      }
-      end={to === "dashboard"}
-    >
-      <Icon className="w-5 h-5" />
-      <span>{label}</span>
-    </NavLink>
-  );
+  const { pathname } = useLocation();
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="min-h-screen flex bg-gradient-to-br from-indigo-50 to-white">
+      {/* Header simple */}
+      <header className="fixed top-0 left-0 right-0 h-14 bg-indigo-700 text-white flex items-center justify-between px-4 shadow">
+        <div className="font-semibold">Cabinet MultiSpécialiste</div>
+        {/* Avatar Clerk via <GlobalHeader /> au-dessus, donc rien ici */}
+      </header>
+
       {/* Sidebar */}
-      <aside className="w-72 bg-blue-800 text-white p-5 space-y-4">
+      <aside className="w-72 bg-indigo-800 text-white pt-16 p-5 space-y-4">
         <div className="text-xl font-bold mb-2">Espace Médecin</div>
         <nav className="space-y-2">
-          {Item("dashboard", Gauge, "Dashboard")}
-          {Item("patients", Users, "Mes patients")}
-          {Item("new-consultation", PlusSquare, "Nouvelle consultation")}
-          {Item("consultation-follow-up", History, "Suivi des consultations")}
-          {Item("performance", Stethoscope, "Performance")}
-          {Item("settings", Settings, "Paramètres")}
+          <Item to="dashboard" icon={Gauge} label="Dashboard" exact />
+          <Item to="patients" icon={Users} label="Mes patients" />
+          <Item to="new-consultation" icon={PlusSquare} label="Nouvelle consultation" />
+          <Item to="consultation-follow-up" icon={History} label="Suivi des consultations" />
+          <Item to="performance" icon={Stethoscope} label="Performance" />
+          <Item to="settings" icon={Settings} label="Paramètres" />
         </nav>
-        {/* Pas de bouton de déconnexion : Clerk gère le menu utilisateur */}
+        <div className="text-xs text-white/70 mt-6">
+          Interface multi-spécialiste (indigo). Déconnexion via l’avatar (en haut à droite).
+        </div>
       </aside>
 
       {/* Contenu */}
-      <main className="flex-1 p-6">
-        {/* Exemple de topbar si tu veux ajouter l’avatar plus tard :
-        <div className="flex items-center justify-end mb-4">
-          <UserButton afterSignOutUrl="/" />
-        </div>
-        */}
+      <main className="flex-1 pt-16 p-6">
         <Outlet />
       </main>
     </div>

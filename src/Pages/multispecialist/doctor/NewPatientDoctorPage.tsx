@@ -79,7 +79,7 @@ export default function NewPatientPage() {
       toast.error("Erreur lors de la création du patient");
     } else {
       toast.success("Patient créé avec succès");
-      navigate('/doctor/patients');
+      navigate('multispecialist/doctor/patients');
     }
   };
 
