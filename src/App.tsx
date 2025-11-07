@@ -74,6 +74,7 @@ import React from 'react';
 import SignInPage from "./components/auth/SignInPage";
 import { useLocation } from "react-router-dom";
 import { Facebook, Linkedin, Twitter, Mail, MessageCircle } from "lucide-react";
+import DebugReset from './Pages/DebugReset';
 
 
 function GlobalHeader() {
@@ -425,14 +426,12 @@ const renderLandingPage = () => {
     {/* PUBLIC */}
     <Route path="/" element={renderLandingPage()} />
     <Route path="/unauthorized" element={<Unauthorized />} />
+    <Route path="/sign-out" element={<SignOutPage />} />
+    <Route path="/debug/reset" element={<DebugReset />} />
 
     {/* Clerk auth */}
     <Route path="/sign-in/*" element={<SignInPage />} />
     <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
-    <Route
-      path="/sign-out"
-      element={<SignOutPage />}
-    />
 
     {/* Redirection post-login selon le rôle */}
     <Route path="/role-redirect" element={<RoleRedirect />} />
