@@ -79,11 +79,15 @@ export default function NewActPage() {
   }, [consultationId, user?.id, doctorInfo?.clinic_id]);
 
   // -------- Déclenchement biométrie (deeplink identify) --------
-  const handleBiometrySuccess = async () => {
+    const handleBiometrySuccess = async () => {
     const id = await ensureDraftConsultation();
-    if (!id || !doctorInfo) return;
+    if (!id) return;
 
-    // mémoriser où revenir
+    if (!doctorInfo?.clinic_id || !doctorInfo?.doctor_id) {
+      toast.error("Contexte médecin incomplet (clinic_id / doctor_id).");
+      return;
+    }
+
     const returnPath = `/doctor/new-act?consultation_id=${encodeURIComponent(id)}`;
     sessionStorage.setItem("fp:return", returnPath);
 
@@ -91,15 +95,14 @@ export default function NewActPage() {
       mode: "identify",
       clinicId: String(doctorInfo.clinic_id),
       operatorId: String(doctorInfo.doctor_id),
+      consultationId: id,                  // ← on le passe aussi ici
       redirectOriginForPhone: getOriginForPhone(),
       redirectPath: "/fp-callback",
     });
 
     try {
       window.location.href = deeplink;
-      setTimeout(() => {
-        window.location.href = intentUri;
-      }, 900);
+      setTimeout(() => { window.location.href = intentUri; }, 900);
     } catch {
       window.location.href = intentUri;
     }
@@ -108,6 +111,7 @@ export default function NewActPage() {
   const handleBiometryFailure = async () => {
     const id = await ensureDraftConsultation();
     if (!id) return;
+    setPatientId(null);
     setFingerprintMissing(true);
     setStep("consultation");
   };
@@ -153,6 +157,10 @@ export default function NewActPage() {
           if (error) console.warn("identify error:", error);
         }
       }
+
+      // ✅ nettoie l'URL (empêche un retraitement au refresh)
+      const clean = window.location.pathname + (cid ? `?consultation_id=${encodeURIComponent(cid)}` : "");
+      window.history.replaceState(null, "", clean);
 
       // compat ancienne URL ?notfound=true
       const notFound = searchParams.get("notfound");

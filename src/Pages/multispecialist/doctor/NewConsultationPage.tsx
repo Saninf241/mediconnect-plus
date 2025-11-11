@@ -14,6 +14,7 @@ import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
 
+
 export default function NewActPage() {
   const { user } = useUser();
   const [step, setStep] = useState<'biometry' | 'consultation' | 'done'>('biometry');
@@ -75,31 +76,38 @@ export default function NewActPage() {
     return "https://mediconnect-plus.com";
   }
 
-  // Clic “Empreinte capturée” → brouillon + deeplink avec consultation_id
+  // -------- Déclenchement biométrie (deeplink identify) --------
   const handleBiometrySuccess = async () => {
+    // 1) S'assurer d'avoir un brouillon
     const id = await ensureDraftConsultation();
-    if (!id || !doctorInfo) return;
+    if (!id) return;
 
-    // mémoriser où revenir une fois le scan fini
-    const returnPath = `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`;
+    // 2) Contexte médecin obligatoire (sinon impression "rien ne se passe")
+    if (!doctorInfo?.clinic_id || !doctorInfo?.doctor_id) {
+      toast.error("Contexte médecin incomplet (clinic_id / doctor_id).");
+      return;
+    }
+
+    // 3) Où revenir après le callback navigateur
+    const returnPath =
+      `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`;
     sessionStorage.setItem("fp:return", returnPath);
 
-    // Construire le deeplink attendu par l'app Android
+    // 4) Construire le deeplink pour l’app Android
+    //    ⚠️ On **passe aussi consultationId**, maintenant supporté côté Android
     const { deeplink, intentUri } = buildZKDeeplink({
       mode: "identify",
       clinicId: String(doctorInfo.clinic_id),
-      operatorId: String(doctorInfo.doctor_id), // côté app: "operator_id"
+      operatorId: String(doctorInfo.doctor_id),
+      consultationId: id,
       redirectOriginForPhone: getOriginForPhone(),
-      redirectPath: "/fp-callback",             // la page web qui traite le retour
+      redirectPath: "/fp-callback",
     });
 
-    // Lancer d’abord le schéma custom, puis fallback intent
+    // 5) Tir en deux temps : schéma custom → fallback intent (Chrome)
     try {
       window.location.href = deeplink;
-      setTimeout(() => {
-        // Si rien ne se passe (Chrome), proposer le fallback
-        window.location.href = intentUri;
-      }, 900);
+      setTimeout(() => { window.location.href = intentUri; }, 900);
     } catch {
       window.location.href = intentUri;
     }
