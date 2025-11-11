@@ -76,17 +76,45 @@ export default function NewActPage() {
     return "https://mediconnect-plus.com";
   }
 
+  // Résout un contexte médecin si useDoctorContext() est vide au moment du clic
+  async function resolveDoctorContext() {
+    // 1) essaie le hook existant
+    if (doctorInfo?.clinic_id && doctorInfo?.doctor_id) {
+      return { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) };
+    }
+
+    // 2) fallback DB: cherche dans clinic_staff le rôle 'doctor' lié au user courant
+    const clerkId = user?.id || null;
+    const email = user?.primaryEmailAddress?.emailAddress || null;
+
+    let q = supabase
+      .from("clinic_staff")
+      .select("id, clinic_id, role, email, clerk_user_id")
+      .eq("role", "doctor")
+      .limit(1);
+
+    if (clerkId) q = q.eq("clerk_user_id", clerkId);
+    else if (email) q = q.eq("email", email);
+
+    const { data, error } = await q.maybeSingle();
+    if (error || !data?.clinic_id) {
+      toast.error("Impossible d'identifier votre clinique (rôle doctor).");
+      return null;
+    }
+    return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
+  }
+
   // -------- Déclenchement biométrie (deeplink identify) --------
   const handleBiometrySuccess = async () => {
     // 1) S'assurer d'avoir un brouillon
     const id = await ensureDraftConsultation();
     if (!id) return;
 
-    // 2) Contexte médecin obligatoire (sinon impression "rien ne se passe")
-    if (!doctorInfo?.clinic_id || !doctorInfo?.doctor_id) {
-      toast.error("Contexte médecin incomplet (clinic_id / doctor_id).");
-      return;
-    }
+    // 2) Contexte médecin (hook OU fallback DB)
+    const ctx = await resolveDoctorContext();
+    if (!ctx) return;
+
+    console.debug("[biometry] ctx:", ctx, "consultationId:", id);
 
     // 3) Où revenir après le callback navigateur
     const returnPath =
@@ -94,11 +122,10 @@ export default function NewActPage() {
     sessionStorage.setItem("fp:return", returnPath);
 
     // 4) Construire le deeplink pour l’app Android
-    //    ⚠️ On **passe aussi consultationId**, maintenant supporté côté Android
     const { deeplink, intentUri } = buildZKDeeplink({
       mode: "identify",
-      clinicId: String(doctorInfo.clinic_id),
-      operatorId: String(doctorInfo.doctor_id),
+      clinicId: ctx.clinicId,
+      operatorId: ctx.doctorId,          // ← id staff doctor
       consultationId: id,
       redirectOriginForPhone: getOriginForPhone(),
       redirectPath: "/fp-callback",
@@ -112,7 +139,6 @@ export default function NewActPage() {
       window.location.href = intentUri;
     }
   };
-
 
   // GPT suggestions (inchangé)
   useEffect(() => {
