@@ -44,32 +44,34 @@ export default function NewActPage() {
   const doctorId = user?.id;
   const doctorInfo = useDoctorContext();
 
-  //CHANGEMENT: utilitaire pour créer le brouillon si nécessaire
-  const ensureDraftConsultation = useCallback(async () => {
-    if (consultationId) return consultationId;
-    if (!doctorId || !doctorInfo?.clinic_id) {
-      toast.error("Contexte médecin/clinique manquant");
-      return null;
-    }
+  // NOTE: on ne bloque plus si doctorInfo est vide ici.
+  // Le contexte (clinicId/doctorId) est résolu AVANT l’appel.
+  const ensureDraftConsultation = useCallback(
+    async (ctx: { clinicId: string; doctorId: string } | null) => {
+      if (consultationId) return consultationId;
+      if (!ctx) return null;
 
-    const { data, error } = await supabase
-      .from('consultations')
-      .insert([{
-        doctor_id: doctorId,
-        clinic_id: doctorInfo.clinic_id,
-        status: 'draft',
-      }])
-      .select('id')
-      .single();
+      const { data, error } = await supabase
+        .from("consultations")
+        .insert([
+          {
+            doctor_id: ctx.doctorId,
+            clinic_id: ctx.clinicId,
+            status: "draft",
+          },
+        ])
+        .select("id")
+        .single();
 
-    if (error || !data) {
-      console.error(error);
-      toast.error("Impossible de créer la consultation brouillon");
-      return null;
-    }
-    setConsultationId(data.id);
-    return data.id as string;
-  }, [consultationId, doctorId, doctorInfo?.clinic_id]);
+      if (error || !data) {
+        console.error("[consultation draft] insert failed:", error);
+        return null; // on ne bloque pas le deeplink; on pourra lier plus tard
+      }
+      setConsultationId(data.id);
+      return data.id as string;
+    },
+    [consultationId]
+  );
 
     function getOriginForPhone() {
     // sur tablette/téléphone, on veut le domaine public
@@ -104,40 +106,101 @@ export default function NewActPage() {
     return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
   }
 
+    function launchDeeplink(deeplink: string, intentUri: string) {
+    // ancre cachée = meilleure compat sur Android/Chrome
+    const a = document.createElement("a");
+    a.href = deeplink;
+    a.style.display = "none";
+    document.body.appendChild(a);
+
+    // tir 1: schéma custom
+    a.click();
+
+    // fallback intent si on est toujours "visible" après un court délai
+    const t1 = setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        window.location.href = intentUri;
+      }
+    }, 700);
+
+    // sécurité UX: si VISIBLE après 2s, on propose d'ouvrir manuellement
+    const t2 = setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        console.warn("[deeplink] toujours sur la page après 2s (aucune app ?)");
+        // ici tu peux afficher un toast d’aide si tu veux
+      }
+    }, 2000);
+
+    // cleanup
+    setTimeout(() => {
+      document.body.removeChild(a);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    }, 2500);
+  }
+
   // -------- Déclenchement biométrie (deeplink identify) --------
   const handleBiometrySuccess = async () => {
-    // 1) S'assurer d'avoir un brouillon
-    const id = await ensureDraftConsultation();
-    if (!id) return;
+    // 1) Résoudre le contexte médecin (hook OU fallback DB)
+    const ctxHook = doctorInfo?.clinic_id && doctorInfo?.doctor_id
+      ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+      : null;
 
-    // 2) Contexte médecin (hook OU fallback DB)
-    const ctx = await resolveDoctorContext();
-    if (!ctx) return;
+    let ctx = ctxHook;
+    if (!ctx) {
+      // fallback DB
+      const clerkId = user?.id || null;
+      const email = user?.primaryEmailAddress?.emailAddress || null;
 
-    console.debug("[biometry] ctx:", ctx, "consultationId:", id);
+      let q = supabase
+        .from("clinic_staff")
+        .select("id, clinic_id, role, email, clerk_user_id")
+        .eq("role", "doctor")
+        .limit(1);
 
-    // 3) Où revenir après le callback navigateur
-    const returnPath =
-      `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`;
+      if (clerkId) q = q.eq("clerk_user_id", clerkId);
+      else if (email) q = q.eq("email", email);
+
+      const { data } = await q.maybeSingle();
+      if (data?.clinic_id) {
+        ctx = { clinicId: String(data.clinic_id), doctorId: String(data.id) };
+      }
+    }
+
+    if (!ctx) {
+      // on informe, mais on ne freeze pas l’UI
+      toast.error("Contexte médecin introuvable (clinic_id / doctor_id).");
+      return;
+    }
+
+    // 2) Créer un brouillon si possible (non bloquant)
+    let id = consultationId;
+    if (!id) {
+      id = await ensureDraftConsultation(ctx);
+    }
+
+    // 3) Mémoriser où revenir (si on a un id)
+    const returnPath = id
+      ? `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`
+      : `/multispecialist/doctor/new-consultation`;
     sessionStorage.setItem("fp:return", returnPath);
 
-    // 4) Construire le deeplink pour l’app Android
-    const { deeplink, intentUri } = buildZKDeeplink({
-      mode: "identify",
+    // 4) Construire le deeplink (on passe consultationId seulement si on l'a)
+    const base = {
+      mode: "identify" as const,
       clinicId: ctx.clinicId,
-      operatorId: ctx.doctorId,          // ← id staff doctor
-      consultationId: id,
+      operatorId: ctx.doctorId,
       redirectOriginForPhone: getOriginForPhone(),
       redirectPath: "/fp-callback",
-    });
+    };
+    const { deeplink, intentUri } = id
+      ? buildZKDeeplink({ ...base, consultationId: id })
+      : buildZKDeeplink(base as any); // consultationId optionnel côté app
 
-    // 5) Tir en deux temps : schéma custom → fallback intent (Chrome)
-    try {
-      window.location.href = deeplink;
-      setTimeout(() => { window.location.href = intentUri; }, 900);
-    } catch {
-      window.location.href = intentUri;
-    }
+    console.debug("[biometry] launch", { ctx, consultationId: id, deeplink, intentUri });
+
+    // 5) Lancer (ancre + fallback intent)
+    launchDeeplink(deeplink, intentUri);
   };
 
   // GPT suggestions (inchangé)
@@ -221,15 +284,16 @@ export default function NewActPage() {
   }, []);
 
 
- //clic “Continuer sans empreinte” → brouillon + flag
+  //clic “Continuer sans empreinte” → brouillon + flag
   const handleBiometryFailure = async () => {
-    const id = await ensureDraftConsultation();
+    const ctx = await resolveDoctorContext();
+    const id = await ensureDraftConsultation(ctx);
     if (!id) return;
     setFingerprintMissing(true);
     setStep('consultation');
   };
 
-// CHANGEMENT: à l’enregistrement → UPDATE (pas INSERT)
+  // CHANGEMENT: à l’enregistrement → UPDATE (pas INSERT)
   const createConsultation = async () => {
     if (!doctorId) return toast.error("Utilisateur médecin introuvable");
     if (!consultationId) return toast.error("Consultation brouillon manquante");
@@ -291,7 +355,7 @@ export default function NewActPage() {
         <div className="space-y-4">
           <p>Veuillez scanner l’empreinte du patient :</p>
           <div className="flex gap-4 ">
-            <Button onClick={handleBiometrySuccess}>Empreinte capturée</Button>
+            <Button type="button" onClick={handleBiometrySuccess}> Empreinte capturée </Button>
             <Button onClick={handleBiometryFailure} className="bg-orange-600">Continuer sans empreinte</Button>
           </div>
         </div>
