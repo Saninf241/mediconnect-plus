@@ -13,8 +13,6 @@ import { useSearchParams } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
-
-
 export default function NewActPage() {
   const { user } = useUser();
   const [step, setStep] = useState<'biometry' | 'consultation' | 'done'>('biometry');
@@ -27,7 +25,6 @@ export default function NewActPage() {
   const [provisional, setProvisional] = useState<boolean>(false);
   const [provisionalAmount, setProvisionalAmount] = useState<string>('');
   const [isCheckingRights, setIsCheckingRights] = useState(false);
-
 
   const [symptomsType, setSymptomsType] = useState<'text' | 'drawn'>('text');
   const [diagnosisType, setDiagnosisType] = useState<'text' | 'drawn'>('text');
@@ -44,8 +41,6 @@ export default function NewActPage() {
   const doctorId = user?.id;
   const doctorInfo = useDoctorContext();
 
-  // NOTE: on ne bloque plus si doctorInfo est vide ici.
-  // Le contexte (clinicId/doctorId) est résolu AVANT l’appel.
   const ensureDraftConsultation = useCallback(
     async (ctx: { clinicId: string; doctorId: string } | null) => {
       if (consultationId) return consultationId;
@@ -65,7 +60,7 @@ export default function NewActPage() {
 
       if (error || !data) {
         console.error("[consultation draft] insert failed:", error);
-        return null; // on ne bloque pas le deeplink; on pourra lier plus tard
+        return null;
       }
       setConsultationId(data.id);
       return data.id as string;
@@ -73,19 +68,15 @@ export default function NewActPage() {
     [consultationId]
   );
 
-    function getOriginForPhone() {
-    // sur tablette/téléphone, on veut le domaine public
+  function getOriginForPhone() {
     return "https://mediconnect-plus.com";
   }
 
-  // Résout un contexte médecin si useDoctorContext() est vide au moment du clic
   async function resolveDoctorContext() {
-    // 1) essaie le hook existant
     if (doctorInfo?.clinic_id && doctorInfo?.doctor_id) {
       return { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) };
     }
 
-    // 2) fallback DB: cherche dans clinic_staff le rôle 'doctor' lié au user courant
     const clerkId = user?.id || null;
     const email = user?.primaryEmailAddress?.emailAddress || null;
 
@@ -106,32 +97,26 @@ export default function NewActPage() {
     return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
   }
 
-    function launchDeeplink(deeplink: string, intentUri: string) {
-    // ancre cachée = meilleure compat sur Android/Chrome
+  function launchDeeplink(deeplink: string, intentUri: string) {
     const a = document.createElement("a");
     a.href = deeplink;
     a.style.display = "none";
     document.body.appendChild(a);
 
-    // tir 1: schéma custom
     a.click();
 
-    // fallback intent si on est toujours "visible" après un court délai
     const t1 = setTimeout(() => {
       if (document.visibilityState === "visible") {
         window.location.href = intentUri;
       }
     }, 700);
 
-    // sécurité UX: si VISIBLE après 2s, on propose d'ouvrir manuellement
     const t2 = setTimeout(() => {
       if (document.visibilityState === "visible") {
         console.warn("[deeplink] toujours sur la page après 2s (aucune app ?)");
-        // ici tu peux afficher un toast d’aide si tu veux
       }
     }, 2000);
 
-    // cleanup
     setTimeout(() => {
       document.body.removeChild(a);
       clearTimeout(t1);
@@ -141,14 +126,12 @@ export default function NewActPage() {
 
   // -------- Déclenchement biométrie (deeplink identify) --------
   const handleBiometrySuccess = async () => {
-    // 1) Résoudre le contexte médecin (hook OU fallback DB)
     const ctxHook = doctorInfo?.clinic_id && doctorInfo?.doctor_id
       ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
       : null;
 
     let ctx = ctxHook;
     if (!ctx) {
-      // fallback DB
       const clerkId = user?.id || null;
       const email = user?.primaryEmailAddress?.emailAddress || null;
 
@@ -168,24 +151,20 @@ export default function NewActPage() {
     }
 
     if (!ctx) {
-      // on informe, mais on ne freeze pas l’UI
       toast.error("Contexte médecin introuvable (clinic_id / doctor_id).");
       return;
     }
 
-    // 2) Créer un brouillon si possible (non bloquant)
     let id = consultationId;
     if (!id) {
       id = await ensureDraftConsultation(ctx);
     }
 
-    // 3) Mémoriser où revenir (si on a un id)
     const returnPath = id
       ? `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`
       : `/multispecialist/doctor/new-consultation`;
     sessionStorage.setItem("fp:return", returnPath);
 
-    // 4) Construire le deeplink (on passe consultationId seulement si on l'a)
     const base = {
       mode: "identify" as const,
       clinicId: ctx.clinicId,
@@ -195,15 +174,13 @@ export default function NewActPage() {
     };
     const { deeplink, intentUri } = id
       ? buildZKDeeplink({ ...base, consultationId: id })
-      : buildZKDeeplink(base as any); // consultationId optionnel côté app
+      : buildZKDeeplink(base as any);
 
     console.debug("[biometry] launch", { ctx, consultationId: id, deeplink, intentUri });
 
-    // 5) Lancer (ancre + fallback intent)
     launchDeeplink(deeplink, intentUri);
   };
 
-  // GPT suggestions (inchangé)
   useEffect(() => {
     const loadGptSuggestions = async () => {
       if (diagnosis.trim().length < 3) return;
@@ -228,12 +205,10 @@ export default function NewActPage() {
     }
   };
 
-  // CHANGEMENT: on récupère les retours du scanner
   const [searchParams] = useSearchParams();
 
   useEffect(() => {
     async function run() {
-      // 1) Récupère les params
       const cid = searchParams.get("consultation_id");
       if (cid) setConsultationId(cid);
 
@@ -242,7 +217,6 @@ export default function NewActPage() {
       const userId = searchParams.get("user_id");
       const error = searchParams.get("error");
 
-      // 2) Cas identify (retour appli mobile)
       if (mode === "identify") {
         if (found === "true" && userId) {
           setPatientId(userId);
@@ -250,7 +224,6 @@ export default function NewActPage() {
           setStep("consultation");
           toast.success("Patient reconnu ✅");
 
-          // ⬇️ Mise à jour DB : status = pending_rights
           if (cid) {
             try {
               await supabase
@@ -270,7 +243,6 @@ export default function NewActPage() {
         }
       }
 
-      // 3) Compatibilité ancienne (si tu gardes notfound)
       const notFound = searchParams.get("notfound");
       if (notFound === "true") {
         toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
@@ -283,8 +255,6 @@ export default function NewActPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
-  //clic “Continuer sans empreinte” → brouillon + flag
   const handleBiometryFailure = async () => {
     const ctx = await resolveDoctorContext();
     const id = await ensureDraftConsultation(ctx);
@@ -293,7 +263,6 @@ export default function NewActPage() {
     setStep('consultation');
   };
 
-  // CHANGEMENT: à l’enregistrement → UPDATE (pas INSERT)
   const createConsultation = async () => {
     if (!doctorId) return toast.error("Utilisateur médecin introuvable");
     if (!consultationId) return toast.error("Consultation brouillon manquante");
@@ -317,7 +286,7 @@ export default function NewActPage() {
     const { error } = await supabase
       .from('consultations')
       .update({
-        patient_id: patientId,                        // peut être null si fingerprintMissing
+        patient_id: patientId,
         symptoms: symptomsType === 'text' ? symptoms.trim() : null,
         symptoms_drawn: symptomsDrawn,
         diagnosis: diagnosisType === 'text' ? diagnosis.trim() : null,
@@ -326,14 +295,13 @@ export default function NewActPage() {
         medications,
         amount: parsedAmount,
         status: targetStatus,
-        fingerprint_missing: fingerprintMissing,      // utile pour le suivi
+        fingerprint_missing: fingerprintMissing,
       })
       .eq('id', consultationId);
 
     if (error) toast.error('Erreur lors de la mise à jour');
     else {
       toast.success('Consultation enregistrée');
-      // reset
       setActs([]); setCurrentAct('');
       setMedications([]); setCurrentMedication('');
       setSymptoms(''); setDiagnosis('');
@@ -351,81 +319,96 @@ export default function NewActPage() {
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Démarrer une consultation</h1>
+
       {step === 'biometry' && (
         <div className="space-y-4">
           <p>Veuillez scanner l’empreinte du patient :</p>
           <div className="flex gap-4 ">
-            <Button type="button" onClick={handleBiometrySuccess}> Empreinte capturée </Button>
-            <Button onClick={handleBiometryFailure} className="bg-orange-600">Continuer sans empreinte</Button>
+            {/* ✅ Bouton HTML natif pour déclencher le deeplink */}
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); handleBiometrySuccess(); }}
+              className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800"
+            >
+              Empreinte capturée
+            </button>
+
+            {/* Les autres actions peuvent rester en shadcn/ui */}
+            <Button onClick={handleBiometryFailure} className="bg-orange-600">
+              Continuer sans empreinte
+            </Button>
           </div>
         </div>
       )}
+
       {step === 'consultation' && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">Patient : {patientId ? '✅ patient identifié' : '❌ patient non identifié (sans empreinte)'}</p>
+          <p className="text-sm text-gray-600">
+            Patient : {patientId ? '✅ patient identifié' : '❌ patient non identifié (sans empreinte)'}
+          </p>
 
-              {provisional && (
-              <div className="p-3 rounded bg-yellow-50 border border-yellow-300 text-yellow-800">
-                <div className="font-semibold">Tarif provisoire — droits à vérifier</div>
-                <p className="text-sm">
-                  Les droits assureur ne sont pas encore confirmés. Le montant saisi ci-dessous est provisoire.
-                  Vous pouvez vérifier les droits maintenant.
-                </p>
-                <div className="mt-2 flex gap-2">
+          {provisional && (
+            <div className="p-3 rounded bg-yellow-50 border border-yellow-300 text-yellow-800">
+              <div className="font-semibold">Tarif provisoire — droits à vérifier</div>
+              <p className="text-sm">
+                Les droits assureur ne sont pas encore confirmés. Le montant saisi ci-dessous est provisoire.
+                Vous pouvez vérifier les droits maintenant.
+              </p>
+              <div className="mt-2 flex gap-2">
+                <Button
+                  disabled={isCheckingRights || !patientId}
+                  onClick={async () => {
+                    try {
+                      setIsCheckingRights(true);
+                      const resp = await fetch("/.netlify/functions/insurer-rights-sync", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          patient_id: patientId,
+                          clinic_id: doctorInfo?.clinic_id,
+                          consultation_id: consultationId,
+                        }),
+                      });
+
+                      if (!resp.ok) throw new Error("sync_failed");
+                      const data = await resp.json();
+                      setProvisional(false);
+                      setAmount(String((data.insurer_amount || 0) + (data.patient_amount || 0)));
+
+                      await supabase.from('consultations').update({
+                        status: 'draft',
+                        insurer_amount: data.insurer_amount ?? null,
+                        patient_amount: data.patient_amount ?? null,
+                        insurer_id: data.insurer_id ?? null,
+                        rights_checked_at: new Date().toISOString(),
+                      }).eq('id', consultationId!);
+
+                      toast.success("Droits confirmés. Montant mis à jour.");
+                    } catch (e) {
+                      toast.error("Échec de la vérification des droits.");
+                    } finally {
+                      setIsCheckingRights(false);
+                    }
+                  }}
+                  className="bg-amber-600"
+                >
+                  {isCheckingRights ? "Vérification..." : "Vérifier les droits"}
+                </Button>
+
+                {!!patientId && (
                   <Button
-                    disabled={isCheckingRights || !patientId}
-                    onClick={async () => {
-                      try {
-                        setIsCheckingRights(true);
-                        const resp = await fetch("/.netlify/functions/insurer-rights-sync", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            patient_id: patientId,
-                            clinic_id: doctorInfo?.clinic_id,
-                            consultation_id: consultationId,
-                          }),
-                        });
-
-                        if (!resp.ok) throw new Error("sync_failed");
-                        const data = await resp.json();
-                        setProvisional(false);
-                        setAmount(String((data.insurer_amount || 0) + (data.patient_amount || 0)));
-
-                        await supabase.from('consultations').update({
-                          status: 'draft',
-                          insurer_amount: data.insurer_amount ?? null,
-                          patient_amount: data.patient_amount ?? null,
-                          insurer_id: data.insurer_id ?? null,
-                          rights_checked_at: new Date().toISOString(),
-                        }).eq('id', consultationId!);
-
-                        toast.success("Droits confirmés. Montant mis à jour.");
-                      } catch (e) {
-                        toast.error("Échec de la vérification des droits.");
-                      } finally {
-                        setIsCheckingRights(false);
-                      }
+                    onClick={() => {
+                      const url = `/multispecialist/doctor/patients?focus=${encodeURIComponent(patientId)}&return=${encodeURIComponent(`/multispecialist/doctor/new-consultation?consultation_id=${consultationId}`)}`;
+                      window.open(url, "_blank", "noreferrer");
                     }}
-                    className="bg-amber-600"
+                    className="border border-gray-300"
                   >
-                    {isCheckingRights ? "Vérification..." : "Vérifier les droits"}
+                    Voir dossier patient
                   </Button>
-
-                  {!!patientId && (
-                    <Button
-                      onClick={() => {
-                        const url = `/multispecialist/doctor/patients?focus=${encodeURIComponent(patientId)}&return=${encodeURIComponent(`/multispecialist/doctor/new-consultation?consultation_id=${consultationId}`)}`;
-                        window.open(url, "_blank", "noreferrer");
-                      }}
-                      className="border border-gray-300"
-                    >
-                      Voir dossier patient
-                    </Button>
-                  )}
-                </div>
+                )}
               </div>
-            )}
+            </div>
+          )}
 
           <div>
             <label className="font-semibold">Symptômes :</label>
@@ -490,6 +473,7 @@ export default function NewActPage() {
           <Button onClick={createConsultation} className="w-full bg-blue-600">Enregistrer la consultation</Button>
         </div>
       )}
+
       {step === 'done' && (
         <div className="space-y-4 text-center">
           <p className="text-green-700 text-lg">✅ Consultation enregistrée.</p>
