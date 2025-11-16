@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Test DeepLink Mediconnect</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 16px; }
+    fieldset { border: 1px solid #ddd; border-radius: 12px; padding: 12px; margin: 12px 0; }
+    label { display:block; font-size: 12px; color:#555; margin-top:8px }
+    input, select { width: 100%; padding: 8px; border:1px solid #ccc; border-radius:8px; }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .btn { display:inline-block; padding: 10px 14px; border-radius:10px; text-decoration:none; }
+    .primary { background:#2563eb; color:#fff; }
+    .secondary { background:#111827; color:#fff; }
+    .ghost { border:1px solid #d1d5db; color:#111827; }
+    .links { display:flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    code { background:#f3f4f6; padding:2px 6px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <h1>Test DeepLink Mediconnect (intent:// & mediconnect://)</h1>
+
+  <fieldset>
+    <legend>Paramètres</legend>
+    <div class="row">
+      <div>
+        <label>Mode</label>
+        <select id="mode">
+          <option value="identify">identify</option>
+          <option value="enroll">enroll</option>
+        </select>
+      </div>
+      <div>
+        <label>Package (Android)</label>
+        <input id="pkg" value="com.example.zkfinger10demo" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>clinic_id</label>
+        <input id="clinic_id" value="demo-clinic-123" />
+      </div>
+      <div>
+        <label>operator_id</label>
+        <input id="operator_id" value="doctor-staff-abc" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>consultation_id (optionnel pour identify)</label>
+        <input id="consultation_id" placeholder="uuid..." />
+      </div>
+      <div>
+        <label>patient_id (optionnel pour enroll)</label>
+        <input id="patient_id" placeholder="uuid..." />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>redirect_origin</label>
+        <input id="redirect_origin" value="https://mediconnect-plus.com" />
+      </div>
+      <div>
+        <label>redirect_path</label>
+        <input id="redirect_path" value="/fp-callback" />
+      </div>
+    </div>
+
+    <div class="links">
+      <a id="btnBuild" href="#" class="btn secondary">Construire les liens</a>
+      <a id="a_intent" class="btn primary" target="_self">Ouvrir via <code>intent://</code></a>
+      <a id="a_scheme" class="btn ghost" target="_self">Essayer via <code>mediconnect://</code></a>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Liens générés</legend>
+    <div><b>intent://</b><br><code id="out_intent"></code></div>
+    <div style="margin-top:8px"><b>mediconnect://</b><br><code id="out_scheme"></code></div>
+  </fieldset>
+
+  <script>
+    const btnBuild = document.getElementById('btnBuild');
+    const aIntent = document.getElementById('a_intent');
+    const aScheme = document.getElementById('a_scheme');
+    const outIntent = document.getElementById('out_intent');
+    const outScheme = document.getElementById('out_scheme');
+
+    function val(id) { return document.getElementById(id).value.trim(); }
+
+    btnBuild.addEventListener('click', (e) => {
+      e.preventDefault();
+
+      const mode = val('mode'); // "identify" | "enroll"
+      const pkg = val('pkg') || 'com.example.zkfinger10demo';
+      const clinicId = val('clinic_id');
+      const operatorId = val('operator_id');
+      const consultationId = val('consultation_id');
+      const patientId = val('patient_id');
+      const redirectOrigin = val('redirect_origin').replace(/\/$/, '');
+      const redirectPath = val('redirect_path').startsWith('/') ? val('redirect_path') : '/' + val('redirect_path');
+      const redirectUrl = redirectOrigin + redirectPath;
+
+      const qp = new URLSearchParams({
+        redirect_url: redirectUrl,
+        clinic_id: clinicId,
+        operator_id: operatorId,
+        source: 'web',
+        v: '1'
+      });
+      if (consultationId) qp.set('consultation_id', consultationId);
+      if (patientId) qp.set('patient_id', patientId);
+
+      // schéma custom
+      const schemeUrl = `mediconnect://fingerprint/${mode}?` + qp.toString();
+
+      // intent:// + EXTRAS
+      const intentUrl =
+        `intent://fingerprint/${mode}?${qp.toString()}#Intent;` +
+        `scheme=mediconnect;package=${pkg};` +
+        `S.mode=${mode};` +
+        (patientId ? `S.patient_id=${patientId};` : '') +
+        (consultationId ? `S.consultation_id=${consultationId};` : '') +
+        `S.operator_id=${operatorId};` +
+        `S.clinic_id=${clinicId};` +
+        `S.redirect_url=${encodeURIComponent(redirectUrl)};` +
+        `S.browser_fallback_url=${encodeURIComponent(redirectUrl)};end`;
+
+      aIntent.href = intentUrl;
+      aScheme.href = schemeUrl;
+
+      outIntent.textContent = intentUrl;
+      outScheme.textContent = schemeUrl;
+
+      alert('Liens générés. Sur Android/Chrome, TAP sur “Ouvrir via intent://”.');
+    });
+  </script>
+</body>
+</html>
+

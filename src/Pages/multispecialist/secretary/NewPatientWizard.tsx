@@ -528,19 +528,22 @@ export default function NewPatientWizard() {
                     redirectOriginForPhone: getOriginForPhone(),
                     redirectPath: "/fp-callback",
                   });
-                  window.location.href = deeplink || intentUri;
 
                   // mémoriser l’étape en cours (3) pour revenir au bon endroit
-                  sessionStorage.setItem("wizard:returnStep", String(3));
+                  sessionStorage.setItem("wizard:returnStep", "3");
 
                   // mémorise l'endroit où revenir après la capture
-                  sessionStorage.setItem(
-                    "fp:return",
+                  sessionStorage.setItem("fp:return",
                     window.location.pathname + window.location.search + window.location.hash
                   );
 
-                  // une seule redirection
-                  window.location.href = deeplink || intentUri;
+                  // ✅ un seul lancement + fallback
+                  try {
+                    window.location.href = deeplink;
+                    setTimeout(() => { window.location.href = intentUri; }, 900);
+                  } catch {
+                    window.location.href = intentUri;
+                  }
 
                   setMessage("Capture lancée sur la tablette. Revenez ici après la lecture de l’empreinte.");
                 } catch (e: any) {

@@ -97,35 +97,10 @@ export default function NewActPage() {
     return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
   }
 
-  function launchDeeplink(deeplink: string, intentUri: string) {
-    const a = document.createElement("a");
-    a.href = deeplink;
-    a.style.display = "none";
-    document.body.appendChild(a);
-
-    a.click();
-
-    const t1 = setTimeout(() => {
-      if (document.visibilityState === "visible") {
-        window.location.href = intentUri;
-      }
-    }, 700);
-
-    const t2 = setTimeout(() => {
-      if (document.visibilityState === "visible") {
-        console.warn("[deeplink] toujours sur la page après 2s (aucune app ?)");
-      }
-    }, 2000);
-
-    setTimeout(() => {
-      document.body.removeChild(a);
-      clearTimeout(t1);
-      clearTimeout(t2);
-    }, 2500);
-  }
 
   // -------- Déclenchement biométrie (deeplink identify) --------
   const handleBiometrySuccess = async () => {
+    try { //1) Résoudre le contexte médecin (hook OU fallback DB)
     const ctxHook = doctorInfo?.clinic_id && doctorInfo?.doctor_id
       ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
       : null;
@@ -154,17 +129,21 @@ export default function NewActPage() {
       toast.error("Contexte médecin introuvable (clinic_id / doctor_id).");
       return;
     }
-
+    
+    // 2) Créer un brouillon si possible (non bloquan)
     let id = consultationId;
     if (!id) {
       id = await ensureDraftConsultation(ctx);
     }
 
+    // 3) Mémoriser où revenir (si on a un id)
     const returnPath = id
       ? `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`
       : `/multispecialist/doctor/new-consultation`;
     sessionStorage.setItem("fp:return", returnPath);
 
+  
+    // 4) Construire le deeplink (on passe consultationId seulement si l'on a)
     const base = {
       mode: "identify" as const,
       clinicId: ctx.clinicId,
@@ -176,9 +155,15 @@ export default function NewActPage() {
       ? buildZKDeeplink({ ...base, consultationId: id })
       : buildZKDeeplink(base as any);
 
-    console.debug("[biometry] launch", { ctx, consultationId: id, deeplink, intentUri });
+    console.log("[doctor identify] deeplink", deeplink, intentUri);
 
-    launchDeeplink(deeplink, intentUri);
+    // 5)Bouton HTML simple : meme logique que le secretariat
+    window.location.href = deeplink; 
+    setTimeout(() => { window.location.href = intentUri; }, 900);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lors du lancement de la biométrie.");
+    }
   };
 
   useEffect(() => {
@@ -324,22 +309,21 @@ export default function NewActPage() {
         <div className="space-y-4">
           <p>Veuillez scanner l’empreinte du patient :</p>
           <div className="flex gap-4 ">
-            {/* ✅ Bouton HTML natif pour déclencher le deeplink */}
-            <button
-              type="button"
-              onClick={(e) => { e.preventDefault(); handleBiometrySuccess(); }}
-              className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800"
-            >
-              Empreinte capturée
-            </button>
+                <Button type="button" onClick={handleBiometrySuccess}
+                className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+                >
+                  Empreinte capturée
+                  </Button>
 
-            {/* Les autres actions peuvent rester en shadcn/ui */}
-            <Button onClick={handleBiometryFailure} className="bg-orange-600">
-              Continuer sans empreinte
-            </Button>
-          </div>
+                <Button
+                  onClick={handleBiometryFailure}
+                  className="bg-orange-600">
+                    Continuer sans empreinte
+                    </Button>
+                </div>
         </div>
       )}
+
 
       {step === 'consultation' && (
         <div className="space-y-4">
