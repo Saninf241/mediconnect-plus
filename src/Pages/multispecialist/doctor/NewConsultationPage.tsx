@@ -13,7 +13,7 @@ import { useSearchParams } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
-export default function NewActPage() {
+export default function NewConsultationPage() {
   const { user } = useUser();
   const [step, setStep] = useState<'biometry' | 'consultation' | 'done'>('biometry');
   const [consultationId, setConsultationId] = useState<string | null>(null);
@@ -41,6 +41,49 @@ export default function NewActPage() {
   const doctorId = user?.id;
   const doctorInfo = useDoctorContext();
 
+
+  //Origine pour redirect_url (comme secrétaire)
+    function getOriginForPhone(): string {
+      const host = window.location.hostname;
+      const isLocal =
+        host === "localhost" ||
+        /^127\./.test(host) ||
+        /^192\.168\./.test(host) ||
+        /^10\./.test(host);
+  
+      if (isLocal) {
+        return (import.meta.env.VITE_LAN_ORIGIN?.trim() || window.location.origin);
+      }
+      return window.location.origin;
+    }
+
+  //Resolution contexte médecin
+  async function resolveDoctorContext() {
+    if (doctorInfo?.clinic_id && doctorInfo?.doctor_id) {
+      return { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) };
+    }
+
+    const clerkId = user?.id || null;
+    const email = user?.primaryEmailAddress?.emailAddress || null;
+
+    let q = supabase
+      .from("clinic_staff")
+      .select("id, clinic_id, role, email, clerk_user_id")
+      .eq("role", "doctor")
+      .limit(1);
+
+    if (clerkId) q = q.eq("clerk_user_id", clerkId);
+    else if (email) q = q.eq("email", email);
+
+    const { data, error } = await q.maybeSingle();
+    if (error || !data?.clinic_id) {
+      toast.error("Impossible d'identifier votre clinique (rôle doctor).");
+      return null;
+    }
+    return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
+  }
+
+  //Brouillon consultation (idempotent)
   const ensureDraftConsultation = useCallback(
     async (ctx: { clinicId: string; doctorId: string } | null) => {
       if (consultationId) return consultationId;
@@ -68,82 +111,32 @@ export default function NewActPage() {
     [consultationId]
   );
 
-  function getOriginForPhone() {
-    return "https://mediconnect-plus.com";
-  }
-
-  async function resolveDoctorContext() {
-    if (doctorInfo?.clinic_id && doctorInfo?.doctor_id) {
-      return { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) };
-    }
-
-    const clerkId = user?.id || null;
-    const email = user?.primaryEmailAddress?.emailAddress || null;
-
-    let q = supabase
-      .from("clinic_staff")
-      .select("id, clinic_id, role, email, clerk_user_id")
-      .eq("role", "doctor")
-      .limit(1);
-
-    if (clerkId) q = q.eq("clerk_user_id", clerkId);
-    else if (email) q = q.eq("email", email);
-
-    const { data, error } = await q.maybeSingle();
-    if (error || !data?.clinic_id) {
-      toast.error("Impossible d'identifier votre clinique (rôle doctor).");
-      return null;
-    }
-    return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
-  }
-
 
   // -------- Déclenchement biométrie (deeplink identify) --------
   const handleBiometrySuccess = async () => {
     try { //1) Résoudre le contexte médecin (hook OU fallback DB)
-    const ctxHook = doctorInfo?.clinic_id && doctorInfo?.doctor_id
+      let ctx = doctorInfo?.clinic_id && doctorInfo?.doctor_id
       ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
       : null;
 
-    let ctx = ctxHook;
     if (!ctx) {
-      const clerkId = user?.id || null;
-      const email = user?.primaryEmailAddress?.emailAddress || null;
-
-      let q = supabase
-        .from("clinic_staff")
-        .select("id, clinic_id, role, email, clerk_user_id")
-        .eq("role", "doctor")
-        .limit(1);
-
-      if (clerkId) q = q.eq("clerk_user_id", clerkId);
-      else if (email) q = q.eq("email", email);
-
-      const { data } = await q.maybeSingle();
-      if (data?.clinic_id) {
-        ctx = { clinicId: String(data.clinic_id), doctorId: String(data.id) };
-      }
+      ctx = await resolveDoctorContext();
     }
+    if (!ctx) return;
 
-    if (!ctx) {
-      toast.error("Contexte médecin introuvable (clinic_id / doctor_id).");
-      return;
-    }
-    
-    // 2) Créer un brouillon si possible (non bloquan)
+    //2) Brouillon (non bloquant)
     let id = consultationId;
     if (!id) {
       id = await ensureDraftConsultation(ctx);
     }
 
-    // 3) Mémoriser où revenir (si on a un id)
+    //3) Mémoriser où revenir (si on a un id)
     const returnPath = id
       ? `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(id)}`
       : `/multispecialist/doctor/new-consultation`;
     sessionStorage.setItem("fp:return", returnPath);
 
-  
-    // 4) Construire le deeplink (on passe consultationId seulement si l'on a)
+    //4) Construire le deeplink (on passe consultationId seulement si l'on a)
     const base = {
       mode: "identify" as const,
       clinicId: ctx.clinicId,
@@ -151,13 +144,13 @@ export default function NewActPage() {
       redirectOriginForPhone: getOriginForPhone(),
       redirectPath: "/fp-callback",
     };
+
     const { deeplink, intentUri } = id
       ? buildZKDeeplink({ ...base, consultationId: id })
       : buildZKDeeplink(base as any);
-
     console.log("[doctor identify] deeplink", deeplink, intentUri);
 
-    // 5)Bouton HTML simple : meme logique que le secretariat
+    //5) Bouton HTML simple : même logique que le secrétariat
     window.location.href = deeplink; 
     setTimeout(() => { window.location.href = intentUri; }, 900);
     } catch (e) {
@@ -165,6 +158,7 @@ export default function NewActPage() {
       toast.error("Erreur lors du lancement de la biométrie.");
     }
   };
+    
 
   useEffect(() => {
     const loadGptSuggestions = async () => {
