@@ -57,26 +57,34 @@ export default function NewActPage() {
     return "https://mediconnect-plus.com"; // domaine public
   }
 
-  const ensureDraftConsultation = useCallback(async () => {
-    if (consultationId) return consultationId;
-    if (!user?.id || !doctorInfo?.clinic_id) {
-      toast.error("Contexte médecin/clinique manquant");
-      return null;
-    }
-    const { data, error } = await supabase
-      .from("consultations")
-      .insert([{ doctor_id: user.id, clinic_id: doctorInfo.clinic_id, status: "draft" }])
-      .select("id")
-      .single();
+const ensureDraftConsultation = useCallback(async () => {
+  if (consultationId) return consultationId;
 
-    if (error || !data) {
-      console.error(error);
-      toast.error("Impossible de créer la consultation brouillon");
-      return null;
-    }
-    setConsultationId(data.id);
-    return data.id as string;
-  }, [consultationId, user?.id, doctorInfo?.clinic_id]);
+  if (!doctorInfo?.clinic_id || !doctorInfo?.doctor_id) {
+    toast.error("Contexte médecin/clinique manquant");
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("consultations")
+    .insert([
+      {
+        doctor_id: doctorInfo.doctor_id,
+        clinic_id: doctorInfo.clinic_id,
+        status: "draft",
+      },
+    ])
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    console.error(error);
+    toast.error("Impossible de créer la consultation brouillon");
+    return null;
+  }
+  setConsultationId(data.id);
+  return data.id as string;
+}, [consultationId, doctorInfo?.clinic_id, doctorInfo?.doctor_id]);
 
   // -------- Déclenchement biométrie (deeplink identify) --------
     const handleBiometrySuccess = async () => {
@@ -97,7 +105,7 @@ export default function NewActPage() {
       operatorId: String(doctorInfo.doctor_id),
       consultationId: id,                  // ← on le passe aussi ici
       redirectOriginForPhone: getOriginForPhone(),
-      redirectPath: "/fp-callback",
+      redirectPath: "/fp-callback?scope=doctor_specalist",
     });
 
     try {

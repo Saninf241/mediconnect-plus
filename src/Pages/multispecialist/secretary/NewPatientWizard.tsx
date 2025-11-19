@@ -526,7 +526,7 @@ export default function NewPatientWizard() {
                     operatorId: c.staffId,
                     patientId: pid,
                     redirectOriginForPhone: getOriginForPhone(),
-                    redirectPath: "/fp-callback",
+                    redirectPath: "/fp-callback?scope=secretary",
                   });
 
                   // mémoriser l’étape en cours (3) pour revenir au bon endroit

@@ -142,7 +142,7 @@ export default function NewConsultationPage() {
       clinicId: ctx.clinicId,
       operatorId: ctx.doctorId,
       redirectOriginForPhone: getOriginForPhone(),
-      redirectPath: "/fp-callback",
+      redirectPath: "/fp-callback?scope=doctor_multi",
     };
 
     const { deeplink, intentUri } = id
