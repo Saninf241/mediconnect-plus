@@ -436,7 +436,7 @@ export default function NewConsultationPage() {
                 {!!patientId && (
                   <Button
                     onClick={() => {
-                      const url = `/multispecialist/doctor/patients?focus=${encodeURIComponent(patientId)}&return=${encodeURIComponent(`/multispecialist/doctor/new-consultation?consultation_id=${consultationId}`)}`;
+                      const url = `/multispecialist/doctor/patients/${encodeURIComponent(patientId)}`;
                       window.open(url, "_blank", "noreferrer");
                     }}
                     className="border border-gray-300"
