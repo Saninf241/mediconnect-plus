@@ -95,6 +95,9 @@ const ensureDraftConsultation = useCallback(async () => {
       toast.error("Contexte médecin incomplet (clinic_id / doctor_id).");
       return;
     }
+    
+    const returnPath = `/doctor/new-act?consultation_id=${encodeURIComponent(id)}`;
+    sessionStorage.setItem("fp:return", returnPath);
 
     const { deeplink, intentUri } = buildZKDeeplink({
       mode: "identify",
@@ -104,9 +107,6 @@ const ensureDraftConsultation = useCallback(async () => {
       redirectOriginForPhone: getOriginForPhone(),
       redirectPath: "/fp-callback?scope=doctor_specalist",
     });
-
-    const returnPath = `/doctor/new-act?consultation_id=${encodeURIComponent(id)}`;
-    sessionStorage.setItem("fp:return", returnPath);
 
     try {
       window.location.href = deeplink;

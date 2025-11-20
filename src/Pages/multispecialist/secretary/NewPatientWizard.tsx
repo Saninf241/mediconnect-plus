@@ -520,6 +520,14 @@ export default function NewPatientWizard() {
                   const pid = await ensureDraftPatient();
                   const c = ctx ?? (await resolveSecretaryContext());
 
+                  // mémoriser l’étape en cours (3) pour revenir au bon endroit
+                  sessionStorage.setItem("wizard:returnStep", "3");
+
+                  // mémorise l'endroit où revenir après la capture
+                  sessionStorage.setItem("fp:return",
+                    window.location.pathname + window.location.search + window.location.hash
+                  );
+
                   const { deeplink, intentUri } = buildZKDeeplink({
                     mode: "enroll",
                     clinicId: c.clinicId,
@@ -528,14 +536,6 @@ export default function NewPatientWizard() {
                     redirectOriginForPhone: getOriginForPhone(),
                     redirectPath: "/fp-callback?scope=secretary",
                   });
-
-                  // mémoriser l’étape en cours (3) pour revenir au bon endroit
-                  sessionStorage.setItem("wizard:returnStep", "3");
-
-                  // mémorise l'endroit où revenir après la capture
-                  sessionStorage.setItem("fp:return",
-                    window.location.pathname + window.location.search + window.location.hash
-                  );
 
                   // ✅ un seul lancement + fallback
                   try {

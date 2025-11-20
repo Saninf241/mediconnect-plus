@@ -145,10 +145,15 @@ export default function NewConsultationPage() {
       redirectPath: "/fp-callback?scope=doctor_multi",
     };
 
-    const { deeplink, intentUri } = id
-      ? buildZKDeeplink({ ...base, consultationId: id })
-      : buildZKDeeplink(base as any);
-    console.log("[doctor identify] deeplink", deeplink, intentUri);
+    const { deeplink, intentUri } = 
+      buildZKDeeplink({ 
+        mode: "identify",
+        clinicId: ctx.clinicId,
+        operatorId: ctx.doctorId,
+        consultationId: id || undefined,
+        redirectOriginForPhone: getOriginForPhone(),
+        redirectPath: "/fp-callback?scope=doctor_multi",
+       });
 
     //5) Bouton HTML simple : même logique que le secrétariat
     window.location.href = deeplink; 

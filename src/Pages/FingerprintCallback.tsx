@@ -25,7 +25,7 @@ function computeBack(scope: string, stored: string | null): string {
     return "/doctor/new-act";
   }
 
-  // scope inconnu → on reste ultra sécure : secrétaire
+  // scope inconnu → on reste ultra sécure
   if (stored) return stored;
   return "/multispecialist/secretary/new";
 }
@@ -45,21 +45,36 @@ export default function FingerprintCallback() {
     const templateB64 = url.searchParams.get("template_b64") ||
                         url.searchParams.get("template_hash");
     const error       = url.searchParams.get("error");
-    const scope       = url.searchParams.get("scope") || "secretary";
+
+    const storedReturn = sessionStorage.getItem("fp:return");
+
+    // 1️⃣ Déduire le scope : paramètre ?scope=… OU préfixe de fp:return
+    let scope = url.searchParams.get("scope") || undefined;
+
+    if (!scope && storedReturn) {
+      if (storedReturn.startsWith("/multispecialist/doctor")) {
+        scope = "doctor_multi";
+      } else if (storedReturn.startsWith("/doctor")) {
+        scope = "doctor_specialist";
+      } else if (storedReturn.startsWith("/multispecialist/secretary")) {
+        scope = "secretary";
+      }
+    }
+    if (!scope) scope = "secretary"; // valeur par défaut
 
     console.log("[FP] callback URL =", url.toString());
     console.log("[FP] params:", { mode, status, found, patientId, userId, scope, error });
+    console.log("[FP] stored fp:return =", storedReturn);
 
     async function handleResult() {
+      const back = computeBack(scope!, storedReturn);
+      console.log("[FP] back destination =", back);
+
       if (!mode) {
-        setMessage("Paramètre 'mode' manquant.");
+        // On NE bouge pas de page, juste message (l'autre appel au callback fera le job)
+        setMessage("Paramètre 'mode' manquant (appel partiel).");
         return;
       }
-
-      const stored = sessionStorage.getItem("fp:return");
-      const back   = computeBack(scope, stored);
-
-      console.log("[FP] back destination =", back);
 
       if (mode === "enroll") {
         const ok = status === "captured" && !!patientId;
