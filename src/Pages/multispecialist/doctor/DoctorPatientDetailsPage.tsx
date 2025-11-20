@@ -18,8 +18,12 @@ type Consultation = {
   id: string;
   created_at: string;
   diagnosis?: string | null;
+  symptoms?: string | null;
   amount?: number | null;
   status?: string | null;
+  actes?: { type: string }[] | null;
+  medications?: string[] | null;
+  pdf_url?: string | null;
 };
 
 export default function DoctorPatientDetailsPage() {
@@ -31,7 +35,6 @@ export default function DoctorPatientDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  // URL de retour (depuis le bouton "Voir dossier patient")
   const returnUrl =
     searchParams.get("return") ||
     "/multispecialist/doctor/new-consultation";
@@ -63,10 +66,12 @@ export default function DoctorPatientDetailsPage() {
         );
       }
 
-      // 2) Consultations liées
+      // 2) Consultations (on récupère plus de champs)
       const { data: c, error: consError } = await supabase
         .from("consultations")
-        .select("id,created_at,diagnosis,amount,status")
+        .select(
+          "id,created_at,diagnosis,symptoms,amount,status,actes,medications,pdf_url"
+        )
         .eq("patient_id", id)
         .order("created_at", { ascending: false });
 
@@ -85,8 +90,7 @@ export default function DoctorPatientDetailsPage() {
     })();
   }, [id, searchParams]);
 
-  // ---------------- Utils d’affichage ----------------
-
+  // -------- Utils --------
   function computeAge(dateStr?: string | null): string {
     if (!dateStr) return "—";
     const d = new Date(dateStr);
@@ -122,10 +126,15 @@ export default function DoctorPatientDetailsPage() {
 
   const displayName =
     patient.full_name || patient.name || "Patient sans nom";
-
   const ageLabel = computeAge(patient.date_of_birth || null);
   const nbConsults = consultations.length;
   const lastConsult = consultations[0] || null;
+
+  // Actes formatés pour l’affichage
+  const lastActs =
+    (lastConsult?.actes as { type: string }[] | null) ?? [];
+
+  const lastMeds = lastConsult?.medications ?? [];
 
   return (
     <div className="p-6 space-y-6">
@@ -177,6 +186,80 @@ export default function DoctorPatientDetailsPage() {
         </div>
       )}
 
+      {/* Bloc "Dernière consultation" si au moins 1 */}
+      {lastConsult && (
+        <section className="p-4 bg-white rounded shadow space-y-3">
+          <h2 className="font-semibold mb-1">Dernière consultation</h2>
+          <p className="text-xs text-gray-500">
+            {new Date(lastConsult.created_at).toLocaleString()} —{" "}
+            {lastConsult.status || "statut inconnu"} —{" "}
+            {lastConsult.amount ? `${lastConsult.amount} FCFA` : "montant non renseigné"}
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <h3 className="font-semibold mb-1">Motif / diagnostic</h3>
+              <p className="text-gray-700">
+                {lastConsult.diagnosis || "Diagnostic non renseigné"}
+              </p>
+              {lastConsult.symptoms && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Symptômes : {lastConsult.symptoms}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-1">Actes réalisés</h3>
+              {lastActs.length === 0 && (
+                <p className="text-gray-500 text-sm">Aucun acte saisi.</p>
+              )}
+              {lastActs.length > 0 && (
+                <ul className="list-disc pl-4 text-gray-700">
+                  {lastActs.map((a, idx) => (
+                    <li key={idx}>{a.type}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-1">Médicaments</h3>
+              {(!lastMeds || lastMeds.length === 0) && (
+                <p className="text-gray-500 text-sm">Aucun médicament saisi.</p>
+              )}
+              {lastMeds && lastMeds.length > 0 && (
+                <ul className="list-disc pl-4 text-gray-700">
+                  {lastMeds.map((m, idx) => (
+                    <li key={idx}>{m}</li>
+                  ))}
+                </ul>
+              )}
+
+              {lastConsult.pdf_url && (
+                <a
+                  href={lastConsult.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 text-xs text-indigo-600 underline"
+                >
+                  Voir le rapport PDF complet
+                </a>
+              )}
+            </div>
+          </div>
+
+          <div className="text-right">
+            <Link
+              to={`/multispecialist/doctor/consultations/${lastConsult.id}`}
+              className="text-xs text-indigo-600 underline"
+            >
+              Ouvrir la fiche consultation détaillée
+            </Link>
+          </div>
+        </section>
+      )}
+
       {/* Deux colonnes : Identité / Historique */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Identité & assurance */}
@@ -200,7 +283,7 @@ export default function DoctorPatientDetailsPage() {
           <p>Antécédents : {patient.medical_history || "—"}</p>
         </div>
 
-        {/* Historique consultations */}
+        {/* Historique consultations (timeline simple) */}
         <div className="p-4 bg-white rounded shadow md:col-span-2">
           <h2 className="font-semibold mb-2">Historique des consultations</h2>
           <div className="divide-y">
