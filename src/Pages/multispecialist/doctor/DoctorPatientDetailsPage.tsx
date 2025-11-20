@@ -51,7 +51,7 @@ export default function DoctorPatientDetailsPage() {
       } = await supabase
         .from("patients")
         .select("*")
-        .eq("id", id)
+        .or(`id.eq.${id},patient_id.eq.${id}`)
         .maybeSingle();
 
       if (patientError) {
@@ -92,12 +92,18 @@ export default function DoctorPatientDetailsPage() {
     return (
       <div className="p-6 space-y-3">
         <h1 className="text-2xl font-bold mb-2">Dossier patient</h1>
-        <p>Patient introuvable pour l’ID : {id}</p>
+        <p className="text-gray-700">
+          Aucun patient trouvé pour l’ID :{" "}
+          <span className="font-mono text-blue-600">{id}</span>
+        </p>
         {errorText && (
           <p className="text-sm text-red-600 whitespace-pre-wrap">
             {errorText}
           </p>
         )}
+        <p className="text-sm text-gray-500">
+          (Vérifie que la colonne <code>id</code> ou <code>patient_id</code> contient bien cette valeur dans Supabase)
+        </p>
         <Link
           to={returnUrl}
           className="inline-block mt-4 px-4 py-2 rounded bg-blue-600 text-white"
