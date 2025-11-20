@@ -44,7 +44,7 @@ export default function MultispecialistDoctorLayout() {
           <Item to="dashboard" icon={Gauge} label="Dashboard" exact />
           <Item to="patients" icon={Users} label="Mes patients" />
           <Item to="new-consultation" icon={PlusSquare} label="Nouvelle consultation" />
-          <Item to="consultations/:id" icon={Stethoscope} label="Consultations" />
+          <Item to="consultations" icon={Stethoscope} label="Consultations" />
           <Item to="consultation-follow-up" icon={History} label="Suivi des consultations" />
           <Item to="performance" icon={Stethoscope} label="Performance" />
           <Item to="settings" icon={Settings} label="Paramètres" />
