@@ -51,7 +51,7 @@ export default function DoctorPatientDetailsPage() {
       } = await supabase
         .from("patients")
         .select("*")
-        .or(`id.eq.${id},patient_id.eq.${id}`)
+        .eq("id", id)
         .maybeSingle();
 
       if (patientError) {
