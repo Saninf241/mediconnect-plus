@@ -1,3 +1,4 @@
+// src/Pages/multispecialist/doctor/DoctorPatientDetailsPage.tsx
 import { useEffect, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
@@ -10,7 +11,7 @@ type Patient = {
   is_assured?: boolean | null;
   insurance_number?: string | null;
   medical_history?: string | null;
-  [key: string]: any; // pour ne pas crasher si d'autres colonnes existent
+  [key: string]: any;
 };
 
 type Consultation = {
@@ -22,13 +23,15 @@ type Consultation = {
 };
 
 export default function DoctorPatientDetailsPage() {
-  const { id } = useParams(); // patient_id
+  const { id } = useParams(); // patient_id depuis l’URL
   const [searchParams] = useSearchParams();
+
   const [patient, setPatient] = useState<Patient | null>(null);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
 
+  // URL de retour (depuis le bouton "Voir dossier patient")
   const returnUrl =
     searchParams.get("return") ||
     "/multispecialist/doctor/new-consultation";
@@ -44,11 +47,8 @@ export default function DoctorPatientDetailsPage() {
       setLoading(true);
       setErrorText(null);
 
-      // 1) Patient : on prend * pour éviter les erreurs de colonnes qui manquent
-      const {
-        data: p,
-        error: patientError,
-      } = await supabase
+      // 1) Patient
+      const { data: p, error: patientError } = await supabase
         .from("patients")
         .select("*")
         .eq("id", id)
@@ -57,15 +57,14 @@ export default function DoctorPatientDetailsPage() {
       if (patientError) {
         console.error("[DoctorPatientDetailsPage] patientError", patientError);
         setErrorText(
-          `Erreur chargement patient : ${patientError.message ?? "inconnue"}`
+          `Erreur chargement patient : ${
+            patientError.message ?? "inconnue"
+          }`
         );
       }
 
-      // 2) Consultations
-      const {
-        data: c,
-        error: consError,
-      } = await supabase
+      // 2) Consultations liées
+      const { data: c, error: consError } = await supabase
         .from("consultations")
         .select("id,created_at,diagnosis,amount,status")
         .eq("patient_id", id)
@@ -84,7 +83,20 @@ export default function DoctorPatientDetailsPage() {
       setConsultations((c as Consultation[]) || []);
       setLoading(false);
     })();
-  }, [id]);
+  }, [id, searchParams]);
+
+  // ---------------- Utils d’affichage ----------------
+
+  function computeAge(dateStr?: string | null): string {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return "—";
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+    return `${age} ans`;
+  }
 
   if (loading) return <div className="p-6">Chargement…</div>;
 
@@ -92,18 +104,12 @@ export default function DoctorPatientDetailsPage() {
     return (
       <div className="p-6 space-y-3">
         <h1 className="text-2xl font-bold mb-2">Dossier patient</h1>
-        <p className="text-gray-700">
-          Aucun patient trouvé pour l’ID :{" "}
-          <span className="font-mono text-blue-600">{id}</span>
-        </p>
+        <p>Aucun patient trouvé pour l’ID : {id}</p>
         {errorText && (
           <p className="text-sm text-red-600 whitespace-pre-wrap">
             {errorText}
           </p>
         )}
-        <p className="text-sm text-gray-500">
-          (Vérifie que la colonne <code>id</code> ou <code>patient_id</code> contient bien cette valeur dans Supabase)
-        </p>
         <Link
           to={returnUrl}
           className="inline-block mt-4 px-4 py-2 rounded bg-blue-600 text-white"
@@ -117,14 +123,36 @@ export default function DoctorPatientDetailsPage() {
   const displayName =
     patient.full_name || patient.name || "Patient sans nom";
 
+  const ageLabel = computeAge(patient.date_of_birth || null);
+  const nbConsults = consultations.length;
+  const lastConsult = consultations[0] || null;
+
   return (
     <div className="p-6 space-y-6">
+      {/* En-tête résumé */}
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{displayName}</h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-xs text-gray-500 mt-1">
             Dossier médical – ID : {patient.id}
           </p>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+            <span className="px-2 py-1 rounded-full bg-gray-100">
+              Âge : {ageLabel}
+            </span>
+            <span className="px-2 py-1 rounded-full bg-gray-100">
+              {patient.is_assured ? "Assuré" : "Non assuré"}
+            </span>
+            <span className="px-2 py-1 rounded-full bg-gray-100">
+              Consultations : {nbConsults}
+            </span>
+            {lastConsult && (
+              <span className="px-2 py-1 rounded-full bg-gray-100">
+                Dernière consultation :{" "}
+                {new Date(lastConsult.created_at).toLocaleDateString()}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-2">
@@ -149,8 +177,9 @@ export default function DoctorPatientDetailsPage() {
         </div>
       )}
 
+      {/* Deux colonnes : Identité / Historique */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Identité / résumé */}
+        {/* Identité & assurance */}
         <div className="p-4 bg-white rounded shadow space-y-2">
           <h2 className="font-semibold mb-2">Identité & assurance</h2>
           <p>
@@ -184,7 +213,7 @@ export default function DoctorPatientDetailsPage() {
             {consultations.map((c) => (
               <div
                 key={c.id}
-                className="py-2 flex items-center justify-between"
+                className="py-3 flex items-center justify-between"
               >
                 <div>
                   <div className="text-xs text-gray-500">
@@ -201,6 +230,12 @@ export default function DoctorPatientDetailsPage() {
                   <div className="font-semibold">
                     {c.amount ? `${c.amount} FCFA` : "—"}
                   </div>
+                  <Link
+                    to={`/multispecialist/doctor/consultations/${c.id}`}
+                    className="text-indigo-600 text-xs underline"
+                  >
+                    Voir la fiche
+                  </Link>
                 </div>
               </div>
             ))}
