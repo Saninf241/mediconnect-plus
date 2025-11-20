@@ -28,6 +28,7 @@ import PrivateRouteByRole from "./components/auth/PrivateRouteByRole";
 import Unauthorized from './Pages/Unauthorized';
 import NewPatientDoctorPage from './Pages/multispecialist/doctor/NewPatientDoctorPage';
 import ConsultationDoctorFollowUpPage from './Pages/multispecialist/doctor/ConsultationDoctorFollowUpPage';
+import ConsultationDoctorDetailsPage from './Pages/multispecialist/doctor/ConsultationDoctorDetailsPage';
 import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
 import DoctorPatientDetailsPage from "./Pages/multispecialist/doctor/DoctorPatientDetailsPage";
@@ -486,7 +487,8 @@ const renderLandingPage = () => {
       <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
       <Route path="settings" element={<SettingsDoctorPage />} />
-      <Route path="patient/:id" element={<DoctorPatientDetailsPage />} />
+      <Route path="patient/:id" element={<DoctorPatientsPage />} />
+      <Route path="consultations/:id" element={<ConsultationDoctorDetailsPage />} />
     </Route>
 
     {/* MULTISPECIALIST ADMIN */}

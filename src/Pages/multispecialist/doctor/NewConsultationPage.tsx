@@ -368,6 +368,23 @@ export default function NewConsultationPage() {
             Patient : {patientId ? '✅ patient identifié' : '❌ patient non identifié (sans empreinte)'}
           </p>
 
+          {patientId && (
+            <div className="flex items-center gap-3 mb-2">
+              <Button
+                onClick={() => {
+                  const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+                  
+                  const url = `/multispecialist/doctor/patients/${encodeURIComponent(patientId)}?return=${encodeURIComponent(currentUrl)}`;
+                  window.open(url, "_blank", "noreferrer");
+                }}
+                > 
+                Voir dossier patient
+                </Button>
+                <span className="text-xs text-gray-500"> S'il n'y a pas encore d'historique, le dossier affichera "dossier en cours de complétude"
+                </span>
+            </div>
+          )}
+
           {provisional && (
             <div className="p-3 rounded bg-yellow-50 border border-yellow-300 text-yellow-800">
               <div className="font-semibold">Tarif provisoire — droits à vérifier</div>
