@@ -189,55 +189,93 @@ export default function NewConsultationPage() {
     }
   };
 
-  const [searchParams] = useSearchParams();
+    const [searchParams] = useSearchParams();
 
-  useEffect(() => {
-    async function run() {
-      const cid = searchParams.get("consultation_id");
-      if (cid) setConsultationId(cid);
+      useEffect(() => {
+        (async () => {
+          const cid = searchParams.get("consultation_id");
+          if (cid) setConsultationId(cid);
 
-      const mode = searchParams.get("mode");
-      const found = searchParams.get("found");
-      const userId = searchParams.get("user_id");
-      const error = searchParams.get("error");
+          const mode     = searchParams.get("mode");
+          const found    = searchParams.get("found");
+          const userId   = searchParams.get("user_id");
+          const error    = searchParams.get("error");
 
-      if (mode === "identify") {
-        if (found === "true" && userId) {
-          setPatientId(userId);
-          setFingerprintMissing(false);
-          setStep("consultation");
-          toast.success("Patient reconnu ✅");
+          const idFound  = searchParams.get("id_found");
+          const idNot    = searchParams.get("id_not_found");
 
-          if (cid) {
-            try {
-              await supabase
-                .from("consultations")
-                .update({ status: "pending_rights", patient_id: userId })
-                .eq("id", cid);
-            } catch (e) {
-              console.error("Erreur update pending_rights:", e);
+          // 🔹 1) Cas "identify" classique (ancien flux)
+          if (mode === "identify") {
+            if (found === "true" && userId) {
+              setPatientId(userId);
+              setFingerprintMissing(false);
+              setStep("consultation");
+              toast.success("Patient reconnu ✅");
+
+              if (cid) {
+                try {
+                  await supabase
+                    .from("consultations")
+                    .update({
+                      status: "pending_rights",
+                      patient_id: userId,
+                      biometric_verified_at: new Date().toISOString(),
+                    })
+                    .eq("id", cid);
+                } catch (e) {
+                  console.error("Erreur update pending_rights:", e);
+                }
+              }
+            } else {
+              setPatientId(null);
+              setFingerprintMissing(true);
+              setStep("consultation");
+              toast.warn("Empreinte inconnue, poursuivre sans empreinte.");
+              if (error) console.warn("identify error:", error);
             }
           }
-        } else {
-          setPatientId(null);
-          setFingerprintMissing(true);
-          setStep("consultation");
-          toast.warn("Empreinte inconnue, poursuivre sans empreinte.");
-          if (error) console.warn("identify error:", error);
-        }
-      }
 
-      const notFound = searchParams.get("notfound");
-      if (notFound === "true") {
-        toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
-        setFingerprintMissing(true);
-        setStep("consultation");
-      }
-    }
+          // 🔹 2) Nouveau flux : retour du callback avec ?id_found=...
+          else if (idFound) {
+            setPatientId(idFound);
+            setFingerprintMissing(false);
+            setStep("consultation");
+            toast.success("Patient reconnu ✅");
 
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+            if (cid) {
+              try {
+                await supabase
+                  .from("consultations")
+                  .update({
+                    status: "pending_rights",
+                    patient_id: idFound,
+                    biometric_verified_at: new Date().toISOString(),
+                  })
+                  .eq("id", cid);
+              } catch (e) {
+                console.error("Erreur update pending_rights (id_found):", e);
+              }
+            }
+          }
+
+          // 🔹 3) Cas "non trouvé" (nouveau flux)
+          if (idNot === "1") {
+            toast.warn("Aucun patient correspondant à cette empreinte.");
+            setFingerprintMissing(true);
+            setStep("consultation");
+          }
+
+          // 🔹 4) Nettoyage de l'URL pour éviter les re-traitements au refresh
+          if (cid) {
+            const clean = window.location.pathname + `?consultation_id=${encodeURIComponent(cid)}`;
+            window.history.replaceState(null, "", clean);
+          } else {
+            const clean = window.location.pathname;
+            window.history.replaceState(null, "", clean);
+          }
+        })();
+        // ⚠️ on inclut searchParams pour réagir aux changements d'URL
+      }, [searchParams]);
 
   const handleBiometryFailure = async () => {
     const ctx = await resolveDoctorContext();
