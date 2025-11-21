@@ -220,8 +220,10 @@ export default function NewConsultationPage() {
         ? diagnosisCanvasRef.current?.getTrimmedCanvas().toDataURL()
         : null;
 
-    const hasSymptoms = (symptomsType === "text" && symptoms.trim()) || symptomsDrawn;
-    const hasDiagnosis = (diagnosisType === "text" && diagnosis.trim()) || diagnosisDrawn;
+    const hasSymptoms =
+      (symptomsType === "text" && symptoms.trim()) || symptomsDrawn;
+    const hasDiagnosis =
+      (diagnosisType === "text" && diagnosis.trim()) || diagnosisDrawn;
 
     if (!hasSymptoms) return toast.error("Indiquer symptômes");
     if (!hasDiagnosis) return toast.error("Indiquer diagnostic");
@@ -230,34 +232,38 @@ export default function NewConsultationPage() {
     if (isNaN(parsedAmount) || parsedAmount <= 0)
       return toast.error("Montant invalide");
 
+    // ✅ statut conforme à ton enum
     const targetStatus = provisional ? "sent" : "draft";
 
-    const { error } = await supabase
+    // ✅ payload uniquement avec colonnes EXISTANTES
+    const payload: any = {
+      patient_id: patientId, // null OK si sans empreinte
+      symptoms: symptomsType === "text" ? symptoms.trim() : null,
+      symptoms_drawn: symptomsDrawn,
+      diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
+      diagnosis_drawn: diagnosisDrawn,
+      amount: parsedAmount,
+      status: targetStatus,
+
+      // ✅ stockage simple et compatible
+      ccam_codes: acts.length ? acts : null,
+      prescription: medications.length ? medications.join("\n") : null,
+    };
+
+    const { data, error } = await supabase
       .from("consultations")
-      .update({
-        patient_id: patientId, // peut être null si sans empreinte => OK
-        symptoms: symptomsType === "text" ? symptoms.trim() : null,
-        symptoms_drawn: symptomsDrawn,
-        diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
-        diagnosis_drawn: diagnosisDrawn,
-        amount: parsedAmount,
-        // ✅ ta table a 'ccam_codes' / 'icd_codes' etc. PAS 'acts' JSON
-        // Donc on stocke en texte simple dans ccam_codes si tu veux,
-        // ou on laisse 'acts' si tu as créé un champ JSONB "acts".
-        // Ici je garde ta version stable :
-        acts: acts.map((a) => ({ type: a })),
-        medications,
-        fingerprint_missing: fingerprintMissing,
-        status: targetStatus,
-      })
-      .eq("id", consultationId); // ✅ consultationId est string ici (corrige erreur 3)
+      .update(payload)
+      .eq("id", consultationId)
+      .select("*")
+      .single();
 
     if (error) {
-      console.error(error);
-      toast.error("Erreur sauvegarde consultation");
+      console.error("[createConsultation] update error:", error);
+      toast.error(`Erreur sauvegarde consultation: ${error.message}`);
       return;
     }
 
+    console.log("[createConsultation] updated row:", data);
     toast.success("Consultation enregistrée");
     setStep("done");
   };
