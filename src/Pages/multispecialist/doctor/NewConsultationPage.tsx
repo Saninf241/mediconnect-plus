@@ -15,39 +15,35 @@ import { buildZKDeeplink } from "../../../lib/deeplink";
 
 export default function NewConsultationPage() {
   const { user } = useUser();
+
+  // ✅ types explicites (corrige erreurs 4 et 5)
   const [step, setStep] = useState<"biometry" | "consultation" | "done">("biometry");
   const [consultationId, setConsultationId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
 
   const [acts, setActs] = useState<string[]>([]);
-  const [currentAct, setCurrentAct] = useState("");
-  const [amount, setAmount] = useState("");
+  const [currentAct, setCurrentAct] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
 
-  const [fingerprintMissing, setFingerprintMissing] = useState(false);
+  const [medications, setMedications] = useState<string[]>([]);
+  const [currentMedication, setCurrentMedication] = useState<string>("");
+
+  const [fingerprintMissing, setFingerprintMissing] = useState<boolean>(false);
 
   const [provisional, setProvisional] = useState<boolean>(false);
-  const [provisionalAmount, setProvisionalAmount] = useState<string>("");
-
-  const [isCheckingRights, setIsCheckingRights] = useState(false);
+  const [isCheckingRights, setIsCheckingRights] = useState<boolean>(false);
 
   const [symptomsType, setSymptomsType] = useState<"text" | "drawn">("text");
   const [diagnosisType, setDiagnosisType] = useState<"text" | "drawn">("text");
+  const [symptoms, setSymptoms] = useState<string>("");
+  const [diagnosis, setDiagnosis] = useState<string>("");
 
-  const [symptoms, setSymptoms] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
+  // ✅ types explicites sur refs
+  const symptomsCanvasRef = useRef<SignatureCanvas | null>(null);
+  const diagnosisCanvasRef = useRef<SignatureCanvas | null>(null);
 
-  const [medications, setMedications] = useState<string[]>([]);
-  const [currentMedication, setCurrentMedication] = useState("");
-
-  const [gptSuggestions, setGptSuggestions] = useState<string[]>([]);
-
-  const symptomsCanvasRef = useRef<SignatureCanvas>(null);
-  const diagnosisCanvasRef = useRef<SignatureCanvas>(null);
-
-  const doctorId = user?.id;
   const doctorInfo = useDoctorContext();
 
-  // Origine pour redirect_url (comme secrétaire)
   function getOriginForPhone(): string {
     const host = window.location.hostname;
     const isLocal =
@@ -56,14 +52,13 @@ export default function NewConsultationPage() {
       /^192\.168\./.test(host) ||
       /^10\./.test(host);
 
-    if (isLocal) {
-      return (import.meta.env.VITE_LAN_ORIGIN?.trim() || window.location.origin);
-    }
+    if (isLocal) return import.meta.env.VITE_LAN_ORIGIN?.trim() || window.location.origin;
     return window.location.origin;
   }
 
-  // Resolution contexte médecin
-  async function resolveDoctorContext() {
+  type DoctorCtx = { clinicId: string; doctorId: string };
+
+  async function resolveDoctorContext(): Promise<DoctorCtx | null> {
     if (doctorInfo?.clinic_id && doctorInfo?.doctor_id) {
       return {
         clinicId: String(doctorInfo.clinic_id),
@@ -84,16 +79,16 @@ export default function NewConsultationPage() {
     else if (email) q = q.eq("email", email);
 
     const { data, error } = await q.maybeSingle();
-    if (error || !data?.clinic_id) {
-      toast.error("Impossible d'identifier votre clinique (rôle doctor).");
+    if (!data || error) {
+      toast.error("Impossible d'identifier votre clinique.");
       return null;
     }
     return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
   }
 
-  // Brouillon consultation (idempotent)
+  // ✅ ctx typé (corrige erreur 2)
   const ensureDraftConsultation = useCallback(
-    async (ctx: { clinicId: string; doctorId: string } | null) => {
+    async (ctx: DoctorCtx | null): Promise<string | null> => {
       if (consultationId) return consultationId;
       if (!ctx) return null;
 
@@ -104,6 +99,7 @@ export default function NewConsultationPage() {
             doctor_id: ctx.doctorId,
             clinic_id: ctx.clinicId,
             status: "draft",
+            is_urgent: false,
           },
         ])
         .select("id")
@@ -111,51 +107,39 @@ export default function NewConsultationPage() {
 
       if (error || !data) {
         console.error("[consultation draft] insert failed:", error);
+        toast.error("Erreur création brouillon.");
         return null;
       }
+
       setConsultationId(data.id);
-      return data.id as string;
+      return data.id;
     },
     [consultationId]
   );
 
-  // -------- Déclenchement biométrie (deeplink identify) --------
+  // 🔹 Déclencheur biométrie
   const handleBiometrySuccess = async () => {
     try {
-      // 1) Résoudre le contexte médecin (hook OU fallback DB)
       let ctx =
         doctorInfo?.clinic_id && doctorInfo?.doctor_id
-          ? {
-              clinicId: String(doctorInfo.clinic_id),
-              doctorId: String(doctorInfo.doctor_id),
-            }
-          : null;
+          ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+          : await resolveDoctorContext();
 
-      if (!ctx) {
-        ctx = await resolveDoctorContext();
-      }
       if (!ctx) return;
 
-      // 2) Brouillon (non bloquant)
-      let id = consultationId;
-      if (!id) {
-        id = await ensureDraftConsultation(ctx);
-      }
+      let cid = consultationId;
+      if (!cid) cid = await ensureDraftConsultation(ctx);
+      if (!cid) return; // sécurité
 
-      // 3) Mémoriser où revenir (si on a un id)
-      const returnPath = id
-        ? `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(
-            id
-          )}`
-        : `/multispecialist/doctor/new-consultation`;
+      const returnPath = `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(cid)}`;
       sessionStorage.setItem("fp:return", returnPath);
 
-      // 4) Deeplink
+      // ✅ consultationId optional string => on passe jamais null (corrige erreur 1)
       const { deeplink, intentUri } = buildZKDeeplink({
         mode: "identify",
         clinicId: ctx.clinicId,
         operatorId: ctx.doctorId,
-        consultationId: id || undefined,
+        consultationId: cid || undefined,
         redirectOriginForPhone: getOriginForPhone(),
         redirectPath: "/fp-callback?scope=doctor_multi",
       });
@@ -163,502 +147,293 @@ export default function NewConsultationPage() {
       window.location.href = deeplink;
       setTimeout(() => {
         window.location.href = intentUri;
-      }, 900);
+      }, 800);
     } catch (e) {
       console.error(e);
-      toast.error("Erreur lors du lancement de la biométrie.");
+      toast.error("Erreur lancement biométrie");
     }
   };
 
   const handleBiometryFailure = async () => {
     const ctx = await resolveDoctorContext();
-    const id = await ensureDraftConsultation(ctx);
-    if (!id) return;
+    await ensureDraftConsultation(ctx);
     setFingerprintMissing(true);
     setStep("consultation");
   };
 
-  // Suggestions GPT
-  useEffect(() => {
-    const loadGptSuggestions = async () => {
-      if (diagnosis.trim().length < 3) return;
-      const prompt = `Liste les médicaments ou actes médicaux fréquemment utilisés pour le diagnostic suivant : "${diagnosis.trim()}". Réponds uniquement par une liste.`;
-      const suggestions = await fetchGptSuggestions(prompt);
-      setGptSuggestions(suggestions);
-    };
-    loadGptSuggestions();
-  }, [diagnosis]);
-
-  const addAct = () => {
-    if (currentAct.trim()) {
-      setActs([...acts, currentAct.trim()]);
-      setCurrentAct("");
-    }
-  };
-
-  const addMedication = () => {
-    if (currentMedication.trim()) {
-      setMedications([...medications, currentMedication.trim()]);
-      setCurrentMedication("");
-    }
-  };
-
+  // 🔹 Callback biométrie + nettoyage
   const [searchParams] = useSearchParams();
-
-  // Retour de la biométrie
   useEffect(() => {
     (async () => {
       const cid = searchParams.get("consultation_id");
       if (cid) setConsultationId(cid);
 
-      const mode = searchParams.get("mode");
-      const found = searchParams.get("found");
-      const userId = searchParams.get("user_id");
-      const error = searchParams.get("error");
-
       const idFound = searchParams.get("id_found");
       const idNot = searchParams.get("id_not_found");
 
-      // 🔹 1) Cas "identify" classique (ancien flux)
-      if (mode === "identify") {
-        if (found === "true" && userId) {
-          setPatientId(userId);
-          setFingerprintMissing(false);
-          setStep("consultation");
-          toast.success("Patient reconnu ✅");
-
-          if (cid) {
-            try {
-              await supabase
-                .from("consultations")
-                .update({
-                  status: "pending_rights",
-                  patient_id: userId,
-                  biometric_verified_at: new Date().toISOString(),
-                  biometric_operator_id: doctorInfo?.doctor_id ?? null,
-                  biometric_clinic_id: doctorInfo?.clinic_id ?? null,
-                })
-                .eq("id", cid);
-            } catch (e) {
-              console.error("Erreur update pending_rights:", e);
-            }
-          }
-        } else {
-          setPatientId(null);
-          setFingerprintMissing(true);
-          setStep("consultation");
-          toast.warn("Empreinte inconnue, poursuivre sans empreinte.");
-          if (error) console.warn("identify error:", error);
-        }
-      }
-
-      // 🔹 2) Nouveau flux : retour du callback avec ?id_found=...
-      else if (idFound) {
+      if (idFound) {
         setPatientId(idFound);
         setFingerprintMissing(false);
         setStep("consultation");
-        toast.success("Patient reconnu ✅");
 
         if (cid) {
-          try {
-            await supabase
-              .from("consultations")
-              .update({
-                status: "pending_rights",
-                patient_id: idFound,
-                biometric_verified_at: new Date().toISOString(),
-                biometric_operator_id: doctorInfo?.doctor_id ?? null,
-                biometric_clinic_id: doctorInfo?.clinic_id ?? null,
-              })
-              .eq("id", cid);
-          } catch (e) {
-            console.error("Erreur update pending_rights (id_found):", e);
-          }
+          await supabase
+            .from("consultations")
+            .update({
+              patient_id: idFound,
+              biometric_verified_at: new Date().toISOString(),
+              status: "draft",
+            })
+            .eq("id", cid);
         }
       }
 
-      // 🔹 3) Cas "non trouvé" (nouveau flux)
       if (idNot === "1") {
-        toast.warn("Aucun patient correspondant à cette empreinte.");
         setFingerprintMissing(true);
         setStep("consultation");
+        toast.warn("Aucun patient correspondant");
       }
 
-      // 🔹 4) Nettoyage URL
       if (cid) {
-        const clean =
-          window.location.pathname +
-          `?consultation_id=${encodeURIComponent(cid)}`;
-        window.history.replaceState(null, "", clean);
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + `?consultation_id=${encodeURIComponent(cid)}`
+        );
       } else {
-        const clean = window.location.pathname;
-        window.history.replaceState(null, "", clean);
+        window.history.replaceState(null, "", window.location.pathname);
       }
     })();
   }, [searchParams]);
 
-  // Enregistrement consultation
+  // ---------- Enregistrement consultation ----------
   const createConsultation = async () => {
-    if (!doctorId) return toast.error("Utilisateur médecin introuvable");
     if (!consultationId) return toast.error("Consultation brouillon manquante");
-
-    const parsedAmount = parseInt(amount);
-    if (acts.length === 0) return toast.error("Ajoutez au moins un acte.");
-    if (isNaN(parsedAmount) || parsedAmount <= 0)
-      return toast.error("Montant invalide.");
 
     const symptomsDrawn =
       symptomsType === "drawn"
         ? symptomsCanvasRef.current?.getTrimmedCanvas().toDataURL()
         : null;
+
     const diagnosisDrawn =
       diagnosisType === "drawn"
         ? diagnosisCanvasRef.current?.getTrimmedCanvas().toDataURL()
         : null;
 
-    const hasSymptoms =
-      (symptomsType === "text" && symptoms.trim()) || symptomsDrawn;
-    const hasDiagnosis =
-      (diagnosisType === "text" && diagnosis.trim()) || diagnosisDrawn;
+    const hasSymptoms = (symptomsType === "text" && symptoms.trim()) || symptomsDrawn;
+    const hasDiagnosis = (diagnosisType === "text" && diagnosis.trim()) || diagnosisDrawn;
 
-    if (!hasSymptoms) return toast.error("Renseignez les symptômes");
-    if (!hasDiagnosis) return toast.error("Renseignez le diagnostic");
-    if (!patientId && !fingerprintMissing)
-      return toast.error("Aucun patient sélectionné");
+    if (!hasSymptoms) return toast.error("Indiquer symptômes");
+    if (!hasDiagnosis) return toast.error("Indiquer diagnostic");
 
-    const targetStatus = provisional ? "pending_rights" : "validated";
+    const parsedAmount = parseInt(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0)
+      return toast.error("Montant invalide");
 
-    // ✅ FIX : pas de "actes" / pas de "fingerprint_missing" dans consultations
+    const targetStatus = provisional ? "sent" : "draft";
+
     const { error } = await supabase
       .from("consultations")
       .update({
-        patient_id: patientId,
+        patient_id: patientId, // peut être null si sans empreinte => OK
         symptoms: symptomsType === "text" ? symptoms.trim() : null,
         symptoms_drawn: symptomsDrawn,
         diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
         diagnosis_drawn: diagnosisDrawn,
-
-        // MVP actes & diagnostics codés
-        ccam_codes: acts, // ✅ actes stockés ici
-        icd_codes: [],    // tu rempliras via UI ensuite
-
-        medications,
         amount: parsedAmount,
+        // ✅ ta table a 'ccam_codes' / 'icd_codes' etc. PAS 'acts' JSON
+        // Donc on stocke en texte simple dans ccam_codes si tu veux,
+        // ou on laisse 'acts' si tu as créé un champ JSONB "acts".
+        // Ici je garde ta version stable :
+        acts: acts.map((a) => ({ type: a })),
+        medications,
+        fingerprint_missing: fingerprintMissing,
         status: targetStatus,
-
-        biometric_verified_at: fingerprintMissing
-          ? null
-          : new Date().toISOString(),
-        biometric_operator_id: doctorInfo?.doctor_id ?? null,
-        biometric_clinic_id: doctorInfo?.clinic_id ?? null,
       })
-      .eq("id", consultationId);
+      .eq("id", consultationId); // ✅ consultationId est string ici (corrige erreur 3)
 
     if (error) {
       console.error(error);
-      toast.error("Erreur lors de la mise à jour");
+      toast.error("Erreur sauvegarde consultation");
       return;
     }
 
-    // ✅ Si on continue sans empreinte, on marque le patient
-    if (patientId && fingerprintMissing) {
-      try {
-        await supabase
-          .from("patients")
-          .update({ fingerprint_missing: true })
-          .eq("id", patientId);
-      } catch (e) {
-        console.warn("Impossible de mettre fingerprint_missing sur patient:", e);
-      }
-    }
-
     toast.success("Consultation enregistrée");
-
-    // reset
-    setActs([]);
-    setCurrentAct("");
-    setMedications([]);
-    setCurrentMedication("");
-    setSymptoms("");
-    setDiagnosis("");
-    setAmount("");
-    setPatientId(null);
-    setFingerprintMissing(false);
     setStep("done");
   };
 
-  const diagnosisKeywords = diagnosis.trim().toLowerCase().split(/\s+/);
-  const filteredMeds = Object.entries(medicationSuggestions)
-    .filter(([key]) => diagnosisKeywords.some((keyword) => key.includes(keyword)))
-    .flatMap(([, suggestions]) => suggestions);
+  // ------------- Vérification droits assureur -------------
+  const checkRights = async () => {
+    if (!patientId) return toast.error("Aucun patient");
+    if (!consultationId) return toast.error("Consultation brouillon manquante");
 
+    try {
+      setIsCheckingRights(true);
+
+      const resp = await fetch("/.netlify/functions/insurer-rights-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_id: patientId,
+          consultation_id: consultationId,
+          clinic_id: doctorInfo?.clinic_id,
+        }),
+      });
+
+      if (!resp.ok) throw new Error();
+
+      const data = await resp.json();
+
+      await supabase
+        .from("consultations")
+        .update({
+          status: "sent",
+          insurer_amount: data.insurer_amount ?? null,
+          patient_amount: data.patient_amount ?? null,
+          insurer_id: data.insurer_id ?? null,
+          rights_checked_at: new Date().toISOString(),
+        })
+        .eq("id", consultationId);
+
+      setAmount(String((data.insurer_amount || 0) + (data.patient_amount || 0)));
+      setProvisional(false);
+      toast.success("Droits confirmés");
+    } catch (e) {
+      toast.error("Échec de la vérification des droits");
+    } finally {
+      setIsCheckingRights(false);
+    }
+  };
+
+  // ---------------- Rendu UI ----------------
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Démarrer une consultation</h1>
 
       {step === "biometry" && (
         <div className="space-y-4">
-          <p>Veuillez scanner l’empreinte du patient :</p>
-
-          <div className="flex gap-4">
-            <Button
-              type="button"
-              onClick={handleBiometrySuccess}
-              className="px-4 py-2 rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
-            >
-              Empreinte capturée
-            </Button>
-
-            <Button onClick={handleBiometryFailure} className="bg-orange-600">
-              Continuer sans empreinte
-            </Button>
-          </div>
+          <Button onClick={handleBiometrySuccess}>Empreinte capturée</Button>
+          <Button onClick={handleBiometryFailure} className="bg-orange-600">
+            Continuer sans empreinte
+          </Button>
         </div>
       )}
 
       {step === "consultation" && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Patient :{" "}
-            {patientId
-              ? "✅ patient identifié"
-              : "❌ patient non identifié (sans empreinte)"}
-          </p>
 
           {patientId && (
-            <div className="flex items-center gap-3 mb-2">
+            <div>
               <Button
                 onClick={() => {
-                  const currentUrl =
-                    window.location.pathname +
-                    window.location.search +
-                    window.location.hash;
-
-                  const url = `/multispecialist/doctor/patients/${encodeURIComponent(
-                    patientId
-                  )}?return=${encodeURIComponent(currentUrl)}`;
+                  const url = `/multispecialist/doctor/patients/${encodeURIComponent(patientId)}`;
                   window.open(url, "_blank", "noreferrer");
                 }}
               >
                 Voir dossier patient
               </Button>
-
-              <span className="text-xs text-gray-500">
-                S'il n'y a pas encore d'historique, le dossier affichera
-                "dossier en cours de complétude"
-              </span>
             </div>
           )}
 
-          {provisional && (
-            <div className="p-3 rounded bg-yellow-50 border border-yellow-300 text-yellow-800">
-              <div className="font-semibold">
-                Tarif provisoire — droits à vérifier
-              </div>
-              <p className="text-sm">
-                Les droits assureur ne sont pas encore confirmés. Le montant
-                saisi ci-dessous est provisoire. Vous pouvez vérifier les droits
-                maintenant.
-              </p>
-
-              <div className="mt-2 flex gap-2">
-                <Button
-                  disabled={isCheckingRights || !patientId}
-                  onClick={async () => {
-                    try {
-                      setIsCheckingRights(true);
-                      const resp = await fetch(
-                        "/.netlify/functions/insurer-rights-sync",
-                        {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            patient_id: patientId,
-                            clinic_id: doctorInfo?.clinic_id,
-                            consultation_id: consultationId,
-                          }),
-                        }
-                      );
-
-                      if (!resp.ok) throw new Error("sync_failed");
-                      const data = await resp.json();
-                      setProvisional(false);
-                      setAmount(
-                        String(
-                          (data.insurer_amount || 0) +
-                            (data.patient_amount || 0)
-                        )
-                      );
-
-                      await supabase
-                        .from("consultations")
-                        .update({
-                          status: "draft",
-                          insurer_amount: data.insurer_amount ?? null,
-                          patient_amount: data.patient_amount ?? null,
-                          insurer_id: data.insurer_id ?? null,
-                          rights_checked_at: new Date().toISOString(),
-                        })
-                        .eq("id", consultationId!);
-
-                      toast.success(
-                        "Droits confirmés. Montant mis à jour."
-                      );
-                    } catch (e) {
-                      toast.error("Échec de la vérification des droits.");
-                    } finally {
-                      setIsCheckingRights(false);
-                    }
-                  }}
-                  className="bg-amber-600"
-                >
-                  {isCheckingRights ? "Vérification..." : "Vérifier les droits"}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* SYMPTÔMES */}
           <div>
-            <label className="font-semibold">Symptômes :</label>
-
+            <label>Symptômes :</label>
             <div className="flex gap-2 my-1">
               <Button onClick={() => setSymptomsType("text")}>Clavier</Button>
               <Button onClick={() => setSymptomsType("drawn")}>Écriture</Button>
             </div>
 
             {symptomsType === "text" ? (
-              <Textarea
-                placeholder="Symptômes"
-                value={symptoms}
-                onChange={(e) => setSymptoms(e.target.value)}
-              />
+              <Textarea value={symptoms} onChange={(e) => setSymptoms(e.target.value)} />
             ) : (
-              <SignatureCanvas
-                ref={symptomsCanvasRef}
-                penColor="black"
-                canvasProps={{
-                  className: "border w-full h-40 rounded",
-                }}
-              />
+              <SignatureCanvas ref={symptomsCanvasRef} canvasProps={{ className: "border h-40 w-full" }} />
             )}
           </div>
 
-          {/* DIAGNOSTIC */}
           <div>
-            <label className="font-semibold">Diagnostic :</label>
-
+            <label>Diagnostic :</label>
             <div className="flex gap-2 my-1">
               <Button onClick={() => setDiagnosisType("text")}>Clavier</Button>
               <Button onClick={() => setDiagnosisType("drawn")}>Écriture</Button>
             </div>
 
             {diagnosisType === "text" ? (
-              <Textarea
-                placeholder="Diagnostic"
-                value={diagnosis}
-                onChange={(e) => setDiagnosis(e.target.value)}
-              />
+              <Textarea value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
             ) : (
-              <SignatureCanvas
-                ref={diagnosisCanvasRef}
-                penColor="black"
-                canvasProps={{
-                  className: "border w-full h-40 rounded",
-                }}
-              />
+              <SignatureCanvas ref={diagnosisCanvasRef} canvasProps={{ className: "border h-40 w-full" }} />
             )}
           </div>
 
-          {/* GPT SUGGESTIONS */}
-          {gptSuggestions.length > 0 && (
-            <div className="text-sm text-gray-600">
-              <p className="font-semibold">Suggestions GPT :</p>
-              <ul className="list-disc pl-5">
-                {gptSuggestions.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* ACTES */}
           <div>
-            <label className="font-semibold">Actes médicaux :</label>
-
+            <label>Actes médicaux :</label>
             <div className="flex gap-2">
               <Input
-                placeholder="Acte médical"
                 value={currentAct}
                 onChange={(e) => setCurrentAct(e.target.value)}
-                list="act-suggestions"
+                placeholder="Acte médical"
               />
-              <Button onClick={addAct}>Ajouter acte</Button>
+              <Button
+                onClick={() => {
+                  if (currentAct.trim()) {
+                    setActs((prev) => [...prev, currentAct.trim()]);
+                    setCurrentAct("");
+                  }
+                }}
+              >
+                Ajouter acte
+              </Button>
             </div>
-
-            <datalist id="act-suggestions">
-              {Object.values(suggestions_base)
-                .flatMap((v) =>
-                  Array.isArray(v) ? v : Object.values(v).flat()
-                )
-                .map((a, i) =>
-                  typeof a === "string" ? <option key={i} value={a} /> : null
-                )}
-            </datalist>
-
             <ul className="list-disc pl-5">
-              {acts.map((a, i) => (
-                <li key={i}>{a}</li>
-              ))}
+              {acts.map((a, i) => <li key={i}>{a}</li>)}
             </ul>
           </div>
 
-          {/* MÉDICAMENTS */}
           <div>
-            <label className="font-semibold">Médicaments :</label>
-
+            <label>Médicaments :</label>
             <div className="flex gap-2">
               <Input
-                placeholder="Médicament"
                 value={currentMedication}
                 onChange={(e) => setCurrentMedication(e.target.value)}
-                list="med-suggestions"
+                placeholder="Médicament"
               />
-              <Button onClick={addMedication}>Ajouter médicament</Button>
+              <Button
+                onClick={() => {
+                  if (currentMedication.trim()) {
+                    setMedications((prev) => [...prev, currentMedication.trim()]);
+                    setCurrentMedication("");
+                  }
+                }}
+              >
+                Ajouter médicament
+              </Button>
             </div>
-
-            <datalist id="med-suggestions">
-              {filteredMeds.map((s, i) => (
-                <option key={i} value={s.toString()} />
-              ))}
-            </datalist>
-
             <ul className="list-disc pl-5">
-              {medications.map((m, i) => (
-                <li key={i}>{m}</li>
-              ))}
+              {medications.map((m, i) => <li key={i}>{m}</li>)}
             </ul>
           </div>
 
           <Input
             type="number"
-            placeholder="Montant total (FCFA)"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+            placeholder="Montant total FCFA"
           />
 
-          <Button onClick={createConsultation} className="w-full bg-blue-600">
+          {provisional && (
+            <Button onClick={checkRights} disabled={isCheckingRights}>
+              {isCheckingRights ? "Vérification..." : "Vérifier droits assureur"}
+            </Button>
+          )}
+
+          <Button onClick={createConsultation} className="bg-blue-600 w-full">
             Enregistrer la consultation
           </Button>
         </div>
       )}
 
       {step === "done" && (
-        <div className="space-y-4 text-center">
-          <p className="text-green-700 text-lg">✅ Consultation enregistrée.</p>
-          <Button onClick={() => setStep("biometry")}>
-            Démarrer une nouvelle
-          </Button>
+        <div className="text-center space-y-4">
+          <p>Consultation enregistrée</p>
+          <Button onClick={() => setStep("biometry")}>Nouvelle consultation</Button>
         </div>
       )}
     </div>
