@@ -176,35 +176,47 @@ function SiteFooter() {
 
 
 export default function App() {
-  const { isLoaded } = useUser();
+  const { isLoaded, isSignedIn } = useUser();
   const { getToken } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('doctor');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("doctor");
   const [error, setError] = useState<string | null>(null);
 
+  // ✅ Sync Clerk JWT -> Supabase headers
   useEffect(() => {
-  if (!isLoaded) return; 
-  let mounted = true;
-  const syncToken = async () => {
-    try {
-      // ⚠️ crée un JWT Template "supabase" dans Clerk (Dashboard → JWT Templates)
-      const token = await getToken({ template: "supabase" });
-      if (mounted) attachClerkToken(token);
-    } catch {
-      // Pas de session Clerk → pas d’Authorization header
-      if (mounted) attachClerkToken(null);
-    }
-  };
+    if (!isLoaded) return;
 
-  syncToken();
-  // Re-synchroniser le token avant son expiry (~1h)
-  const id = setInterval(syncToken, 55 * 60 * 1000);
-  return () => { mounted = false; clearInterval(id); };
-}, [getToken]);
+    let mounted = true;
 
+    const syncToken = async () => {
+      try {
+        if (!isSignedIn) {
+          if (mounted) attachClerkToken(null);
+          return;
+        }
+
+        // JWT template "supabase" côté Clerk
+        const token = await getToken({ template: "supabase" });
+        if (mounted) attachClerkToken(token || null);
+      } catch (e) {
+        console.warn("[Clerk→Supabase] token sync failed", e);
+        if (mounted) attachClerkToken(null);
+      }
+    };
+
+    syncToken();
+
+    // refresh périodique (token ~1h)
+    const id = setInterval(syncToken, 55 * 60 * 1000);
+
+    return () => {
+      mounted = false;
+      clearInterval(id);
+    };
+  }, [isLoaded, isSignedIn, getToken]);
 
   if (!isLoaded) {
     return (
@@ -215,17 +227,15 @@ export default function App() {
   }
 
   function SignOutPage() {
-  const { signOut } = useClerk();
-  const navigate = useNavigate();
+    const { signOut } = useClerk();
+    const navigate = useNavigate();
+    React.useEffect(() => {
+      signOut().then(() => navigate("/"));
+    }, [signOut, navigate]);
+    return <div className="p-4">Déconnexion…</div>;
+  }
 
-  React.useEffect(() => {
-    signOut().then(() => navigate("/"));
-  }, [signOut, navigate]);
-
-  return <div className="p-4">Déconnexion…</div>;
-}
-
-const renderLandingPage = () => {
+  const renderLandingPage = () => {
   const go = (to: string) => navigate(`/sign-in?to=${encodeURIComponent(to)}`);
 
   return (
