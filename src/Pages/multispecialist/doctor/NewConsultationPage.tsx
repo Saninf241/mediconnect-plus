@@ -163,45 +163,81 @@ export default function NewConsultationPage() {
 
   // 🔹 Callback biométrie + nettoyage
   const [searchParams] = useSearchParams();
+
   useEffect(() => {
     (async () => {
-      const cid = searchParams.get("consultation_id");
-      if (cid) setConsultationId(cid);
+      const urlCid     = searchParams.get("consultation_id");
+      const urlIdFound = searchParams.get("id_found");
+      const urlIdNot   = searchParams.get("id_not_found");
 
-      const idFound = searchParams.get("id_found");
-      const idNot = searchParams.get("id_not_found");
+      // 🔹 Lecture de fp:last (set par FingerprintCallback)
+      let last: any = null;
+      try {
+        const raw = sessionStorage.getItem("fp:last");
+        if (raw) last = JSON.parse(raw);
+      } catch {}
 
-      if (idFound) {
-        setPatientId(idFound);
+      const lastIsIdentify =
+        last &&
+        last.type === "identify" &&
+        last.ok === true &&
+        !!last.patient_id;
+
+      // 🔹 Choix final des IDs (URL prioritaire, sinon backup fp:last)
+      const finalPatientId =
+        urlIdFound || (lastIsIdentify ? last.patient_id : null);
+
+      const finalConsultationId =
+        urlCid || (lastIsIdentify ? last.consultation_id || null : null);
+
+      if (finalConsultationId) {
+        setConsultationId(finalConsultationId);
+      }
+
+      if (finalPatientId) {
+        // ✅ Patient reconnu → on passe en étape consultation
+        setPatientId(finalPatientId);
         setFingerprintMissing(false);
         setStep("consultation");
 
-        if (cid) {
-          await supabase
-            .from("consultations")
-            .update({
-              patient_id: idFound,
-              biometric_verified_at: new Date().toISOString(),
-              status: "draft",
-            })
-            .eq("id", cid);
+        if (finalConsultationId) {
+          try {
+            await supabase
+              .from("consultations")
+              .update({
+                patient_id: finalPatientId,
+                biometric_verified_at: new Date().toISOString(),
+                status: "draft", // on reste en brouillon tant que non envoyé à l'assureur
+              })
+              .eq("id", finalConsultationId);
+          } catch (e) {
+            console.error("[NewConsultation] update après identify:", e);
+          }
         }
-      }
-
-      if (idNot === "1") {
+      } else if (urlIdNot === "1") {
+        // ❌ Empreinte non trouvée
         setFingerprintMissing(true);
         setStep("consultation");
-        toast.warn("Aucun patient correspondant");
+        toast.warn("Aucun patient correspondant.");
       }
 
-      if (cid) {
+      // 🔹 Nettoyage de l’URL (on garde au pire consultation_id)
+      if (urlCid) {
         window.history.replaceState(
           null,
           "",
-          window.location.pathname + `?consultation_id=${encodeURIComponent(cid)}`
+          window.location.pathname +
+            `?consultation_id=${encodeURIComponent(urlCid)}`
         );
       } else {
         window.history.replaceState(null, "", window.location.pathname);
+      }
+
+      // 🔹 Si on a consommé fp:last pour un identify, on peut le nettoyer
+      if (lastIsIdentify) {
+        try {
+          sessionStorage.removeItem("fp:last");
+        } catch {}
       }
     })();
   }, [searchParams]);
