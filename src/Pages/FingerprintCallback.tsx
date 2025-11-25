@@ -129,22 +129,49 @@ export default function FingerprintCallback() {
         } catch {}
         
         // récupère la page d'ou l'on vient
-        const back = computeBack(scope!, storedReturn);
-
-        const dest = new URL(back, window.location.origin);
+        if (scope === "doctor_multi") { 
+          const dest = new URL( "/multispecialist/doctor/new-consultation", window.location.origin);
 
         if (ok) {
           setMessage("Patient reconnu ✅");
-          sessionStorage.removeItem("fp:return");
 
+          dest.searchParams.set("patient_id", userId!);
+
+        } else {
+          setMessage("Aucun patient reconnu correspondant.");
+
+          dest.searchParams.set("id_not_found","1");
+              }
+
+          sessionStorage.removeItem("fp:return");
           setTimeout(
             () =>
               navigate(
                 dest.pathname + dest.search, { replace: true }),
+            ok ? 600 : 900
+          );
+          return;
+        }
+
+        const back = computeBack(scope!, storedReturn);
+        const sep = back.includes("?") ? "&" : "?";
+
+        if (ok) {
+          setMessage("Patient reconnu ✅");
+          sessionStorage.removeItem("fp:return");
+          setTimeout(
+            () => navigate(`${back}${sep}id_found=$ {encodeURIComponent(userId!)}`, 
+              { replace: true }),      
             600
           );
-        }
-              
+        } else {
+          setMessage("Aucun patient reconnu correspondant.");
+          setTimeout(
+            () => navigate(`${back}${sep}id_not_found=1`, 
+              { replace: true }),
+              900
+          );
+        } 
         return;
       }
     }
