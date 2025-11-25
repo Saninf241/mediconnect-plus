@@ -208,65 +208,99 @@ export default function NewConsultationPage() {
 
   // ---------- Enregistrement consultation ----------
   const createConsultation = async () => {
-    if (!consultationId) return toast.error("Consultation brouillon manquante");
+      try {
+        if (!consultationId) {
+          toast.error("Consultation brouillon manquante");
+          return;
+        }
 
-    const symptomsDrawn =
-      symptomsType === "drawn"
-        ? symptomsCanvasRef.current?.getTrimmedCanvas().toDataURL()
-        : null;
+        // --- Vérifs symptômes / diagnostic ---
+        const hasSymptomsText =
+          symptomsType === "text" && symptoms.trim().length > 0;
+        const hasSymptomsDrawn =
+          symptomsType === "drawn" &&
+          symptomsCanvasRef.current &&
+          !symptomsCanvasRef.current.isEmpty();
 
-    const diagnosisDrawn =
-      diagnosisType === "drawn"
-        ? diagnosisCanvasRef.current?.getTrimmedCanvas().toDataURL()
-        : null;
+        if (!hasSymptomsText && !hasSymptomsDrawn) {
+          toast.error("Renseignez les symptômes.");
+          return;
+        }
 
-    const hasSymptoms =
-      (symptomsType === "text" && symptoms.trim()) || symptomsDrawn;
-    const hasDiagnosis =
-      (diagnosisType === "text" && diagnosis.trim()) || diagnosisDrawn;
+        const hasDiagnosisText =
+          diagnosisType === "text" && diagnosis.trim().length > 0;
+        const hasDiagnosisDrawn =
+          diagnosisType === "drawn" &&
+          diagnosisCanvasRef.current &&
+          !diagnosisCanvasRef.current.isEmpty();
 
-    if (!hasSymptoms) return toast.error("Indiquer symptômes");
-    if (!hasDiagnosis) return toast.error("Indiquer diagnostic");
+        if (!hasDiagnosisText && !hasDiagnosisDrawn) {
+          toast.error("Renseignez le diagnostic.");
+          return;
+        }
 
-    const parsedAmount = parseInt(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0)
-      return toast.error("Montant invalide");
+        // --- Montant ---
+        const parsedAmount = parseInt(String(amount), 10);
+        if (isNaN(parsedAmount) || parsedAmount <= 0) {
+          toast.error("Montant invalide.");
+          return;
+        }
 
-    // ✅ statut conforme à ton enum
-    const targetStatus = provisional ? "sent" : "draft";
+        // --- Canvases (écriture manuscrite) ---
+        const symptomsDrawn =
+          symptomsType === "drawn" &&
+          symptomsCanvasRef.current &&
+          !symptomsCanvasRef.current.isEmpty()
+            ? symptomsCanvasRef.current.getTrimmedCanvas().toDataURL()
+            : null;
 
-    // ✅ payload uniquement avec colonnes EXISTANTES
-    const payload: any = {
-      patient_id: patientId, // null OK si sans empreinte
-      symptoms: symptomsType === "text" ? symptoms.trim() : null,
-      symptoms_drawn: symptomsDrawn,
-      diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
-      diagnosis_drawn: diagnosisDrawn,
-      amount: parsedAmount,
-      status: targetStatus,
+        const diagnosisDrawn =
+          diagnosisType === "drawn" &&
+          diagnosisCanvasRef.current &&
+          !diagnosisCanvasRef.current.isEmpty()
+            ? diagnosisCanvasRef.current.getTrimmedCanvas().toDataURL()
+            : null;
 
-      // ✅ stockage simple et compatible
-      ccam_codes: acts.length ? acts : null,
-      prescription: medications.length ? medications.join("\n") : null,
+        // statut envoyé si tu as cliqué "vérifier droits", sinon brouillon
+        const targetStatus = provisional ? "sent" : "draft";
+
+        console.log("[createConsultation] updating consultation", consultationId, {
+          patient_id: patientId,
+          status: targetStatus,
+        });
+
+        const { data, error } = await supabase
+          .from("consultations")
+          .update({
+            patient_id: patientId, // peut rester null si pas d'empreinte
+            symptoms: hasSymptomsText ? symptoms.trim() : null,
+            symptoms_drawn: symptomsDrawn,
+            diagnosis: hasDiagnosisText ? diagnosis.trim() : null,
+            diagnosis_drawn: diagnosisDrawn,
+            amount: parsedAmount,
+            acts: acts.map((a) => ({ type: a })), // ex: [{type: "Consultation simple"}]
+            medications: medications, // tableau de strings
+            fingerprint_missing: fingerprintMissing,
+            status: targetStatus,
+          })
+          .eq("id", consultationId)
+          .select("id, patient_id, symptoms, diagnosis")
+          .single();
+
+        if (error) {
+          console.error("[createConsultation] update error:", error);
+          toast.error("Erreur lors de la sauvegarde de la consultation.");
+          return;
+        }
+
+        console.log("[createConsultation] updated row:", data);
+        toast.success("Consultation enregistrée.");
+        setStep("done");
+      } catch (e) {
+        console.error("[createConsultation] unexpected error:", e);
+        toast.error("Erreur inattendue lors de la sauvegarde.");
+      }
     };
-
-    const { data, error } = await supabase
-      .from("consultations")
-      .update(payload)
-      .eq("id", consultationId)
-      .select("*")
-      .single();
-
-    if (error) {
-      console.error("[createConsultation] update error:", error);
-      toast.error(`Erreur sauvegarde consultation: ${error.message}`);
-      return;
-    }
-
-    console.log("[createConsultation] updated row:", data);
-    toast.success("Consultation enregistrée");
-    setStep("done");
-  };
 
   // ------------- Vérification droits assureur -------------
   const checkRights = async () => {
