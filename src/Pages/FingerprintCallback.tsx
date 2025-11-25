@@ -36,6 +36,7 @@ export default function FingerprintCallback() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
+    const consultationId = url.searchParams.get("consultation_id");
 
     const mode        = url.searchParams.get("mode");     // "enroll" | "identify"
     const status      = url.searchParams.get("status");
@@ -123,6 +124,7 @@ export default function FingerprintCallback() {
               type: "identify",
               ok,
               patient_id: ok ? userId : null,
+              consultationId: ok ? consultationId || null : null,
               error: error || null,
             })
           );
