@@ -127,8 +127,11 @@ export default function FingerprintCallback() {
             })
           );
         } catch {}
+        
+        // récupère la page d'ou l'on vient
+        const back = computeBack(scope!, storedReturn);
 
-        const sep = back.includes("?") ? "&" : "?";
+        const dest = new URL(back, window.location.origin);
 
         if (ok) {
           setMessage("Patient reconnu ✅");
@@ -137,18 +140,11 @@ export default function FingerprintCallback() {
           setTimeout(
             () =>
               navigate(
-                `${back}${sep}id_found=${encodeURIComponent(userId!)}`,
-                { replace: true }
-              ),
+                dest.pathname + dest.search, { replace: true }),
             600
           );
-        } else {
-          setMessage("Aucun patient correspondant.");
-          setTimeout(
-            () => navigate(`${back}${sep}id_not_found=1`, { replace: true }),
-            900
-          );
         }
+              
         return;
       }
     }
