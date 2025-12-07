@@ -4,7 +4,10 @@ import { useUser } from "@clerk/clerk-react";
 import { supabase } from "../../lib/supabase";
 
 type Allowed = "secretary" | "doctor" | "admin" | "assurer" | "pharmacist";
-const normalize = (r?: string | null) => (r || "").toString().trim().toLowerCase();
+type AppRole = Allowed;
+
+const normalize = (r?: string | null) =>
+  (r || "").toString().trim().toLowerCase();
 
 export default function PrivateRouteByRole({
   allowedRole,
@@ -12,81 +15,161 @@ export default function PrivateRouteByRole({
 }: React.PropsWithChildren<{ allowedRole: Allowed }>) {
   const { isLoaded, isSignedIn, user } = useUser();
 
-  // 1) rôle depuis Clerk (si tu l'as mis dans publicMetadata)
+  // 1) Rôle éventuel stocké dans Clerk (publicMetadata.role)
   const roleFromClerk = useMemo(
     () => normalize(user?.publicMetadata?.role as string | undefined),
     [user]
   );
 
-  // 2) rôle effectif (Clerk, sinon fallback DB)
-  const [effectiveRole, setEffectiveRole] = useState<string | null>(
-    roleFromClerk || null
-  );
+  const initialRole: AppRole | null =
+    roleFromClerk && ["doctor", "admin", "secretary", "assurer", "pharmacist"].includes(
+      roleFromClerk as AppRole
+    )
+      ? (roleFromClerk as AppRole)
+      : null;
+
+  // Rôle effectif + état de chargement
+  const [effectiveRole, setEffectiveRole] = useState<AppRole | null>(initialRole);
+  const [loadingRole, setLoadingRole] = useState<boolean>(true);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    if (effectiveRole) return; // déjà trouvé via Clerk
+    // tant que Clerk n'est pas chargé, on ne fait rien
+    if (!isLoaded) return;
+
+    // si déjà un rôle valide via Clerk → terminé
+    if (effectiveRole) {
+      setLoadingRole(false);
+      return;
+    }
+
+    // si pas connecté → pas la peine d'aller en DB
+    if (!isSignedIn || !user) {
+      setLoadingRole(false);
+      return;
+    }
 
     const email =
-      user?.primaryEmailAddress?.emailAddress ||
-      user?.emailAddresses?.[0]?.emailAddress ||
+      user.primaryEmailAddress?.emailAddress ||
+      user.emailAddresses?.[0]?.emailAddress ||
       null;
-    if (!email) return;
+    const clerkId = user.id;
 
     (async () => {
-      // a) on tente d'abord la ligne "doctor"
-      let role: string | null = null;
+      try {
+        let appRole: AppRole | null = null;
 
-      const qDoctor = await supabase
-        .from("clinic_staff")
-        .select("role")
-        .eq("email", email)
-        .eq("role", "doctor")
-        .maybeSingle();
+        // ---------- 1) Recherche dans clinic_staff ----------
+        if (email || clerkId) {
+          const orFilter = [
+            clerkId ? `clerk_user_id.eq.${clerkId}` : "",
+            email ? `email.eq.${email}` : "",
+          ]
+            .filter(Boolean)
+            .join(",");
 
-      if (qDoctor.data?.role) {
-        role = qDoctor.data.role;
-      } else {
-        // b) sinon, on prend n'importe quelle ligne (au cas où tu n'aurais qu'un seul enregistrement)
-        const qAny = await supabase
-          .from("clinic_staff")
-          .select("role")
-          .eq("email", email)
-          .limit(1)
-          .maybeSingle();
+          if (orFilter) {
+            const { data: staff } = await supabase
+              .from("clinic_staff")
+              .select("role")
+              .or(orFilter)
+              .maybeSingle();
 
-        if (qAny.data?.role) role = qAny.data.role;
+            if (staff?.role) {
+              const r = normalize(staff.role);
+              if (r === "doctor" || r === "admin" || r === "secretary") {
+                appRole = r;
+              }
+            }
+          }
+        }
+
+        // ---------- 2) Sinon, recherche dans insurer_staff ----------
+        if (!appRole && (email || clerkId)) {
+          const orFilterIns = [
+            clerkId ? `clerk_user_id.eq.${clerkId}` : "",
+            email ? `email.eq.${email}` : "",
+          ]
+            .filter(Boolean)
+            .join(",");
+
+          if (orFilterIns) {
+            const { data: insurerStaff } = await supabase
+              .from("insurer_staff")
+              .select("role")
+              .or(orFilterIns)
+              .maybeSingle();
+
+            if (insurerStaff) {
+              // quel que soit insurer_staff.role → rôle applicatif = "assurer"
+              appRole = "assurer";
+            }
+          }
+        }
+
+        // ---------- 3) (plus tard) pharmacie, etc. ----------
+
+        if (appRole) {
+          setEffectiveRole(appRole);
+        } else {
+          setEffectiveRole(null); // aucun rôle trouvé
+        }
+      } finally {
+        setLoadingRole(false);
       }
-
-      if (role) setEffectiveRole(normalize(role));
     })();
   }, [isLoaded, isSignedIn, user, effectiveRole]);
 
-  // --- Garde ---
+  // ================== GUARD ==================
 
-  if (!isLoaded) return <div style={{ padding: 24 }}>Vérification des droits…</div>;
-  if (!isSignedIn)
+  if (!isLoaded || loadingRole) {
+    return <div style={{ padding: 24 }}>Chargement du rôle…</div>;
+  }
+
+  if (!isSignedIn) {
     return (
       <div style={{ padding: 24 }}>
-        <div style={{ color: "#b91c1c", fontWeight: 600, marginBottom: 8 }}>Accès refusé</div>
+        <div style={{ color: "#b91c1c", fontWeight: 600, marginBottom: 8 }}>
+          Accès refusé
+        </div>
         <div style={{ fontSize: 14, color: "#555" }}>
-          Vous n’êtes pas connecté. <a href="/sign-in" className="text-blue-600 underline">Se connecter</a>
+          Vous n’êtes pas connecté.{" "}
+          <a href="/sign-in" className="text-blue-600 underline">
+            Se connecter
+          </a>
         </div>
       </div>
     );
+  }
 
-  // ⛔ IMPORTANT : tant qu'on n'a pas le rôle effectif, on ATTEND (pour éviter un faux "refusé")
-  if (!effectiveRole) return <div style={{ padding: 24 }}>Chargement du rôle…</div>;
+  // Cas où aucun rôle n'a été trouvé en DB ni dans Clerk
+  if (!effectiveRole) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ color: "#b91c1c", fontWeight: 600, marginBottom: 8 }}>
+          Accès refusé
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          Aucun rôle n’a été trouvé pour ce compte. Vérifie que cet email est
+          bien présent dans <code>clinic_staff</code> ou{" "}
+          <code>insurer_staff</code>.
+        </div>
+      </div>
+    );
+  }
 
   if (effectiveRole !== allowedRole) {
     return (
       <div style={{ padding: 24 }}>
-        <div style={{ color: "#b91c1c", fontWeight: 600, marginBottom: 8 }}>Accès refusé</div>
+        <div style={{ color: "#b91c1c", fontWeight: 600, marginBottom: 8 }}>
+          Accès refusé
+        </div>
         <div style={{ marginBottom: 8 }}>
-          Rôle requis : <b>{allowedRole}</b> — rôle détecté : <b>{effectiveRole}</b>
+          Rôle requis : <b>{allowedRole}</b> — rôle détecté :{" "}
+          <b>{effectiveRole}</b>
         </div>
         <div style={{ fontSize: 14, color: "#555" }}>
-          Ouvrez “Se connecter” et utilisez un compte autorisé pour cette section.
+          Ouvrez “Se connecter” et utilisez un compte autorisé pour cette
+          section.
         </div>
       </div>
     );
