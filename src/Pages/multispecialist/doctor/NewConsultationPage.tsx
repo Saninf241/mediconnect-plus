@@ -162,7 +162,7 @@ export default function NewConsultationPage() {
   };
 
   // 🔹 Callback biométrie + nettoyage
-  const [searchParams] = useSearchParams();
+const [searchParams] = useSearchParams();
 
   useEffect(() => {
     (async () => {
