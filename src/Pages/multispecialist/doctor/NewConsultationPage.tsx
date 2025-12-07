@@ -243,101 +243,122 @@ const [searchParams] = useSearchParams();
   }, [searchParams]);
 
   // ---------- Enregistrement consultation ----------
-  const createConsultation = async () => {
-      try {
-        if (!consultationId) {
-          toast.error("Consultation brouillon manquante");
-          return;
-        }
+const createConsultation = async () => {
+    try {
+      // 1) Contexte médecin
+      const ctx =
+        doctorInfo?.clinic_id && doctorInfo?.doctor_id
+          ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+          : await resolveDoctorContext();
 
-        // --- Vérifs symptômes / diagnostic ---
-        const hasSymptomsText =
-          symptomsType === "text" && symptoms.trim().length > 0;
-        const hasSymptomsDrawn =
-          symptomsType === "drawn" &&
-          symptomsCanvasRef.current &&
-          !symptomsCanvasRef.current.isEmpty();
+      if (!ctx) {
+        toast.error("Impossible d'identifier votre clinique (doctor).");
+        return;
+      }
 
-        if (!hasSymptomsText && !hasSymptomsDrawn) {
-          toast.error("Renseignez les symptômes.");
-          return;
-        }
+      // 2) Validations minimum
+      const parsedAmount = parseInt(amount, 10);
+      if (isNaN(parsedAmount) || parsedAmount <= 0) {
+        toast.error("Montant invalide.");
+        return;
+      }
 
-        const hasDiagnosisText =
-          diagnosisType === "text" && diagnosis.trim().length > 0;
-        const hasDiagnosisDrawn =
-          diagnosisType === "drawn" &&
-          diagnosisCanvasRef.current &&
-          !diagnosisCanvasRef.current.isEmpty();
+      const symptomsDrawn =
+        symptomsType === "drawn"
+          ? symptomsCanvasRef.current?.getTrimmedCanvas().toDataURL()
+          : null;
 
-        if (!hasDiagnosisText && !hasDiagnosisDrawn) {
-          toast.error("Renseignez le diagnostic.");
-          return;
-        }
+      const diagnosisDrawn =
+        diagnosisType === "drawn"
+          ? diagnosisCanvasRef.current?.getTrimmedCanvas().toDataURL()
+          : null;
 
-        // --- Montant ---
-        const parsedAmount = parseInt(String(amount), 10);
-        if (isNaN(parsedAmount) || parsedAmount <= 0) {
-          toast.error("Montant invalide.");
-          return;
-        }
+      const hasSymptoms =
+        (symptomsType === "text" && symptoms.trim().length > 0) || !!symptomsDrawn;
+      const hasDiagnosis =
+        (diagnosisType === "text" && diagnosis.trim().length > 0) || !!diagnosisDrawn;
 
-        // --- Canvases (écriture manuscrite) ---
-        const symptomsDrawn =
-          symptomsType === "drawn" &&
-          symptomsCanvasRef.current &&
-          !symptomsCanvasRef.current.isEmpty()
-            ? symptomsCanvasRef.current.getTrimmedCanvas().toDataURL()
-            : null;
+      if (!hasSymptoms) {
+        toast.error("Renseignez les symptômes.");
+        return;
+      }
+      if (!hasDiagnosis) {
+        toast.error("Renseignez le diagnostic.");
+        return;
+      }
 
-        const diagnosisDrawn =
-          diagnosisType === "drawn" &&
-          diagnosisCanvasRef.current &&
-          !diagnosisCanvasRef.current.isEmpty()
-            ? diagnosisCanvasRef.current.getTrimmedCanvas().toDataURL()
-            : null;
+      // 3) Statut : pour l'instant on reste en 'draft'
+      const targetStatus = "draft";
 
-        // statut envoyé si tu as cliqué "vérifier droits", sinon brouillon
-        const targetStatus = provisional ? "sent" : "draft";
+      // 4) Payload commun INSERT / UPDATE
+      const payload: any = {
+        doctor_id: ctx.doctorId,
+        clinic_id: ctx.clinicId,
+        patient_id: patientId,                 // peut être null si pas d'empreinte / pas identifié
+        symptoms: symptomsType === "text" ? symptoms.trim() : null,
+        symptoms_drawn: symptomsDrawn,
+        diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
+        diagnosis_drawn: diagnosisDrawn,
+        amount: parsedAmount,
+        acts: acts.map((a) => ({ type: a })), // colonne 'acts' (jsonb)
+        medications: medications,             // colonne 'medications' (jsonb / text[])
+        fingerprint_missing: fingerprintMissing,
+        status: targetStatus,
+      };
 
-        console.log("[createConsultation] updating consultation", consultationId, {
-          patient_id: patientId,
-          status: targetStatus,
-        });
+      console.log("[createConsultation] payload=", payload);
 
-        const { data, error } = await supabase
+      let error = null;
+      let newId: string | null = null;
+
+      // 5) Si pas encore de consultationId => INSERT
+      if (!consultationId) {
+        const { data, error: insertError } = await supabase
           .from("consultations")
-          .update({
-            patient_id: patientId, // peut rester null si pas d'empreinte
-            symptoms: hasSymptomsText ? symptoms.trim() : null,
-            symptoms_drawn: symptomsDrawn,
-            diagnosis: hasDiagnosisText ? diagnosis.trim() : null,
-            diagnosis_drawn: diagnosisDrawn,
-            amount: parsedAmount,
-            acts: acts.map((a) => ({ type: a })), // ex: [{type: "Consultation simple"}]
-            medications: medications, // tableau de strings
-            fingerprint_missing: fingerprintMissing,
-            status: targetStatus,
-          })
-          .eq("id", consultationId)
-          .select("id, patient_id, symptoms, diagnosis")
+          .insert([payload])
+          .select("id")
           .single();
 
-        if (error) {
-          console.error("[createConsultation] update error:", error);
-          toast.error("Erreur lors de la sauvegarde de la consultation.");
-          return;
+        error = insertError;
+        if (!insertError && data?.id) {
+          newId = data.id as string;
+          setConsultationId(newId);
         }
+      } else {
+        // 6) Sinon UPDATE sur la ligne existante
+        const { error: updateError } = await supabase
+          .from("consultations")
+          .update(payload)
+          .eq("id", consultationId);
 
-        console.log("[createConsultation] updated row:", data);
-        toast.success("Consultation enregistrée.");
-        setStep("done");
-      } catch (e) {
-        console.error("[createConsultation] unexpected error:", e);
-        toast.error("Erreur inattendue lors de la sauvegarde.");
+        error = updateError;
       }
-    };
 
+      if (error) {
+        console.error("[createConsultation] error:", error);
+        toast.error("Erreur lors de l'enregistrement de la consultation.");
+        return;
+      }
+
+      toast.success("Consultation enregistrée.");
+      setStep("done");
+
+      // 7) Reset minimum pour la prochaine consultation
+      setActs([]);
+      setCurrentAct("");
+      setMedications([]);
+      setCurrentMedication("");
+      setSymptoms("");
+      setDiagnosis("");
+      setAmount("");
+      setPatientId(null);
+      setFingerprintMissing(false);
+    } catch (e) {
+      console.error("[createConsultation] unexpected error:", e);
+      toast.error("Erreur inattendue lors de l'enregistrement.");
+    }
+  };
+  
   // ------------- Vérification droits assureur -------------
   const checkRights = async () => {
     if (!patientId) return toast.error("Aucun patient");
