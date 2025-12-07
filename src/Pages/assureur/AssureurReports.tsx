@@ -38,7 +38,7 @@ export default function AssureurReports() {
           amount,
           status,
           insurer_comment,
-          patient:patients(full_name),
+          patient:patients(name),
           clinic:clinics(name)
         `
         )
@@ -53,7 +53,7 @@ export default function AssureurReports() {
         const s = `%${search.trim()}%`;
         // on filtre sur nom patient ou nom clinique
         q = q.or(
-          `patient.full_name.ilike.${s},clinic.name.ilike.${s}`
+          `patient.name.ilike.${s},clinic.name.ilike.${s}`
         );
       }
 
