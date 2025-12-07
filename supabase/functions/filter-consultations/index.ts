@@ -1,101 +1,111 @@
-/// <reference lib="deno.ns" />
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+// supabase/functions/filter-consultations/index.ts
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Autoriser tous les domaines pour le frontend
-const corsHeaders = {
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// client service-role (edge function = backend sécurisé)
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
+
+const jsonHeaders = {
+  "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: jsonHeaders });
   }
 
-  try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  if (req.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Only POST is allowed" }),
+      { status: 405, headers: jsonHeaders },
     );
+  }
 
-    const body = await req.json();
-    const { search, status, clinicId, dateStart, dateEnd } = body;
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch (_e) {
+    return new Response(
+      JSON.stringify({ error: "Invalid JSON body" }),
+      { status: 400, headers: jsonHeaders },
+    );
+  }
 
+  const {
+    status = "",
+    clinicId = "",
+    dateStart = "",
+    dateEnd = "",
+    insurerId = "",
+  } = body ?? {};
+
+  try {
+    // ✅ sélection très simple : aucune jointure, donc très peu de risques de 400
     let query = supabase
       .from("consultations")
       .select(
         `
         id,
         created_at,
-        amount,
         status,
-        pdf_url,
-        patients ( name ),
-        clinic_staff ( name ),
-        clinics ( name )
-      `
+        amount,
+        insurer_id,
+        clinic_id,
+        patient_id,
+        doctor_id,
+        pdf_url
+      `,
       )
       .order("created_at", { ascending: false });
 
-    if (status) query = query.eq("status", status);
-    if (clinicId) query = query.eq("clinic_id", clinicId);
-    if (dateStart) query = query.gte("created_at", dateStart);
-    if (dateEnd) query = query.lte("created_at", dateEnd + "T23:59:59");
+    if (status) {
+      query = query.eq("status", status);
+    }
+    if (clinicId) {
+      query = query.eq("clinic_id", clinicId);
+    }
+    if (insurerId) {
+      query = query.eq("insurer_id", insurerId);
+    }
+    if (dateStart) {
+      query = query.gte("created_at", dateStart);
+    }
+    if (dateEnd) {
+      // fin de journée incluse
+      query = query.lte("created_at", `${dateEnd}T23:59:59`);
+    }
 
     const { data, error } = await query;
-    if (error) throw error;
 
-    // 🔍 Filtrage par texte si présent
-    let filtered = data;
-    if (search?.trim()) {
-      const text = search.toLowerCase();
-      filtered = data.filter(
-        (item) =>
-          item.patients?.name?.toLowerCase().includes(text) ||
-          item.clinic_staff?.name?.toLowerCase().includes(text) ||
-          item.clinics?.name?.toLowerCase().includes(text)
+    if (error) {
+      console.error("[filter-consultations] Supabase error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message }),
+        { status: 500, headers: jsonHeaders },
       );
     }
 
-    // 📩 Comptage des messages non lus (pour assureur)
-    const consultationsWithUnread = await Promise.all(
-      filtered.map(async (item) => {
-        const { data: unread } = await supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true })
-          .eq("consultation_id", item.id)
-          .eq("is_read", false)
-          .eq("receiver_role", "insurer");
-
-        return {
-          ...item,
-          unread_messages_count: unread?.length ?? 0,
-        };
-      })
-    );
-
     return new Response(
-      JSON.stringify({ data: consultationsWithUnread }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      JSON.stringify({ data }),
+      { status: 200, headers: jsonHeaders },
     );
   } catch (e) {
-    console.error("⛔ Erreur Edge Function :", e);
+    console.error("[filter-consultations] Unexpected error:", e);
     return new Response(
-      JSON.stringify({ error: "Erreur interne", details: e.message }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+      JSON.stringify({ error: "Unexpected error" }),
+      { status: 500, headers: jsonHeaders },
     );
   }
 });
+
