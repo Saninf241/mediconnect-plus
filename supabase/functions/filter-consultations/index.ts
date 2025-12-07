@@ -1,111 +1,141 @@
 // supabase/functions/filter-consultations/index.ts
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// client service-role (edge function = backend sécurisé)
-const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
-
-const jsonHeaders = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
-
-Deno.serve(async (req) => {
-  // CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: jsonHeaders });
-  }
-
+serve(async (req) => {
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Only POST is allowed" }),
-      { status: 405, headers: jsonHeaders },
-    );
+    return new Response("Method not allowed", { status: 405 });
   }
 
-  let body: any = {};
-  try {
-    body = await req.json();
-  } catch (_e) {
-    return new Response(
-      JSON.stringify({ error: "Invalid JSON body" }),
-      { status: 400, headers: jsonHeaders },
-    );
-  }
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false },
+  });
 
+  const body = await req.json().catch(() => ({}));
   const {
+    search = "",
     status = "",
     clinicId = "",
     dateStart = "",
     dateEnd = "",
-    insurerId = "",
-  } = body ?? {};
+    insurerId,
+  } = body;
 
-  try {
-    // ✅ sélection très simple : aucune jointure, donc très peu de risques de 400
-    let query = supabase
-      .from("consultations")
-      .select(
-        `
-        id,
-        created_at,
-        status,
-        amount,
-        insurer_id,
-        clinic_id,
-        patient_id,
-        doctor_id,
-        pdf_url
-      `,
-      )
-      .order("created_at", { ascending: false });
+  // 1) Déterminer l'assureur à partir du staff connecté si besoin
+  let finalInsurerId = insurerId as string | undefined;
 
-    if (status) {
-      query = query.eq("status", status);
-    }
-    if (clinicId) {
-      query = query.eq("clinic_id", clinicId);
-    }
-    if (insurerId) {
-      query = query.eq("insurer_id", insurerId);
-    }
-    if (dateStart) {
-      query = query.gte("created_at", dateStart);
-    }
-    if (dateEnd) {
-      // fin de journée incluse
-      query = query.lte("created_at", `${dateEnd}T23:59:59`);
-    }
+  if (!finalInsurerId) {
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
 
-    const { data, error } = await query;
+    if (token) {
+      const supabaseUserClient = createClient(supabaseUrl, token, {
+        auth: { persistSession: false },
+      });
 
-    if (error) {
-      console.error("[filter-consultations] Supabase error:", error);
-      return new Response(
-        JSON.stringify({ error: error.message }),
-        { status: 500, headers: jsonHeaders },
-      );
+      const { data: userRes } = await supabaseUserClient.auth.getUser();
+      const email =
+        (userRes.user as any)?.email ||
+        (userRes.user as any)?.email_confirmed ||
+        userRes.user?.user_metadata?.email ||
+        undefined;
+
+      if (email) {
+        const { data: staffRow } = await supabase
+          .from("insurer_staff")
+          .select("insurer_id")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (staffRow?.insurer_id) {
+          finalInsurerId = staffRow.insurer_id as string;
+        }
+      }
     }
+  }
 
+  if (!finalInsurerId) {
     return new Response(
-      JSON.stringify({ data }),
-      { status: 200, headers: jsonHeaders },
-    );
-  } catch (e) {
-    console.error("[filter-consultations] Unexpected error:", e);
-    return new Response(
-      JSON.stringify({ error: "Unexpected error" }),
-      { status: 500, headers: jsonHeaders },
+      JSON.stringify({ data: [], error: "INSURER_NOT_RESOLVED" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   }
+
+  // 2) Requête avec JOINS en utilisant bien "name"
+  let query = supabase
+    .from("consultations")
+    .select(
+      `
+      id,
+      created_at,
+      amount,
+      status,
+      pdf_url,
+      insurer_id,
+      clinic_id,
+      patient:patients (
+        name
+      ),
+      doctor:clinic_staff (
+        name
+      ),
+      clinic:clinics (
+        name
+      )
+    `,
+    )
+    .eq("insurer_id", finalInsurerId);
+
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  if (clinicId) {
+    query = query.eq("clinic_id", clinicId);
+  }
+
+  if (dateStart) {
+    query = query.gte("created_at", dateStart);
+  }
+
+  if (dateEnd) {
+    query = query.lte("created_at", dateEnd + "T23:59:59");
+  }
+
+  query = query.order("created_at", { ascending: false });
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("filter-consultations error", error);
+    return new Response(
+      JSON.stringify({ data: [], error: error.message }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // 3) Normalisation → champs "plats" pour le front
+  const normalized = (data ?? []).map((row: any) => ({
+    id: row.id,
+    created_at: row.created_at,
+    amount: row.amount,
+    status: row.status,
+    pdf_url: row.pdf_url,
+    insurer_id: row.insurer_id,
+    clinic_id: row.clinic_id,
+    patient_name: row.patient?.name ?? null,   // ⬅️ ici "name"
+    doctor_name: row.doctor?.name ?? null,     // ⬅️ ici aussi
+    clinic_name: row.clinic?.name ?? null,     // ⬅️ idem
+  }));
+
+  // 4) Eventuelle recherche texte côté JS si tu veux (search)
+
+  return new Response(
+    JSON.stringify({ data: normalized, error: null }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
 });
 

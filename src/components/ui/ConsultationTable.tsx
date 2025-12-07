@@ -1,51 +1,82 @@
 // src/components/ui/ConsultationTable.tsx
 import React from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
-interface Consultation {
+type ConsultationRow = {
   id: string;
   created_at: string;
-  patient_name: string;
-  doctor_name: string;
-  clinic_name: string;
   amount: number;
-  status: string;
-  pdf_url?: string;
-  unread_messages_count?: number; // ✅ Nouveau champ
-}
+  status: "sent" | "accepted" | "rejected" | string;
+  pdf_url?: string | null;
+  patient_name?: string | null;
+  doctor_name?: string | null;
+  clinic_name?: string | null;
+};
 
 interface Props {
-  consultations: Consultation[];
-  onValidate?: (id: string) => void;
-  onReject?: (id: string) => void;
+  consultations: ConsultationRow[];
+  onValidate: (id: string) => void;
+  onReject: (id: string) => void;
 }
 
-export default function ConsultationTable({ consultations, onValidate, onReject }: Props) {
+export default function ConsultationTable({
+  consultations,
+  onValidate,
+  onReject,
+}: Props) {
+  const navigate = useNavigate();
+
+  if (!consultations.length) {
+    return (
+      <div className="mt-4 text-sm text-gray-500 italic">
+        Aucune consultation trouvée pour ces filtres.
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-x-auto rounded-lg shadow">
-      <table className="min-w-full bg-white border">
-        <thead>
-          <tr className="bg-gray-100 text-left text-sm font-semibold text-gray-700">
-            <th className="p-3">Date</th>
-            <th className="p-3">Patient</th>
-            <th className="p-3">Médecin</th>
-            <th className="p-3">Établissement</th>
-            <th className="p-3">Montant</th>
-            <th className="p-3">Statut</th>
-            <th className="p-3">Fiche PDF</th>
-            <th className="p-3">Actions</th>
+    <div className="mt-4 overflow-x-auto bg-white rounded-lg shadow-sm border border-gray-200">
+      <table className="min-w-full text-sm">
+        <thead className="bg-gray-50">
+          <tr className="text-left">
+            <th className="px-4 py-2 border-b">Date</th>
+            <th className="px-4 py-2 border-b">Patient</th>
+            <th className="px-4 py-2 border-b">Médecin</th>
+            <th className="px-4 py-2 border-b">Établissement</th>
+            <th className="px-4 py-2 border-b text-right">Montant</th>
+            <th className="px-4 py-2 border-b">Statut</th>
+            <th className="px-4 py-2 border-b">Fiche PDF</th>
+            <th className="px-4 py-2 border-b text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
           {consultations.map((c) => (
-            <tr key={c.id} className="border-t text-sm">
-              <td className="p-3">{new Date(c.created_at).toLocaleDateString()}</td>
-              <td className="p-3">{c.patient_name || "—"}</td>
-              <td className="p-3">{c.doctor_name || "—"}</td>
-              <td className="p-3">{c.clinic_name || "—"}</td>
-              <td className="p-3">{c.amount?.toLocaleString?.() || "—"} FCFA</td>
-              <td className="p-3 capitalize">{c.status || "—"}</td>
-              <td className="p-3">
+            <tr key={c.id} className="hover:bg-gray-50">
+              <td className="px-4 py-2 border-b">
+                {new Date(c.created_at).toLocaleDateString("fr-FR")}
+              </td>
+              <td className="px-4 py-2 border-b">
+                {c.patient_name || "—"}
+              </td>
+              <td className="px-4 py-2 border-b">
+                {c.doctor_name || "—"}
+              </td>
+              <td className="px-4 py-2 border-b">
+                {c.clinic_name || "—"}
+              </td>
+              <td className="px-4 py-2 border-b text-right">
+                {c.amount?.toLocaleString("fr-FR")} FCFA
+              </td>
+              <td className="px-4 py-2 border-b">
+                {c.status === "sent"
+                  ? "Envoyé"
+                  : c.status === "accepted"
+                  ? "Accepté"
+                  : c.status === "rejected"
+                  ? "Rejeté"
+                  : c.status}
+              </td>
+              <td className="px-4 py-2 border-b">
                 {c.pdf_url ? (
                   <a
                     href={c.pdf_url}
@@ -53,42 +84,33 @@ export default function ConsultationTable({ consultations, onValidate, onReject 
                     rel="noopener noreferrer"
                     className="text-blue-600 underline"
                   >
-                    Voir PDF
+                    Voir le PDF
                   </a>
                 ) : (
-                  <span className="text-gray-400">Non disponible</span>
+                  <span className="text-gray-400 italic">Non disponible</span>
                 )}
               </td>
-              <td className="p-3 flex flex-col gap-2">
-                {onValidate && (
-                  <button
-                    onClick={() => onValidate(c.id)}
-                    className="bg-green-600 text-white px-3 py-1 rounded"
-                  >
-                    Valider
-                  </button>
-                )}
-                {onReject && (
-                  <button
-                    onClick={() => onReject(c.id)}
-                    className="bg-red-600 text-white px-3 py-1 rounded"
-                  >
-                    Rejeter
-                  </button>
-                )}
-                <div className="relative">
-                  <Link
-                    to={`/assureur/consultation/${c.id}`}
-                    className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-center block"
-                  >
-                    Voir la fiche
-                  </Link>
-                  {c.unread_messages_count && c.unread_messages_count > 0 && (
-                    <span className="absolute top-0 right-0 -mt-2 -mr-2 text-xs bg-orange-500 text-white px-2 py-0.5 rounded-full shadow">
-                      🟠 {c.unread_messages_count}
-                    </span>
-                  )}
-                </div>
+              <td className="px-4 py-2 border-b text-center space-x-2">
+                <button
+                  onClick={() => onValidate(c.id)}
+                  className="px-3 py-1 rounded bg-green-600 text-white text-xs hover:bg-green-700"
+                >
+                  Valider
+                </button>
+                <button
+                  onClick={() => onReject(c.id)}
+                  className="px-3 py-1 rounded bg-red-600 text-white text-xs hover:bg-red-700"
+                >
+                  Rejeter
+                </button>
+                <button
+                  onClick={() =>
+                    navigate(`/assureur/consultations/${encodeURIComponent(c.id)}`)
+                  }
+                  className="px-3 py-1 rounded bg-blue-600 text-white text-xs hover:bg-blue-700"
+                >
+                  Voir la fiche
+                </button>
               </td>
             </tr>
           ))}
