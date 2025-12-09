@@ -32,62 +32,67 @@ export default function AssureurReports() {
 
   const fetchConsultations = async () => {
     if (!ctx?.insurerId) {
-      console.warn("[AssureurReports] Pas d'insurerId → pas d'appel à la fonction.");
+      console.warn("[AssureurReports] Pas d'insurerId → pas de requête.");
       setConsultations([]);
       return;
     }
 
-    const payload = {
-      search,
-      status,
-      clinicId,
-      dateStart,
-      dateEnd,
-      insurerId: ctx.insurerId, // envoyé mais utilisé seulement pour debug côté Edge
-    };
-
-    console.log("▶️ Payload envoyé à filter-consultations :", payload);
     setIsLoading(true);
 
     try {
-      const res = await fetch(
-        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      let q = supabase
+        .from("consultations")
+        .select(
+          `
+          id,
+          created_at,
+          amount,
+          status,
+          pdf_url,
+          insurer_id,
+          patient_id,
+          doctor_id,
+          clinic_id,
+          patients ( name ),
+          clinic_staff ( name ),
+          clinics ( name )
+        `
+        )
+        // ✅ très important : on ne ramène que les consultations de CET assureur
+        .eq("insurer_id", ctx.insurerId);
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Erreur HTTP ${res.status} : ${text}`);
+      if (status) q = q.eq("status", status);
+      if (clinicId) q = q.eq("clinic_id", clinicId);
+      if (dateStart) q = q.gte("created_at", dateStart);
+      if (dateEnd) q = q.lte("created_at", dateEnd);
+
+      if (search.trim()) {
+        const s = `%${search.trim()}%`;
+        // filtre sur nom patient / médecin / clinique
+        q = q.or(
+          `patients.name.ilike.${s},clinic_staff.name.ilike.${s},clinics.name.ilike.${s}`
+        );
       }
 
-      const { data } = await res.json();
-      const raw = Array.isArray(data) ? data : [];
+      const { data, error } = await q.order("created_at", {
+        ascending: false,
+      });
+
+      if (error) {
+        console.error("⛔ Erreur lors de la récupération des consultations :", error);
+        setConsultations([]);
+        return;
+      }
 
       console.log(
-        "✅ DATA reçue de filter-consultations (id + insurer_id):",
-        raw.map((r: any) => ({ id: r.id, insurer_id: r.insurer_id }))
-      );
-
-      // ✅ Filtre local : ne garder que les consultations de CET assureur
-      const filtered = raw.filter(
-        (row: any) =>
-          row.insurer_id && String(row.insurer_id) === String(ctx.insurerId)
-      );
-
-      console.log(
-        "✅ Lignes après filtre local par insurer_id =",
+        "✅ Consultations brutes pour insurerId",
         ctx.insurerId,
-        "=>",
-        filtered
+        ":",
+        data
       );
-
-      setConsultations(filtered);
+      setConsultations(data ?? []);
     } catch (err) {
-      console.error("⛔ Erreur lors de la récupération :", err);
+      console.error("⛔ Exception fetchConsultations :", err);
       setConsultations([]);
     } finally {
       setIsLoading(false);
