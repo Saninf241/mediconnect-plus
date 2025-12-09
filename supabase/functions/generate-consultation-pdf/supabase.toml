@@ -1,0 +1,3 @@
+# Configuration de la fonction generate-consultation-pdf
+[functions.generate-consultation-pdf]
+verify_jwt = false
