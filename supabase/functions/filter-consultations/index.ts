@@ -24,7 +24,7 @@ serve(async (req) => {
     insurerId,
   } = body;
 
-  // 1) Déterminer l'assureur à partir du staff connecté si besoin
+  // 1) Résoudre l’assureur à partir du staff connecté si besoin
   let finalInsurerId = insurerId as string | undefined;
 
   if (!finalInsurerId) {
@@ -32,14 +32,13 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
 
     if (token) {
-      const supabaseUserClient = createClient(supabaseUrl, token, {
+      const userClient = createClient(supabaseUrl, token, {
         auth: { persistSession: false },
       });
 
-      const { data: userRes } = await supabaseUserClient.auth.getUser();
+      const { data: userRes } = await userClient.auth.getUser();
       const email =
         (userRes.user as any)?.email ||
-        (userRes.user as any)?.email_confirmed ||
         userRes.user?.user_metadata?.email ||
         undefined;
 
@@ -64,78 +63,154 @@ serve(async (req) => {
     );
   }
 
-  // 2) Requête avec JOINS en utilisant bien "name"
-  let query = supabase
+  // 2) Récupérer les consultations (sans JOIN)
+  let q = supabase
     .from("consultations")
     .select(
       `
-      id,
-      created_at,
-      amount,
-      status,
-      pdf_url,
-      insurer_id,
-      clinic_id,
-      patient:patients (
-        name
-      ),
-      doctor:clinic_staff (
-        name
-      ),
-      clinic:clinics (
-        name
-      )
-    `,
+        id,
+        created_at,
+        amount,
+        status,
+        pdf_url,
+        insurer_id,
+        clinic_id,
+        patient_id,
+        doctor_id
+      `,
     )
     .eq("insurer_id", finalInsurerId);
 
-  if (status) {
-    query = query.eq("status", status);
-  }
+  if (status) q = q.eq("status", status);
+  if (clinicId) q = q.eq("clinic_id", clinicId);
+  if (dateStart) q = q.gte("created_at", dateStart);
+  if (dateEnd) q = q.lte("created_at", dateEnd + "T23:59:59");
 
-  if (clinicId) {
-    query = query.eq("clinic_id", clinicId);
-  }
+  q = q.order("created_at", { ascending: false });
 
-  if (dateStart) {
-    query = query.gte("created_at", dateStart);
-  }
-
-  if (dateEnd) {
-    query = query.lte("created_at", dateEnd + "T23:59:59");
-  }
-
-  query = query.order("created_at", { ascending: false });
-
-  const { data, error } = await query;
-
+  const { data: consultations, error } = await q;
   if (error) {
-    console.error("filter-consultations error", error);
+    console.error("filter-consultations consultations error", error);
     return new Response(
       JSON.stringify({ data: [], error: error.message }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
-  // 3) Normalisation → champs "plats" pour le front
-  const normalized = (data ?? []).map((row: any) => ({
-    id: row.id,
-    created_at: row.created_at,
-    amount: row.amount,
-    status: row.status,
-    pdf_url: row.pdf_url,
-    insurer_id: row.insurer_id,
-    clinic_id: row.clinic_id,
-    patient_name: row.patient?.name ?? null,   // ⬅️ ici "name"
-    doctor_name: row.doctor?.name ?? null,     // ⬅️ ici aussi
-    clinic_name: row.clinic?.name ?? null,     // ⬅️ idem
-  }));
+  if (!consultations || consultations.length === 0) {
+    return new Response(
+      JSON.stringify({ data: [], error: null }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
-  // 4) Eventuelle recherche texte côté JS si tu veux (search)
+  // 3) Récupérer les IDs pour joindre manuellement
+  const patientIds = Array.from(
+    new Set(
+      consultations
+        .map((c: any) => c.patient_id)
+        .filter((x: string | null) => !!x),
+    ),
+  );
+  const doctorIds = Array.from(
+    new Set(
+      consultations
+        .map((c: any) => c.doctor_id)
+        .filter((x: string | null) => !!x),
+    ),
+  );
+  const clinicIds = Array.from(
+    new Set(
+      consultations
+        .map((c: any) => c.clinic_id)
+        .filter((x: string | null) => !!x),
+    ),
+  );
+
+  // 4) Charger les patients / médecins / cliniques
+  const [patientsRes, doctorsRes, clinicsRes] = await Promise.all([
+    patientIds.length
+      ? supabase
+          .from("patients")
+          .select("id, name")
+          .in("id", patientIds)
+      : Promise.resolve({ data: [] as any[], error: null }),
+    doctorIds.length
+      ? supabase
+          .from("clinic_staff")
+          .select("id, name")
+          .in("id", doctorIds)
+      : Promise.resolve({ data: [] as any[], error: null }),
+    clinicIds.length
+      ? supabase
+          .from("clinics")
+          .select("id, name")
+          .in("id", clinicIds)
+      : Promise.resolve({ data: [] as any[], error: null }),
+  ]);
+
+  if (patientsRes.error) console.error("patients error", patientsRes.error);
+  if (doctorsRes.error) console.error("doctors error", doctorsRes.error);
+  if (clinicsRes.error) console.error("clinics error", clinicsRes.error);
+
+  const patientsMap = new Map<string, string>();
+  for (const p of patientsRes.data || []) {
+    patientsMap.set(p.id, p.name);
+  }
+
+  const doctorsMap = new Map<string, string>();
+  for (const d of doctorsRes.data || []) {
+    doctorsMap.set(d.id, d.name);
+  }
+
+  const clinicsMap = new Map<string, string>();
+  for (const c of clinicsRes.data || []) {
+    clinicsMap.set(c.id, c.name);
+  }
+
+  // 5) Normaliser pour le front
+  const normalized = (consultations as any[]).map((c) => {
+    const patientName = c.patient_id
+      ? patientsMap.get(c.patient_id) || null
+      : null;
+    const doctorName = c.doctor_id
+      ? doctorsMap.get(c.doctor_id) || null
+      : null;
+    const clinicName = c.clinic_id
+      ? clinicsMap.get(c.clinic_id) || null
+      : null;
+
+    // petit search texte côté serveur (optionnel)
+    if (search) {
+      const s = search.toLowerCase();
+      const hay = [
+        patientName || "",
+        doctorName || "",
+        clinicName || "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (!hay.includes(s)) {
+        return null; // filtré
+      }
+    }
+
+    return {
+      id: c.id,
+      created_at: c.created_at,
+      amount: c.amount,
+      status: c.status,
+      pdf_url: c.pdf_url,
+      insurer_id: c.insurer_id,
+      clinic_id: c.clinic_id,
+      patient_name: patientName,
+      doctor_name: doctorName,
+      clinic_name: clinicName,
+    };
+  }).filter(Boolean);
 
   return new Response(
     JSON.stringify({ data: normalized, error: null }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
 });
-
