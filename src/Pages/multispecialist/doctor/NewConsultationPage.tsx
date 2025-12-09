@@ -12,6 +12,8 @@ import { fetchGptSuggestions } from '../../../lib/openai';
 import { useSearchParams } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
+import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
+
 
 export default function NewConsultationPage() {
   const { user } = useUser();
@@ -368,7 +370,25 @@ const createConsultation = async () => {
     );
     setStep("done");
 
-    // 8) Reset minimum pour la prochaine consultation
+
+    // 8) Si la consultation est envoyée à l’assureur → génération du PDF
+    if (targetStatus === "sent") {
+      const finalId = consultationId || newId;
+      if (finalId) {
+        try {
+          await generateConsultationPdf(finalId);
+          console.log("[createConsultation] PDF généré pour", finalId);
+        } catch (e) {
+          console.error("[createConsultation] erreur génération PDF :", e);
+        }
+      } else {
+        console.warn(
+          "[createConsultation] targetStatus=sent mais aucun ID de consultation trouvé"
+        );
+      }
+    }
+
+    // 9) Reset minimum pour la prochaine consultation
     setActs([]);
     setCurrentAct("");
     setMedications([]);
@@ -417,15 +437,25 @@ const createConsultation = async () => {
         })
         .eq("id", consultationId);
 
+      // 🔹 Génération du PDF après passage en "sent"
+      try {
+        await generateConsultationPdf(consultationId);
+        console.log("[checkRights] PDF généré pour", consultationId);
+      } catch (e) {
+        console.error("[checkRights] erreur génération PDF :", e);
+      }
+
       setAmount(String((data.insurer_amount || 0) + (data.patient_amount || 0)));
       setProvisional(false);
       toast.success("Droits confirmés");
     } catch (e) {
+      console.error("[checkRights]", e);
       toast.error("Échec de la vérification des droits");
     } finally {
       setIsCheckingRights(false);
     }
   };
+
 
   // ---------------- Rendu UI ----------------
   return (
