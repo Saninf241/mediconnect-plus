@@ -7,9 +7,26 @@ type ConsultationRow = {
   amount: number | null;
   status: string;
   pdf_url?: string | null;
+
+  // Nouvelles formes (Edge Function)
+  patients?: { name?: string | null };
+  clinic_staff?: { name?: string | null };
+  clinics?: { name?: string | null };
+
+  // Anciennes formes possibles
+  patient?: { name?: string | null };
+  doctor?: { name?: string | null };
+  clinic?: { name?: string | null };
+
+  // Forme “aplatie” éventuelle
   patient_name?: string | null;
   doctor_name?: string | null;
   clinic_name?: string | null;
+
+  // pour debug éventuel
+  patient_id?: string | null;
+  doctor_id?: string | null;
+  clinic_id?: string | null;
 };
 
 interface Props {
@@ -18,25 +35,79 @@ interface Props {
   onReject: (id: string) => void;
 }
 
-export default function ConsultationTable({ consultations, onValidate, onReject }: Props) {
+function getPatientLabel(c: ConsultationRow): string {
+  return (
+    c.patient_name ||
+    c.patients?.name ||
+    c.patient?.name ||
+    c.patient_id ||
+    "—"
+  );
+}
+
+function getDoctorLabel(c: ConsultationRow): string {
+  return (
+    c.doctor_name ||
+    c.clinic_staff?.name ||
+    c.doctor?.name ||
+    c.doctor_id ||
+    "—"
+  );
+}
+
+function getClinicLabel(c: ConsultationRow): string {
+  return (
+    c.clinic_name ||
+    c.clinics?.name ||
+    c.clinic?.name ||
+    c.clinic_id ||
+    "—"
+  );
+}
+
+export default function ConsultationTable({
+  consultations,
+  onValidate,
+  onReject,
+}: Props) {
   return (
     <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
       <thead className="bg-gray-100">
         <tr>
-          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Date</th>
-          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Patient</th>
-          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Médecin</th>
-          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Établissement</th>
-          <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">Montant</th>
-          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Statut</th>
-          <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">Fiche PDF</th>
-          <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">Actions</th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Date
+          </th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Patient
+          </th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Médecin
+          </th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Établissement
+          </th>
+          <th className="px-4 py-2 text-right text-sm font-semibold text-gray-700">
+            Montant
+          </th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Statut
+          </th>
+          <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
+            Fiche PDF
+          </th>
+          <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
+            Actions
+          </th>
         </tr>
       </thead>
+
       <tbody>
         {consultations.length === 0 && (
           <tr>
-            <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
+            <td
+              colSpan={8}
+              className="px-4 py-6 text-center text-sm text-gray-500"
+            >
               Aucune consultation trouvée.
             </td>
           </tr>
@@ -47,21 +118,27 @@ export default function ConsultationTable({ consultations, onValidate, onReject 
             <td className="px-4 py-2 text-sm text-gray-700">
               {new Date(c.created_at).toLocaleString()}
             </td>
+
             <td className="px-4 py-2 text-sm text-gray-700">
-              {c.patient_name || "—"}
+              {getPatientLabel(c)}
             </td>
+
             <td className="px-4 py-2 text-sm text-gray-700">
-              {c.doctor_name || "—"}
+              {getDoctorLabel(c)}
             </td>
+
             <td className="px-4 py-2 text-sm text-gray-700">
-              {c.clinic_name || "—"}
+              {getClinicLabel(c)}
             </td>
+
             <td className="px-4 py-2 text-sm text-gray-700 text-right">
-              {c.amount != null ? `${c.amount.toLocaleString("fr-FR")} FCFA` : "—"}
+              {c.amount != null
+                ? `${c.amount.toLocaleString("fr-FR")} FCFA`
+                : "—"}
             </td>
-            <td className="px-4 py-2 text-sm text-gray-700">
-              {c.status}
-            </td>
+
+            <td className="px-4 py-2 text-sm text-gray-700">{c.status}</td>
+
             <td className="px-4 py-2 text-sm text-center">
               {c.pdf_url ? (
                 <a
@@ -76,6 +153,7 @@ export default function ConsultationTable({ consultations, onValidate, onReject 
                 <span className="text-gray-400">Non disponible</span>
               )}
             </td>
+
             <td className="px-4 py-2 text-sm text-center space-x-2">
               <button
                 className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-xs"
