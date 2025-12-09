@@ -244,13 +244,16 @@ const [searchParams] = useSearchParams();
     })();
   }, [searchParams]);
 
-  // ---------- Enregistrement consultation ----------
+// ---------- Enregistrement consultation ----------
 const createConsultation = async () => {
   try {
     // 1) Contexte médecin
     const ctx =
       doctorInfo?.clinic_id && doctorInfo?.doctor_id
-        ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+        ? {
+            clinicId: String(doctorInfo.clinic_id),
+            doctorId: String(doctorInfo.doctor_id),
+          }
         : await resolveDoctorContext();
 
     if (!ctx) {
@@ -276,9 +279,11 @@ const createConsultation = async () => {
         : null;
 
     const hasSymptoms =
-      (symptomsType === "text" && symptoms.trim().length > 0) || !!symptomsDrawn;
+      (symptomsType === "text" && symptoms.trim().length > 0) ||
+      !!symptomsDrawn;
     const hasDiagnosis =
-      (diagnosisType === "text" && diagnosis.trim().length > 0) || !!diagnosisDrawn;
+      (diagnosisType === "text" && diagnosis.trim().length > 0) ||
+      !!diagnosisDrawn;
 
     if (!hasSymptoms) {
       toast.error("Renseignez les symptômes.");
@@ -308,30 +313,29 @@ const createConsultation = async () => {
     }
 
     // 4) Statut : 'sent' uniquement si patient assuré + assureur trouvé
-    const targetStatus =
-      patientId && insurerId ? "sent" : "draft";
+    const targetStatus = patientId && insurerId ? "sent" : "draft";
 
     // 5) Payload commun INSERT / UPDATE
     const payload: any = {
       doctor_id: ctx.doctorId,
       clinic_id: ctx.clinicId,
-      patient_id: patientId,                 // peut être null si pas d'empreinte / pas identifié
+      patient_id: patientId, // peut être null si pas d'empreinte / pas identifié
       symptoms: symptomsType === "text" ? symptoms.trim() : null,
       symptoms_drawn: symptomsDrawn,
       diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
       diagnosis_drawn: diagnosisDrawn,
       amount: parsedAmount,
-      acts: acts.map((a) => ({ type: a })),  // colonne 'acts' (jsonb)
-      medications: medications,             // colonne 'medications' (jsonb / text[])
+      acts: acts.map((a) => ({ type: a })), // colonne 'acts' (jsonb)
+      medications: medications, // colonne 'medications' (jsonb / text[])
       fingerprint_missing: fingerprintMissing,
-      insurer_id: insurerId,                // relie bien la consultation à l’assureur
-      status: targetStatus,                 // 'sent' ou 'draft'
+      insurer_id: insurerId, // relie bien la consultation à l’assureur
+      status: targetStatus, // 'sent' ou 'draft'
     };
 
     console.log("[createConsultation] payload=", payload);
 
-    let error = null;
-    let finalId: string | null = consultationId;
+    let error: any = null;
+    let newId: string | null = null;
 
     // 6) Si pas encore de consultationId => INSERT
     if (!consultationId) {
@@ -343,8 +347,8 @@ const createConsultation = async () => {
 
       error = insertError;
       if (!insertError && data?.id) {
-        finalId = data.id as string;
-        setConsultationId(finalId);
+        newId = data.id as string;
+        setConsultationId(newId);
       }
     } else {
       // 7) Sinon UPDATE sur la ligne existante
@@ -354,7 +358,6 @@ const createConsultation = async () => {
         .eq("id", consultationId);
 
       error = updateError;
-      finalId = consultationId;
     }
 
     if (error) {
@@ -363,12 +366,18 @@ const createConsultation = async () => {
       return;
     }
 
-    // 8) Si la consultation est envoyée à l’assureur → génération du PDF
+    // 8) ID final de la consultation (INSERT ou UPDATE)
+    const finalId = consultationId || newId;
+
+    // 9) Si la consultation est envoyée à l’assureur → génération du PDF
     if (targetStatus === "sent" && finalId) {
       try {
-        console.log("[createConsultation] appel generateConsultationPdf pour", finalId);
-        await generateConsultationPdf(finalId);
-        console.log("[createConsultation] PDF généré pour", finalId);
+        console.log(
+          "[createConsultation] appel generateConsultationPdf pour",
+          finalId
+        );
+        const res = await generateConsultationPdf(finalId);
+        console.log("[createConsultation] PDF généré pour", finalId, res);
       } catch (e) {
         console.error("[createConsultation] erreur génération PDF :", e);
         toast.warn(
@@ -385,6 +394,7 @@ const createConsultation = async () => {
       );
     }
 
+    // 10) Feedback UI + reset
     toast.success(
       targetStatus === "sent"
         ? "Consultation envoyée à l’assureur."
@@ -392,7 +402,7 @@ const createConsultation = async () => {
     );
     setStep("done");
 
-    // 9) Reset minimum pour la prochaine consultation
+    // Reset minimum pour la prochaine consultation
     setActs([]);
     setCurrentAct("");
     setMedications([]);
