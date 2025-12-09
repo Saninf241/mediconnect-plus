@@ -24,51 +24,39 @@ export default function AssureurReports() {
       .catch(console.error);
   }, []);
 
-  const fetchConsultations = async () => {
-    if (!ctx?.insurerId) return;
-    setIsLoading(true);
+const fetchConsultations = async () => {
+  const payload = { search, status, clinicId, dateStart, dateEnd };
+  console.log("▶️ Payload envoyé :", payload);
+  setIsLoading(true);
 
-    try {
-      let q = supabase
-        .from("consultations")
-        .select(
-          `
-          id,
-          created_at,
-          amount,
-          status,
-          insurer_comment,
-          patient:patients(name),
-          clinic:clinics(name)
-        `
-        )
-        .eq("insurer_id", ctx.insurerId);
-
-      if (status) q = q.eq("status", status);
-      if (clinicId) q = q.eq("clinic_id", clinicId);
-      if (dateStart) q = q.gte("created_at", dateStart);
-      if (dateEnd) q = q.lte("created_at", dateEnd);
-
-      if (search.trim()) {
-        const s = `%${search.trim()}%`;
-        // on filtre sur nom patient ou nom clinique
-        q = q.or(
-          `patient.name.ilike.${s},clinic.name.ilike.${s}`
-        );
+  try {
+    const res = await fetch(
+      "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       }
+    );
 
-      const { data, error } = await q.order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("⛔ Erreur lors de la récupération :", error);
-        setConsultations([]);
-      } else {
-        setConsultations(data || []);
-      }
-    } finally {
-      setIsLoading(false);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Erreur HTTP ${res.status} : ${text}`);
     }
-  };
+
+    const { data } = await res.json();
+    console.log("▶️ DATA reçue de filter-consultations:", data); // <-- IMPORTANT
+    setConsultations(data);
+  } catch (err) {
+    console.error("⛔ Erreur lors de la récupération :", err);
+    setConsultations([]);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   // premier chargement
   useEffect(() => {
