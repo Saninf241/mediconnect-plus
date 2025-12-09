@@ -1,24 +1,29 @@
 // src/lib/api/generateConsultationPdf.ts
-import { supabase } from "../supabase";
-
-/**
- * Appelle l’Edge Function generate-consultation-pdf
- * et retourne l’URL publique générée.
- */
 export async function generateConsultationPdf(consultationId: string) {
-  const { data, error } = await supabase.functions.invoke(
-    "generate-consultation-pdf",
-    {
-      body: { consultationId },
-    }
-  );
+  const url =
+    "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/generate-consultation-pdf";
 
-  if (error) {
-    console.error("[generateConsultationPdf] error", error);
-    throw error;
+  console.log("[generateConsultationPdf] call with", consultationId);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ consultationId }),
+  });
+
+  console.log("[generateConsultationPdf] HTTP status", res.status);
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(
+      `Edge function error ${res.status}: ${txt || "no body"}`
+    );
   }
 
-  // data = { ok: true, pdf_url: "https://..." }
+  const data = await res.json().catch(() => ({}));
+  console.log("[generateConsultationPdf] response body", data);
   return data;
 }
 

@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import jsPDF from "https://esm.sh/jspdf@2.5.1";
 
 serve(async (req) => {
-  // --- CORS préflight ---
+  // --- 1) Préflight CORS ---
   if (req.method === "OPTIONS") {
     return new Response("ok", {
       status: 200,
@@ -20,11 +20,7 @@ serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
-  // --- Lecture du body ---
+  // --- 2) Lecture du body ---
   let body: any = {};
   try {
     body = await req.json();
@@ -34,10 +30,15 @@ serve(async (req) => {
 
   const consultationId = body.consultationId as string | undefined;
   if (!consultationId) {
+    console.error("[generate-consultation-pdf] Missing consultationId");
     return new Response("Missing consultationId", { status: 400 });
   }
 
-  // --- Récupérer la consultation + jointures ---
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  // --- 3) Charger la consultation + jointures ---
   const { data: cons, error } = await supabase
     .from("consultations")
     .select(
@@ -57,11 +58,10 @@ serve(async (req) => {
     .maybeSingle();
 
   if (error || !cons) {
-    console.error("generate-consultation-pdf: consultation not found", error);
+    console.error("[generate-consultation-pdf] consultation not found:", error);
     return new Response("Consultation not found", { status: 404 });
   }
 
-  // --- Champs de base ---
   const patientName = cons.patients?.name ?? "-";
   const doctorName = cons.clinic_staff?.name ?? "-";
   const clinicName = cons.clinics?.name ?? "-";
@@ -71,99 +71,94 @@ serve(async (req) => {
     ? new Date(cons.created_at).toLocaleString("fr-FR")
     : "-";
 
-  // sécuriser les tableaux
-  const rawActs = cons.acts;
-  const acts: Array<{ type?: string }> = Array.isArray(rawActs) ? rawActs : [];
+  // sécuriser actes / médicaments
+  const acts: any[] = Array.isArray(cons.acts) ? cons.acts : [];
+  const meds: any[] = Array.isArray(cons.medications) ? cons.medications : [];
 
-  const rawMeds = cons.medications;
-  const meds: Array<string | { name?: string }> = Array.isArray(rawMeds)
-    ? rawMeds
-    : [];
-
-  // --- Création du PDF ---
+  // --- 4) Génération PDF ---
   const doc = new jsPDF();
   let y = 20;
-  const lineHeight = 8;
+  const lh = 8;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.text("Fiche consultation Mediconnect+", 20, y);
-  y += 2 * lineHeight;
+  y += lh * 2;
 
-  doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
 
   doc.text(`ID consultation : ${cons.id}`, 20, y);
-  y += lineHeight;
-
+  y += lh;
   doc.text(`Date : ${createdAt}`, 20, y);
-  y += lineHeight * 1.5;
+  y += lh * 2;
 
   doc.text(`Patient : ${patientName}`, 20, y);
-  y += lineHeight;
-
+  y += lh;
   doc.text(`Médecin : ${doctorName}`, 20, y);
-  y += lineHeight;
-
+  y += lh;
   doc.text(`Établissement : ${clinicName}`, 20, y);
-  y += lineHeight * 1.5;
+  y += lh * 2;
 
   doc.text(`Montant : ${amount} FCFA`, 20, y);
-  y += lineHeight;
-
+  y += lh;
   doc.text(`Statut : ${status}`, 20, y);
-  y += lineHeight * 2;
+  y += lh * 2;
 
-  // ---------- Actes ----------
+  // --- Actes ---
   doc.setFont("helvetica", "bold");
   doc.text("Actes médicaux :", 20, y);
-  y += lineHeight;
+  y += lh;
   doc.setFont("helvetica", "normal");
 
-  if (acts.length > 0) {
+  if (acts.length === 0) {
+    doc.text("- Aucun acte renseigné", 25, y);
+    y += lh;
+  } else {
     for (const a of acts) {
-      const label = a?.type || JSON.stringify(a);
+      const label =
+        typeof a === "string"
+          ? a
+          : a?.type || a?.label || JSON.stringify(a);
       doc.text(`- ${label}`, 25, y);
-      y += lineHeight;
+      y += lh;
       if (y > 270) {
         doc.addPage();
         y = 20;
       }
     }
-  } else {
-    doc.text("- Aucun acte renseigné", 25, y);
-    y += lineHeight;
   }
 
-  y += lineHeight;
+  y += lh;
 
-  // ---------- Médicaments ----------
+  // --- Médicaments ---
   doc.setFont("helvetica", "bold");
   doc.text("Médicaments :", 20, y);
-  y += lineHeight;
+  y += lh;
   doc.setFont("helvetica", "normal");
 
-  if (meds.length > 0) {
+  if (meds.length === 0) {
+    doc.text("- Aucun médicament renseigné", 25, y);
+    y += lh;
+  } else {
     for (const m of meds) {
       const label =
-        typeof m === "string" ? m : m?.name || JSON.stringify(m);
+        typeof m === "string"
+          ? m
+          : m?.name || m?.label || JSON.stringify(m);
       doc.text(`- ${label}`, 25, y);
-      y += lineHeight;
+      y += lh;
       if (y > 270) {
         doc.addPage();
         y = 20;
       }
     }
-  } else {
-    doc.text("- Aucun médicament renseigné", 25, y);
-    y += lineHeight;
   }
 
-  // --- Export PDF en mémoire ---
+  // --- 5) Upload dans le bucket ---
   const pdfBytes = doc.output("arraybuffer");
   const fileName = `consultation-${consultationId}.pdf`;
 
-  // --- Upload dans le bucket consultation-files ---
   const { error: uploadError } = await supabase.storage
     .from("consultation-files")
     .upload(fileName, pdfBytes, {
@@ -172,7 +167,7 @@ serve(async (req) => {
     });
 
   if (uploadError) {
-    console.error("upload error", uploadError);
+    console.error("[generate-consultation-pdf] upload error:", uploadError);
     return new Response("Upload failed", { status: 500 });
   }
 
@@ -180,14 +175,13 @@ serve(async (req) => {
     data: { publicUrl },
   } = supabase.storage.from("consultation-files").getPublicUrl(fileName);
 
-  // --- Mise à jour de la colonne pdf_url ---
   const { error: updateError } = await supabase
     .from("consultations")
     .update({ pdf_url: publicUrl })
     .eq("id", consultationId);
 
   if (updateError) {
-    console.error("update pdf_url error", updateError);
+    console.error("[generate-consultation-pdf] update pdf_url error:", updateError);
     return new Response("Update pdf_url failed", { status: 500 });
   }
 
@@ -202,4 +196,3 @@ serve(async (req) => {
     }
   );
 });
-
