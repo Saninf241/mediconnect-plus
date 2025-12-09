@@ -245,7 +245,6 @@ const [searchParams] = useSearchParams();
   }, [searchParams]);
 
   // ---------- Enregistrement consultation ----------
-// ---------- Enregistrement consultation ----------
 const createConsultation = async () => {
   try {
     // 1) Contexte médecin
@@ -322,17 +321,17 @@ const createConsultation = async () => {
       diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
       diagnosis_drawn: diagnosisDrawn,
       amount: parsedAmount,
-      acts: acts.map((a) => ({ type: a })), // colonne 'acts' (jsonb)
+      acts: acts.map((a) => ({ type: a })),  // colonne 'acts' (jsonb)
       medications: medications,             // colonne 'medications' (jsonb / text[])
       fingerprint_missing: fingerprintMissing,
-      insurer_id: insurerId,                // 👉 nouveau
-      status: targetStatus,                 // 👉 'sent' ou 'draft'
+      insurer_id: insurerId,                // relie bien la consultation à l’assureur
+      status: targetStatus,                 // 'sent' ou 'draft'
     };
 
     console.log("[createConsultation] payload=", payload);
 
     let error = null;
-    let newId: string | null = null;
+    let finalId: string | null = consultationId;
 
     // 6) Si pas encore de consultationId => INSERT
     if (!consultationId) {
@@ -344,8 +343,8 @@ const createConsultation = async () => {
 
       error = insertError;
       if (!insertError && data?.id) {
-        newId = data.id as string;
-        setConsultationId(newId);
+        finalId = data.id as string;
+        setConsultationId(finalId);
       }
     } else {
       // 7) Sinon UPDATE sur la ligne existante
@@ -355,6 +354,7 @@ const createConsultation = async () => {
         .eq("id", consultationId);
 
       error = updateError;
+      finalId = consultationId;
     }
 
     if (error) {
@@ -363,30 +363,34 @@ const createConsultation = async () => {
       return;
     }
 
+    // 8) Si la consultation est envoyée à l’assureur → génération du PDF
+    if (targetStatus === "sent" && finalId) {
+      try {
+        console.log("[createConsultation] appel generateConsultationPdf pour", finalId);
+        await generateConsultationPdf(finalId);
+        console.log("[createConsultation] PDF généré pour", finalId);
+      } catch (e) {
+        console.error("[createConsultation] erreur génération PDF :", e);
+        toast.warn(
+          "Consultation envoyée à l’assureur, mais la fiche PDF n'a pas pu être générée."
+        );
+      }
+    } else {
+      console.log(
+        "[createConsultation] pas de génération PDF (targetStatus=",
+        targetStatus,
+        ", finalId=",
+        finalId,
+        ")"
+      );
+    }
+
     toast.success(
       targetStatus === "sent"
         ? "Consultation envoyée à l’assureur."
         : "Consultation enregistrée en brouillon."
     );
     setStep("done");
-
-
-    // 8) Si la consultation est envoyée à l’assureur → génération du PDF
-    if (targetStatus === "sent") {
-      const finalId = consultationId || newId;
-      if (finalId) {
-        try {
-          await generateConsultationPdf(finalId);
-          console.log("[createConsultation] PDF généré pour", finalId);
-        } catch (e) {
-          console.error("[createConsultation] erreur génération PDF :", e);
-        }
-      } else {
-        console.warn(
-          "[createConsultation] targetStatus=sent mais aucun ID de consultation trouvé"
-        );
-      }
-    }
 
     // 9) Reset minimum pour la prochaine consultation
     setActs([]);
