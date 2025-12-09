@@ -7,7 +7,7 @@ import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 
 export default function AssureurReports() {
-  // ✅ on récupère ctx ET loading depuis le hook
+  // ✅ on récupère bien { ctx, loading }
   const { ctx, loading } = useInsurerContext();
 
   const [consultations, setConsultations] = useState<any[]>([]);
@@ -24,7 +24,7 @@ export default function AssureurReports() {
     console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
   }, [ctx, loading]);
 
-  // Charger la liste des cliniques (pour les filtres)
+  // Charger les cliniques pour le filtre
   useEffect(() => {
     getAllClinics()
       .then(setClinics)
@@ -32,14 +32,10 @@ export default function AssureurReports() {
   }, []);
 
   const fetchConsultations = async () => {
-    // on attend que le hook ait fini
-    if (loading) {
-      console.log("[AssureurReports] Contexte en chargement, on attend…");
-      return;
-    }
-
     if (!ctx?.insurerId) {
-      console.warn("[AssureurReports] Pas d'insurerId, on n'appelle pas filter-consultations.");
+      console.warn(
+        "[AssureurReports] Pas d'insurerId dans le contexte, on n'appelle pas filter-consultations."
+      );
       return;
     }
 
@@ -49,7 +45,7 @@ export default function AssureurReports() {
       clinicId,
       dateStart,
       dateEnd,
-      insurerId: ctx.insurerId, // ✅ clé pour filtrer côté Edge Function
+      insurerId: ctx.insurerId, // 🔑 envoyé à la fonction Edge
     };
 
     console.log("▶️ Payload envoyé à filter-consultations :", payload);
@@ -60,9 +56,7 @@ export default function AssureurReports() {
         "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }
       );
@@ -73,8 +67,22 @@ export default function AssureurReports() {
       }
 
       const { data } = await res.json();
-      console.log("✅ DATA reçue de filter-consultations:", data);
-      setConsultations(Array.isArray(data) ? data : []);
+      const raw = Array.isArray(data) ? data : [];
+      console.log("✅ DATA reçue de filter-consultations:", raw);
+
+      // 🔒 Double sécurité : on garde UNIQUEMENT les lignes de cet assureur
+      const filtered = raw.filter(
+        (row) => row.insurer_id === ctx.insurerId
+      );
+
+      console.log(
+        "✅ Lignes après filtre local par insurer_id=",
+        ctx.insurerId,
+        " => ",
+        filtered
+      );
+
+      setConsultations(filtered);
     } catch (err) {
       console.error("⛔ Erreur lors de la récupération :", err);
       setConsultations([]);
@@ -83,13 +91,13 @@ export default function AssureurReports() {
     }
   };
 
-  // Premier chargement quand le contexte assureur est prêt
+  // Premier chargement quand le contexte est prêt
   useEffect(() => {
-    if (!loading && ctx?.insurerId) {
+    if (ctx?.insurerId) {
       fetchConsultations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, ctx?.insurerId]);
+  }, [ctx?.insurerId]);
 
   const handleValidate = async (id: string) => {
     const { error } = await supabase
@@ -119,9 +127,8 @@ export default function AssureurReports() {
     if (!error) fetchConsultations();
   };
 
-  // États d'attente / erreur de contexte
   if (loading) {
-    return <p className="p-6">Chargement du compte assureur…</p>;
+    return <p className="p-6">Chargement de l’espace assureur…</p>;
   }
 
   if (!ctx) {
