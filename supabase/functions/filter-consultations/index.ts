@@ -28,13 +28,8 @@ serve(async (req) => {
     insurerId?: string;
   };
 
-  // ⚠️ Sécurité / filtrage : sans insurerId → aucune donnée
-  if (!insurerId) {
-    return new Response(
-      JSON.stringify({ data: [], error: null }),
-      { headers: { "Content-Type": "application/json" } }
-    );
-  }
+  // On log pour debug (visible dans Supabase → Logs)
+  console.log("filter-consultations body:", body);
 
   let q = supabase
     .from("consultations")
@@ -45,7 +40,6 @@ serve(async (req) => {
         amount,
         status,
         pdf_url,
-        insurer_comment,
         insurer_id,
         patient_id,
         doctor_id,
@@ -54,9 +48,9 @@ serve(async (req) => {
         clinic_staff ( name ),
         clinics ( name )
       `
-    )
-    .eq("insurer_id", insurerId); // ✅ filtre assureur
+    );
 
+  // ⚠ on NE filtre PLUS ici par insurer_id, on le fera côté front
   if (status) q = q.eq("status", status);
   if (clinicId) q = q.eq("clinic_id", clinicId);
   if (dateStart) q = q.gte("created_at", dateStart);
@@ -64,7 +58,6 @@ serve(async (req) => {
 
   if (search && search.trim()) {
     const s = `%${search.trim()}%`;
-    // on cherche dans patient, médecin, clinique
     q = q.or(
       `patients.name.ilike.${s},clinic_staff.name.ilike.${s},clinics.name.ilike.${s}`
     );
@@ -79,6 +72,12 @@ serve(async (req) => {
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
+
+  // Pour debug : on renvoie aussi l’insurerId reçu
+  console.log(
+    "filter-consultations result (ids):",
+    (data || []).map((r) => ({ id: r.id, insurer_id: r.insurer_id }))
+  );
 
   return new Response(
     JSON.stringify({ data, error: null }),

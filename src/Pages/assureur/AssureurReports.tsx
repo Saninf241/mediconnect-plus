@@ -7,7 +7,6 @@ import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 
 export default function AssureurReports() {
-  // ✅ on récupère bien { ctx, loading }
   const { ctx, loading } = useInsurerContext();
 
   const [consultations, setConsultations] = useState<any[]>([]);
@@ -19,12 +18,12 @@ export default function AssureurReports() {
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Debug : voir le contexte assureur
+  // Debug contexte
   useEffect(() => {
     console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
   }, [ctx, loading]);
 
-  // Charger les cliniques pour le filtre
+  // Charger la liste des cliniques (pour le filtre)
   useEffect(() => {
     getAllClinics()
       .then(setClinics)
@@ -33,9 +32,8 @@ export default function AssureurReports() {
 
   const fetchConsultations = async () => {
     if (!ctx?.insurerId) {
-      console.warn(
-        "[AssureurReports] Pas d'insurerId dans le contexte, on n'appelle pas filter-consultations."
-      );
+      console.warn("[AssureurReports] Pas d'insurerId → pas d'appel à la fonction.");
+      setConsultations([]);
       return;
     }
 
@@ -45,7 +43,7 @@ export default function AssureurReports() {
       clinicId,
       dateStart,
       dateEnd,
-      insurerId: ctx.insurerId, // 🔑 envoyé à la fonction Edge
+      insurerId: ctx.insurerId, // envoyé mais utilisé seulement pour debug côté Edge
     };
 
     console.log("▶️ Payload envoyé à filter-consultations :", payload);
@@ -68,17 +66,22 @@ export default function AssureurReports() {
 
       const { data } = await res.json();
       const raw = Array.isArray(data) ? data : [];
-      console.log("✅ DATA reçue de filter-consultations:", raw);
 
-      // 🔒 Double sécurité : on garde UNIQUEMENT les lignes de cet assureur
+      console.log(
+        "✅ DATA reçue de filter-consultations (id + insurer_id):",
+        raw.map((r: any) => ({ id: r.id, insurer_id: r.insurer_id }))
+      );
+
+      // ✅ Filtre local : ne garder que les consultations de CET assureur
       const filtered = raw.filter(
-        (row) => row.insurer_id === ctx.insurerId
+        (row: any) =>
+          row.insurer_id && String(row.insurer_id) === String(ctx.insurerId)
       );
 
       console.log(
-        "✅ Lignes après filtre local par insurer_id=",
+        "✅ Lignes après filtre local par insurer_id =",
         ctx.insurerId,
-        " => ",
+        "=>",
         filtered
       );
 
@@ -91,13 +94,13 @@ export default function AssureurReports() {
     }
   };
 
-  // Premier chargement quand le contexte est prêt
+  // Premier chargement quand le contexte assureur est prêt
   useEffect(() => {
-    if (ctx?.insurerId) {
+    if (ctx?.insurerId && !loading) {
       fetchConsultations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.insurerId]);
+  }, [ctx?.insurerId, loading]);
 
   const handleValidate = async (id: string) => {
     const { error } = await supabase
@@ -174,3 +177,4 @@ export default function AssureurReports() {
     </div>
   );
 }
+
