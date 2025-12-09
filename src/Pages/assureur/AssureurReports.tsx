@@ -7,7 +7,9 @@ import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 
 export default function AssureurReports() {
-  const { ctx } = useInsurerContext();
+  // ✅ on récupère ctx ET loading depuis le hook
+  const { ctx, loading } = useInsurerContext();
+
   const [consultations, setConsultations] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("sent");
@@ -17,54 +19,77 @@ export default function AssureurReports() {
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // charger la liste des cliniques (pour les filtres)
+  // Debug : voir le contexte assureur
+  useEffect(() => {
+    console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
+  }, [ctx, loading]);
+
+  // Charger la liste des cliniques (pour les filtres)
   useEffect(() => {
     getAllClinics()
       .then(setClinics)
       .catch(console.error);
   }, []);
 
-const fetchConsultations = async () => {
-  const payload = { search, status, clinicId, dateStart, dateEnd };
-  console.log("▶️ Payload envoyé :", payload);
-  setIsLoading(true);
-
-  try {
-    const res = await fetch(
-      "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Erreur HTTP ${res.status} : ${text}`);
+  const fetchConsultations = async () => {
+    // on attend que le hook ait fini
+    if (loading) {
+      console.log("[AssureurReports] Contexte en chargement, on attend…");
+      return;
     }
 
-    const { data } = await res.json();
-    console.log("▶️ DATA reçue de filter-consultations:", data); // <-- IMPORTANT
-    setConsultations(data);
-  } catch (err) {
-    console.error("⛔ Erreur lors de la récupération :", err);
-    setConsultations([]);
-  } finally {
-    setIsLoading(false);
-  }
-};
+    if (!ctx?.insurerId) {
+      console.warn("[AssureurReports] Pas d'insurerId, on n'appelle pas filter-consultations.");
+      return;
+    }
 
+    const payload = {
+      search,
+      status,
+      clinicId,
+      dateStart,
+      dateEnd,
+      insurerId: ctx.insurerId, // ✅ clé pour filtrer côté Edge Function
+    };
 
-  // premier chargement
+    console.log("▶️ Payload envoyé à filter-consultations :", payload);
+    setIsLoading(true);
+
+    try {
+      const res = await fetch(
+        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur HTTP ${res.status} : ${text}`);
+      }
+
+      const { data } = await res.json();
+      console.log("✅ DATA reçue de filter-consultations:", data);
+      setConsultations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("⛔ Erreur lors de la récupération :", err);
+      setConsultations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Premier chargement quand le contexte assureur est prêt
   useEffect(() => {
-    if (ctx?.insurerId) {
+    if (!loading && ctx?.insurerId) {
       fetchConsultations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.insurerId]);
+  }, [loading, ctx?.insurerId]);
 
   const handleValidate = async (id: string) => {
     const { error } = await supabase
@@ -93,6 +118,11 @@ const fetchConsultations = async () => {
 
     if (!error) fetchConsultations();
   };
+
+  // États d'attente / erreur de contexte
+  if (loading) {
+    return <p className="p-6">Chargement du compte assureur…</p>;
+  }
 
   if (!ctx) {
     return <p className="p-6">Aucun assureur attaché à ce compte.</p>;
