@@ -21,6 +21,7 @@ import MultispecialistSecretaryLayout from './components/layouts/Multispecialist
 import DoctorDashboardPage from './Pages/multispecialist/doctor/DoctorDashboardPage';
 import DoctorPatientsPage from './Pages/multispecialist/doctor/DoctorPatientsPage';
 import NewConsultationPage  from './Pages/multispecialist/doctor/NewConsultationPage';
+import HistoriqueActesPage from "./Pages/multispecialist/doctor/HistoriqueActesPage";
 import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage'; 
 import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
@@ -494,7 +495,7 @@ export default function App() {
       <Route index element={<DoctorDashboardPage />} />
       <Route path="patients" element={<DoctorPatientsPage />} />
       <Route path="new-consultation" element={<NewConsultationPage />} />
-      <Route path="consultation-follow-up" element={<ConsultationDoctorFollowUpPage />} />
+      <Route path="consultation-follow-up" element={<HistoriqueActesPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
       <Route path="settings" element={<SettingsDoctorPage />} />
       <Route path="patients/:id" element={<DoctorPatientDetailsPage />} />
