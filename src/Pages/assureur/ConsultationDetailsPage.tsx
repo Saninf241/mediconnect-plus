@@ -50,7 +50,7 @@ export default function AssureurConsultationDetailsPage() {
       if (consult.patient_id) {
         const { data: patientData, error: pError } = await supabase
           .from("patients")
-          .select("id, full_name, name, is_assured")
+          .select("id, name, name, is_assured")
           .eq("id", consult.patient_id)
           .maybeSingle();
 
@@ -93,7 +93,7 @@ export default function AssureurConsultationDetailsPage() {
 
   // --------- Dérivés affichage ---------
   const patientName =
-    patient?.full_name || patient?.name || "—";
+    patient?.name || patient?.name || "—";
 
   const insurerName = membership?.insurer?.name || "—";
   const memberNo = membership?.member_no || "—";

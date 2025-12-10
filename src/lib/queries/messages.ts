@@ -1,66 +1,60 @@
 // src/lib/queries/messages.ts
-import { supabase } from '../../lib/supabase';
+import { supabase } from "../supabase";
 
-export interface Message {
+export type Message = {
   id: string;
   consultation_id: string;
   sender_id: string;
   receiver_id: string;
-  sender_role: 'doctor' | 'assurer';
+  sender_role: "doctor" | "assurer";
   message: string;
-  read: boolean;
   created_at: string;
-}
+};
 
-// ✅ Récupérer les messages d'une consultation
-export async function getMessages(consultationId: string): Promise<Message[]> {
+/**
+ * Récupère tous les messages liés à une consultation,
+ * triés du plus ancien au plus récent.
+ */
+export async function getMessages(
+  consultationId: string
+): Promise<Message[]> {
   const { data, error } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('consultation_id', consultationId)
-    .order('created_at', { ascending: true });
+    .from("messages")
+    .select("*")
+    .eq("consultation_id", consultationId)
+    .order("created_at", { ascending: true });
 
   if (error) {
-    console.error('Erreur récupération messages :', error);
+    console.error("[messages] error getMessages:", error);
     return [];
   }
 
-  return data;
+  return (data as Message[]) ?? [];
 }
 
-// ✅ Marquer tous les messages comme lus pour un receiver
-export async function markMessagesAsRead(consultationId: string, receiverId: string) {
-  const { error } = await supabase
-    .from('messages')
-    .update({ read: true })
-    .eq('consultation_id', consultationId)
-    .eq('receiver_id', receiverId)
-    .eq('read', false); // uniquement ceux non lus
-
-  if (error) {
-    console.error('Erreur mise à jour read = true :', error);
-  }
-}
-
-// ✅ Envoyer un message
+/**
+ * Envoie un message entre médecin et assureur.
+ */
 export async function sendMessage(
   consultationId: string,
   senderId: string,
   receiverId: string,
-  senderRole: 'doctor' | 'assurer',
-  message: string
+  senderRole: "doctor" | "assurer",
+  content: string
 ) {
-  const { error } = await supabase.from('messages').insert({
-    consultation_id: consultationId,
-    sender_id: senderId,
-    receiver_id: receiverId,
-    sender_role: senderRole,
-    message,
-    read: false, // ✅ important
-  });
+  const { error } = await supabase.from("messages").insert([
+    {
+      consultation_id: consultationId,
+      sender_id: senderId,
+      receiver_id: receiverId,
+      sender_role: senderRole,
+      message: content,
+    },
+  ]);
 
   if (error) {
-    console.error('Erreur envoi message :', error);
+    console.error("[messages] error sendMessage:", error);
     throw error;
   }
 }
+
