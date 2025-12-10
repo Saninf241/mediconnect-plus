@@ -1,5 +1,6 @@
 // src/Pages/assureur/AssureurReports.tsx
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useInsurerContext } from "../../hooks/useInsurerContext";
 import ConsultationTable from "../../components/ui/ConsultationTable";
@@ -9,6 +10,7 @@ import { toast } from "react-toastify";
 
 export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
+  const navigate = useNavigate();
 
   const [consultations, setConsultations] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -22,12 +24,12 @@ export default function AssureurReports() {
   // pour désactiver les boutons pendant l’action
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // just debug
+  // debug
   useEffect(() => {
     console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
   }, [ctx, loading]);
 
-  // charger la liste des cliniques (pour les filtres)
+  // Charger la liste des cliniques (pour les filtres)
   useEffect(() => {
     getAllClinics()
       .then(setClinics)
@@ -95,7 +97,7 @@ export default function AssureurReports() {
     setProcessingId(id);
     try {
       const updates = {
-        status: "accepted" as const, // ✅ enum: accepted / rejected / sent / draft
+        status: "accepted" as const, // enum: accepted / rejected / sent / draft / paid
         insurer_decision_at: new Date().toISOString(),
       };
 
@@ -158,6 +160,11 @@ export default function AssureurReports() {
     }
   };
 
+  // 🔹 Ouvrir la page de détails (avec messagerie)
+  const handleOpenDetails = (id: string) => {
+    navigate(`/assureur/consultations/${id}`);
+  };
+
   if (loading) {
     return <p className="p-6">Chargement de l’espace assureur…</p>;
   }
@@ -202,9 +209,11 @@ export default function AssureurReports() {
         onValidate={handleValidate}
         onReject={handleReject}
         processingId={processingId}
+        onOpenDetails={handleOpenDetails}   // ✅ bouton "Ouvrir" → page détail + chat
       />
     </div>
   );
 }
+
 
 

@@ -1,9 +1,10 @@
-//src/Pages/multispecialist/doctor/ConsultationDoctorDetailsPage.tsx
+// src/Pages/multispecialist/doctor/ConsultationDoctorDetailsPage.tsx
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
 import { generatePrescriptionPdf } from "../../../lib/api/generatePrescriptionPdf";
+import ConsultationChatDoctor from "../../../components/ui/uidoctor/ConsultationChat";
 
 interface ConsultationRecord {
   id: string;
@@ -126,6 +127,8 @@ export default function ConsultationDoctorDetailsPage() {
     }
   };
 
+  const hasInsurer = !!record.insurer_id;
+
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold mb-4">Détails de la consultation</h1>
@@ -215,6 +218,22 @@ export default function ConsultationDoctorDetailsPage() {
           Générer l’ordonnance PDF
         </Button>
       </section>
+
+      {/* Bloc messagerie médecin ↔ assureur */}
+      {hasInsurer ? (
+        <ConsultationChatDoctor
+          consultationId={record.id}
+          receiverId={record.insurer_id as string}
+        />
+      ) : (
+        <section className="bg-white rounded-xl shadow-sm p-4">
+          <h2 className="font-semibold mb-2">Messagerie</h2>
+          <p className="text-sm text-gray-500">
+            Aucun assureur n’est associé à cette consultation — la messagerie
+            n’est pas disponible.
+          </p>
+        </section>
+      )}
     </div>
   );
 }

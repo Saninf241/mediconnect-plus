@@ -2,22 +2,23 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import ConsultationChat from "../../components/ui/assureur/ConsultationChat";
+import ConsultationChatAssureur from "../../components/ui/assureur/ConsultationChat";
 
 export default function AssureurConsultationDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+
+  // On reste pragmatique ici : any pour éviter les erreurs de typage
   const [consultation, setConsultation] = useState<any>(null);
   const [patient, setPatient] = useState<any>(null);
   const [membership, setMembership] = useState<any>(null);
-  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchDetails = async () => {
       if (!id) return;
 
-      // 1) Consultation
+      // 1) Consultation + docteur + clinique
       const { data: consult, error: cError } = await supabase
         .from("consultations")
         .select(
@@ -28,36 +29,45 @@ export default function AssureurConsultationDetailsPage() {
           status,
           pdf_url,
           patient_id,
-          clinic:clinics(name),
-          doctor:clinic_staff(id, name)
+          insurer_comment,
+          insurer_decision_at,
+          clinic:clinics ( name ),
+          doctor:clinic_staff ( id, name )
         `
         )
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
       if (cError || !consult) {
+        console.error("[AssureurDetails] error consultation:", cError);
         setLoading(false);
         return;
       }
+
       setConsultation(consult);
 
       // 2) Patient
       if (consult.patient_id) {
-        const { data: patientData } = await supabase
+        const { data: patientData, error: pError } = await supabase
           .from("patients")
-          .select("id, full_name, is_assured")
+          .select("id, full_name, name, is_assured")
           .eq("id", consult.patient_id)
-          .single();
+          .maybeSingle();
+
+        if (pError) {
+          console.warn("[AssureurDetails] error patient:", pError);
+        }
+
         setPatient(patientData || null);
 
         // 3) Dernière affiliation assureur
-        const { data: membershipData } = await supabase
+        const { data: membershipData, error: mError } = await supabase
           .from("insurer_memberships")
           .select(
             `
             member_no,
             plan_code,
-            insurer:insurers(name)
+            insurer:insurers ( name )
           `
           )
           .eq("patient_id", consult.patient_id)
@@ -65,12 +75,12 @@ export default function AssureurConsultationDetailsPage() {
           .limit(1)
           .maybeSingle();
 
+        if (mError) {
+          console.warn("[AssureurDetails] error membership:", mError);
+        }
+
         setMembership(membershipData || null);
       }
-
-      // 4) User courant (pour la messagerie)
-      const { data: currentUser } = await supabase.auth.getUser();
-      if (currentUser?.user?.id) setCurrentUserId(currentUser.user.id);
 
       setLoading(false);
     };
@@ -81,9 +91,17 @@ export default function AssureurConsultationDetailsPage() {
   if (loading) return <p className="p-6">Chargement...</p>;
   if (!consultation) return <p className="p-6">Consultation introuvable</p>;
 
+  // --------- Dérivés affichage ---------
+  const patientName =
+    patient?.full_name || patient?.name || "—";
+
   const insurerName = membership?.insurer?.name || "—";
   const memberNo = membership?.member_no || "—";
   const planCode = membership?.plan_code || "—";
+
+  const decisionDate = consultation.insurer_decision_at
+    ? new Date(consultation.insurer_decision_at).toLocaleString()
+    : "—";
 
   return (
     <div className="p-6 space-y-6">
@@ -94,29 +112,35 @@ export default function AssureurConsultationDetailsPage() {
         ← Retour aux rapports
       </button>
 
-      <h1 className="text-2xl font-bold">
+      <h1 className="text-2xl font-bold mb-4">
         Fiche consultation #{consultation.id}
       </h1>
 
-      <div className="bg-white shadow rounded p-4 space-y-2 border">
+      {/* Bloc infos principales */}
+      <section className="bg-white shadow rounded p-4 space-y-2 border">
         <p>
           <strong>Date :</strong>{" "}
           {new Date(consultation.created_at).toLocaleString()}
         </p>
         <p>
-          <strong>Montant :</strong> {consultation.amount} FCFA
+          <strong>Montant :</strong>{" "}
+          {consultation.amount != null
+            ? `${consultation.amount.toLocaleString("fr-FR")} FCFA`
+            : "—"}
         </p>
         <p>
           <strong>Statut :</strong> {consultation.status}
         </p>
         <p>
-          <strong>Établissement :</strong> {consultation.clinic?.name}
+          <strong>Établissement :</strong>{" "}
+          {consultation.clinic?.name || "—"}
         </p>
         <p>
-          <strong>Médecin :</strong> {consultation.doctor?.name}
+          <strong>Médecin :</strong>{" "}
+          {consultation.doctor?.name || "—"}
         </p>
         <p>
-          <strong>Patient :</strong> {patient?.full_name || "—"}
+          <strong>Patient :</strong> {patientName}
         </p>
         <p>
           <strong>Assureur :</strong> {insurerName}
@@ -126,6 +150,15 @@ export default function AssureurConsultationDetailsPage() {
         </p>
         <p>
           <strong>Code plan :</strong> {planCode}
+        </p>
+        <p>
+          <strong>Date de décision :</strong> {decisionDate}
+        </p>
+        <p>
+          <strong>Commentaire saisi :</strong>{" "}
+          {consultation.insurer_comment?.trim()
+            ? consultation.insurer_comment
+            : "— aucun commentaire —"}
         </p>
 
         {consultation.pdf_url ? (
@@ -142,20 +175,25 @@ export default function AssureurConsultationDetailsPage() {
             Aucun PDF disponible pour cette consultation.
           </p>
         )}
-      </div>
+      </section>
 
-      <div className="mt-8">
-        <h2 className="text-xl font-semibold mb-2">
-          Messagerie avec le médecin
-        </h2>
-        <ConsultationChat
-          consultationId={consultation.id}
-          senderRole="insurer"
-          senderId={currentUserId}
-          doctorId={consultation.doctor?.id || ""}
-        />
-      </div>
+      {/* Bloc messagerie */}
+      {consultation.doctor?.id ? (
+        <section className="mt-8">
+          <h2 className="text-xl font-semibold mb-2">
+            Messagerie avec le médecin
+          </h2>
+          <ConsultationChatAssureur
+            consultationId={consultation.id}
+            doctorId={consultation.doctor.id}
+          />
+        </section>
+      ) : (
+        <section className="mt-8 bg-white shadow rounded p-4 text-sm text-gray-500">
+          Aucun médecin n’est associé à cette consultation – messagerie
+          indisponible.
+        </section>
+      )}
     </div>
   );
 }
-

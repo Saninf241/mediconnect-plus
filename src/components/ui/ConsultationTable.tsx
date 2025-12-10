@@ -33,7 +33,8 @@ interface Props {
   consultations: ConsultationRow[];
   onValidate: (id: string) => void;
   onReject: (id: string) => void;
-  processingId?: string | null; // ✅ nouveau
+  processingId?: string | null;            // pour afficher "..." pendant PATCH
+  onOpenDetails?: (id: string) => void;    // ✅ nouveau : ouvrir la page détail
 }
 
 function getPatientLabel(c: ConsultationRow): string {
@@ -71,6 +72,7 @@ export default function ConsultationTable({
   onValidate,
   onReject,
   processingId,
+  onOpenDetails,
 }: Props) {
   return (
     <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -98,6 +100,9 @@ export default function ConsultationTable({
             Fiche PDF
           </th>
           <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
+            Détails
+          </th>
+          <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
             Actions
           </th>
         </tr>
@@ -107,7 +112,7 @@ export default function ConsultationTable({
         {consultations.length === 0 && (
           <tr>
             <td
-              colSpan={8}
+              colSpan={9}
               className="px-4 py-6 text-center text-sm text-gray-500"
             >
               Aucune consultation trouvée.
@@ -142,7 +147,9 @@ export default function ConsultationTable({
                   : "—"}
               </td>
 
-              <td className="px-4 py-2 text-sm text-gray-700">{c.status}</td>
+              <td className="px-4 py-2 text-sm text-gray-700">
+                {c.status}
+              </td>
 
               <td className="px-4 py-2 text-sm text-center">
                 {c.pdf_url ? (
@@ -159,6 +166,21 @@ export default function ConsultationTable({
                 )}
               </td>
 
+              {/* Colonne Détails */}
+              <td className="px-4 py-2 text-sm text-center">
+                {onOpenDetails ? (
+                  <button
+                    className="text-xs text-indigo-600 underline hover:text-indigo-800"
+                    onClick={() => onOpenDetails(c.id)}
+                  >
+                    Ouvrir
+                  </button>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
+              </td>
+
+              {/* Actions Valider / Rejeter */}
               <td className="px-4 py-2 text-sm text-center space-x-2">
                 <button
                   className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-xs disabled:opacity-50"
@@ -182,4 +204,3 @@ export default function ConsultationTable({
     </table>
   );
 }
-

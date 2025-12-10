@@ -77,6 +77,7 @@ import SignInPage from "./components/auth/SignInPage";
 import { useLocation } from "react-router-dom";
 import { Facebook, Linkedin, Twitter, Mail, MessageCircle } from "lucide-react";
 import DebugReset from './Pages/DebugReset';
+import ConsultationDetailsPage from './Pages/assureur/ConsultationDetailsPage';
 
 
 function GlobalHeader() {
@@ -481,6 +482,7 @@ export default function App() {
       <Route path="paiements" element={<AssureurPaiements />} />
       <Route path="cliniques" element={<CliniquesPage />} />
       <Route path="statistiques" element={<StatistiquesPage />} />
+      <Route path="/assureur/consultations/:id" element={<ConsultationDetailsPage />} />
     </Route>
 
     {/* MULTISPECIALIST DOCTOR */}

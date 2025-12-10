@@ -1,19 +1,17 @@
+// src/components/ui/assureur/ConsultationChatAssureur.tsx
 import { useEffect, useState } from 'react';
 import { getMessages, sendMessage, Message } from '../../../lib/queries/messages';
 import { supabase } from '../../../lib/supabase';
 
 interface Props {
   consultationId: string;
-  doctorId: string;
-  senderRole: 'doctor' | 'insurer';
-  senderId: string;
+  doctorId: string; // id dans clinic_staff ou autre
 }
 
 export default function ConsultationChatAssureur({ consultationId, doctorId }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [canChat, setCanChat] = useState<boolean>(true);
 
   const fetchMessages = async () => {
     const data = await getMessages(consultationId);
@@ -21,45 +19,51 @@ export default function ConsultationChatAssureur({ consultationId, doctorId }: P
   };
 
   useEffect(() => {
-    const checkDoctorSubscription = async () => {
-      const { data: staff } = await supabase
-        .from('clinic_staff')
-        .select('clinic_id')
-        .eq('id', doctorId)
-        .maybeSingle();
-
-      if (staff?.clinic_id) {
-        const { data: clinic } = await supabase
-          .from('clinics')
-          .select('subscription_plan')
-          .eq('id', staff.clinic_id)
-          .maybeSingle();
-
-        if (!clinic || clinic.subscription_plan !== 'premium') {
-          setCanChat(false);
-        }
-      } else {
-        setCanChat(false);
-      }
-    };
-
     fetchMessages();
-    checkDoctorSubscription();
-  }, [consultationId, doctorId]);
+
+    const channel = supabase
+      .channel('messages-assurer')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages' },
+        (payload) => {
+          if ((payload.new as { consultation_id?: string })?.consultation_id === consultationId) {
+            fetchMessages();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [consultationId]);
 
   const handleSend = async () => {
     setLoading(true);
-    const senderId = (await supabase.auth.getUser()).data.user?.id;
-    if (!senderId || !newMessage.trim()) return;
 
-    await sendMessage(consultationId, senderId, doctorId, 'assurer', newMessage.trim());
+    const { data: authData } = await supabase.auth.getUser();
+    const senderId = authData.user?.id;
+    if (!senderId || !newMessage.trim()) {
+      setLoading(false);
+      return;
+    }
+
+    await sendMessage(
+      consultationId,
+      senderId,
+      doctorId,
+      'assurer',
+      newMessage.trim()
+    );
+
     setNewMessage('');
     await fetchMessages();
     setLoading(false);
   };
 
   return (
-    <div className="border rounded-lg p-4 space-y-4 bg-white">
+    <div className="border rounded-lg p-4 space-y-4 bg-white mt-6">
       <h2 className="font-semibold text-lg">Discussion avec le médecin</h2>
 
       <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
@@ -79,28 +83,22 @@ export default function ConsultationChatAssureur({ consultationId, doctorId }: P
         )}
       </div>
 
-      {!canChat ? (
-        <div className="text-sm text-red-600 italic">
-          Cette messagerie est réservée aux cabinets abonnés au plan Premium.
-        </div>
-      ) : (
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            className="flex-1 border p-2 rounded"
-            placeholder="Votre message..."
-          />
-          <button
-            onClick={handleSend}
-            disabled={loading || !newMessage.trim()}
-            className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
-          >
-            Envoyer
-          </button>
-        </div>
-      )}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          className="flex-1 border p-2 rounded"
+          placeholder="Votre message..."
+        />
+        <button
+          onClick={handleSend}
+          disabled={loading || !newMessage.trim()}
+          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
+        >
+          Envoyer
+        </button>
+      </div>
     </div>
   );
 }
