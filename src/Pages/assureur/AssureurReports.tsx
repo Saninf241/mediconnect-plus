@@ -17,7 +17,6 @@ export default function AssureurReports() {
   const [dateEnd, setDateEnd] = useState("");
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Debug contexte
   useEffect(() => {
@@ -109,52 +108,43 @@ export default function AssureurReports() {
   }, [ctx?.insurerId, loading]);
 
   const handleValidate = async (id: string) => {
-    if (processingId) return;
-    setProcessingId(id);
-
     const { error } = await supabase
       .from("consultations")
       .update({
-        status: "accepted",
-        insurer_decision_at: new Date().toISOString(),
+        status: "accepted",                           // 👈 valeur ENUM correcte
+        insurer_decision_at: new Date().toISOString()
       })
       .eq("id", id);
 
-    if (!error) {
-      await fetchConsultations();
-    } else {
+    if (error) {
       console.error("[Assureur] erreur validate :", error);
+      return;
     }
 
-    setProcessingId(null);
+    // on recharge la liste pour refléter le nouveau statut
+    fetchConsultations();
   };
 
   const handleReject = async (id: string) => {
-    if (processingId) return;
-
     const reason = prompt("Raison du rejet ?") || null;
     if (!reason) return;
-
-    setProcessingId(id);
 
     const { error } = await supabase
       .from("consultations")
       .update({
-        status: "rejected",
+        status: "rejected",                           // 👈 déjà OK
         insurer_comment: reason,
-        insurer_decision_at: new Date().toISOString(),
+        insurer_decision_at: new Date().toISOString()
       })
       .eq("id", id);
 
-    if (!error) {
-      await fetchConsultations();
-    } else {
+    if (error) {
       console.error("[Assureur] erreur reject :", error);
+      return;
     }
 
-    setProcessingId(null);
+    fetchConsultations();
   };
-
 
   if (loading) {
     return <p className="p-6">Chargement de l’espace assureur…</p>;
@@ -198,7 +188,6 @@ export default function AssureurReports() {
         consultations={consultations}
         onValidate={handleValidate}
         onReject={handleReject}
-        processingId={processingId}
       />
     </div>
   );
