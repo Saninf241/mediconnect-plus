@@ -5,16 +5,17 @@ import {
   sendMessage,
   Message,
 } from "../../../lib/queries/messages";
+import { supabase } from "../../../lib/supabase";
 
-interface ConsultationChatProps {
+interface Props {
   consultationId: string;
-  doctorStaffId: string; // id dans clinic_staff
+  doctorStaffId: string;          // clinic_staff.id du médecin connecté
 }
 
 export default function ConsultationChatDoctor({
   consultationId,
   doctorStaffId,
-}: ConsultationChatProps) {
+}: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,13 +29,38 @@ export default function ConsultationChatDoctor({
     fetchMessages();
   }, [consultationId]);
 
-  const handleSend = async () => {
-    const text = newMessage.trim();
-    if (!text || !doctorStaffId) return;
+  useEffect(() => {
+    const channel = supabase
+      .channel("messages-doctor")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages" },
+        (payload) => {
+          if (
+            (payload.new as { consultation_id?: string })?.consultation_id ===
+            consultationId
+          ) {
+            fetchMessages();
+          }
+        }
+      )
+      .subscribe();
 
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [consultationId]);
+
+  const handleSend = async () => {
+    if (!newMessage.trim()) return;
     setLoading(true);
     try {
-      await sendMessage(consultationId, doctorStaffId, "doctor", text);
+      await sendMessage(
+        consultationId,
+        doctorStaffId,
+        "doctor",
+        newMessage.trim()
+      );
       setNewMessage("");
       await fetchMessages();
     } catch (e) {
@@ -47,9 +73,7 @@ export default function ConsultationChatDoctor({
 
   return (
     <div className="border rounded-lg p-4 space-y-4 bg-white">
-      <h2 className="font-semibold text-lg">
-        Discussion liée à cette consultation
-      </h2>
+      <h2 className="font-semibold text-lg">Discussion liée à cette consultation</h2>
 
       <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
         {messages.length > 0 ? (

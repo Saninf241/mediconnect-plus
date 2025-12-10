@@ -5,11 +5,12 @@ import {
   sendMessage,
   Message,
 } from "../../../lib/queries/messages";
+import { supabase } from "../../../lib/supabase";
 
 interface Props {
   consultationId: string;
-  doctorStaffId: string;   // pas utilisé dans l'insert mais utile si tu veux plus tard
-  insurerAgentId: string;  // id dans insurer_staff
+  doctorStaffId: string | null;   // clinic_staff.id du médecin
+  insurerAgentId: string;         // insurer_staff.id de l'agent connecté
 }
 
 export default function ConsultationChatAssureur({
@@ -30,13 +31,47 @@ export default function ConsultationChatAssureur({
     fetchMessages();
   }, [consultationId]);
 
+  // abonnement realtime
+  useEffect(() => {
+    const channel = supabase
+      .channel("messages-assureur")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages" },
+        (payload) => {
+          if (
+            (payload.new as { consultation_id?: string })?.consultation_id ===
+            consultationId
+          ) {
+            fetchMessages();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [consultationId]);
+
   const handleSend = async () => {
-    const text = newMessage.trim();
-    if (!text || !insurerAgentId) return;
+    if (!newMessage.trim()) return;
+    if (!doctorStaffId) {
+      alert(
+        "Impossible d’envoyer un message : médecin introuvable pour cette consultation."
+      );
+      return;
+    }
 
     setLoading(true);
     try {
-      await sendMessage(consultationId, insurerAgentId, "insurer", text);
+      // ⚠️ ICI : sender_id = insurerAgentId (insurer_staff.id UUID)
+      await sendMessage(
+        consultationId,
+        insurerAgentId,
+        "insurer",
+        newMessage.trim()
+      );
       setNewMessage("");
       await fetchMessages();
     } catch (e) {
