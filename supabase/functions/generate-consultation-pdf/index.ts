@@ -3,160 +3,164 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import jsPDF from "https://esm.sh/jspdf@2.5.1";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+const jsonHeaders = {
+  "Content-Type": "application/json",
+  ...corsHeaders,
+};
+
 serve(async (req) => {
-  // --- 1) Préflight CORS ---
+  // Pré-vol CORS
   if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      },
-    });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      { status: 405, headers: jsonHeaders },
+    );
   }
 
-  // --- 2) Lecture du body ---
+  // ----- Lecture du body -----
   let body: any = {};
   try {
     body = await req.json();
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return new Response(
+      JSON.stringify({ error: "Invalid JSON body" }),
+      { status: 400, headers: jsonHeaders },
+    );
   }
 
   const consultationId = body.consultationId as string | undefined;
   if (!consultationId) {
-    console.error("[generate-consultation-pdf] Missing consultationId");
-    return new Response("Missing consultationId", { status: 400 });
+    return new Response(
+      JSON.stringify({ error: "Missing consultationId" }),
+      { status: 400, headers: jsonHeaders },
+    );
   }
 
+  // ----- Supabase service role -----
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // --- 3) Charger la consultation + jointures ---
-  const { data: cons, error } = await supabase
+  // 1) Récupérer la consultation + relations existantes
+  const { data: c, error: fetchError } = await supabase
     .from("consultations")
-    .select(
-      `
-        id,
-        created_at,
-        amount,
-        status,
-        acts,
-        medications,
-        patients ( name ),
-        clinic_staff ( name ),
-        clinics ( name )
-      `
-    )
+    .select(`
+      id,
+      created_at,
+      amount,
+      status,
+      acts,
+      medications,
+      patients ( name ),
+      clinic_staff ( name ),
+      clinics ( name )
+    `)
     .eq("id", consultationId)
-    .maybeSingle();
+    .single();
 
-  if (error || !cons) {
-    console.error("[generate-consultation-pdf] consultation not found:", error);
-    return new Response("Consultation not found", { status: 404 });
+  if (fetchError || !c) {
+    console.error("[generate-consultation-pdf] fetch error", fetchError);
+    return new Response(
+      JSON.stringify({
+        error: "Consultation fetch failed",
+        details: fetchError?.message ?? fetchError,
+      }),
+      { status: 404, headers: jsonHeaders },
+    );
   }
 
-  const patientName = cons.patients?.name ?? "-";
-  const doctorName = cons.clinic_staff?.name ?? "-";
-  const clinicName = cons.clinics?.name ?? "-";
-  const amount = cons.amount ?? 0;
-  const status = cons.status ?? "-";
-  const createdAt = cons.created_at
-    ? new Date(cons.created_at).toLocaleString("fr-FR")
-    : "-";
-
-  // sécuriser actes / médicaments
-  const acts: any[] = Array.isArray(cons.acts) ? cons.acts : [];
-  const meds: any[] = Array.isArray(cons.medications) ? cons.medications : [];
-
-  // --- 4) Génération PDF ---
-  const doc = new jsPDF();
+  // 2) Génération du PDF
+  const pdf = new jsPDF();
   let y = 20;
-  const lh = 8;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("Fiche consultation Mediconnect+", 20, y);
-  y += lh * 2;
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(16);
+  pdf.text("Fiche consultation Mediconnect+", 10, y);
+  y += 12;
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
 
-  doc.text(`ID consultation : ${cons.id}`, 20, y);
-  y += lh;
-  doc.text(`Date : ${createdAt}`, 20, y);
-  y += lh * 2;
+  const safe = (v: any, fallback = "-") =>
+    v === null || v === undefined || v === "" ? fallback : String(v);
 
-  doc.text(`Patient : ${patientName}`, 20, y);
-  y += lh;
-  doc.text(`Médecin : ${doctorName}`, 20, y);
-  y += lh;
-  doc.text(`Établissement : ${clinicName}`, 20, y);
-  y += lh * 2;
+  pdf.text(`ID consultation : ${c.id}`, 10, y); y += 7;
 
-  doc.text(`Montant : ${amount} FCFA`, 20, y);
-  y += lh;
-  doc.text(`Statut : ${status}`, 20, y);
-  y += lh * 2;
+  const dateStr = new Date(c.created_at).toLocaleString("fr-FR");
+  pdf.text(`Date : ${dateStr}`, 10, y); y += 7;
 
-  // --- Actes ---
-  doc.setFont("helvetica", "bold");
-  doc.text("Actes médicaux :", 20, y);
-  y += lh;
-  doc.setFont("helvetica", "normal");
+  pdf.text(`Patient : ${safe(c.patients?.name)}`, 10, y); y += 7;
+  pdf.text(`Médecin : ${safe(c.clinic_staff?.name)}`, 10, y); y += 7;
+  pdf.text(`Établissement : ${safe(c.clinics?.name)}`, 10, y); y += 7;
+  pdf.text(`Montant : ${safe(c.amount)} FCFA`, 10, y); y += 7;
+  pdf.text(`Statut : ${safe(c.status)}`, 10, y); y += 10;
 
-  if (acts.length === 0) {
-    doc.text("- Aucun acte renseigné", 25, y);
-    y += lh;
+  // ----- Actes -----
+  pdf.setFont("helvetica", "bold");
+  pdf.text("Actes réalisés :", 10, y);
+  y += 7;
+
+  pdf.setFont("helvetica", "normal");
+  const acts = (c.acts as any[]) || [];
+  if (!acts.length) {
+    pdf.text("- Aucun acte déclaré", 12, y);
+    y += 6;
   } else {
-    for (const a of acts) {
+    for (const act of acts) {
       const label =
-        typeof a === "string"
-          ? a
-          : a?.type || a?.label || JSON.stringify(a);
-      doc.text(`- ${label}`, 25, y);
-      y += lh;
-      if (y > 270) {
-        doc.addPage();
+        act?.type ||
+        act?.label ||
+        act?.code ||
+        act?.name ||
+        JSON.stringify(act);
+      pdf.text(`- ${label}`, 12, y);
+      y += 6;
+      if (y > 280) {
+        pdf.addPage();
         y = 20;
       }
     }
   }
 
-  y += lh;
+  y += 4;
 
-  // --- Médicaments ---
-  doc.setFont("helvetica", "bold");
-  doc.text("Médicaments :", 20, y);
-  y += lh;
-  doc.setFont("helvetica", "normal");
+  // ----- Médicaments -----
+  pdf.setFont("helvetica", "bold");
+  pdf.text("Médicaments :", 10, y);
+  y += 7;
 
-  if (meds.length === 0) {
-    doc.text("- Aucun médicament renseigné", 25, y);
-    y += lh;
+  pdf.setFont("helvetica", "normal");
+  const meds = (c.medications as any[]) || [];
+  if (!meds.length) {
+    pdf.text("- Aucun médicament déclaré", 12, y);
+    y += 6;
   } else {
     for (const m of meds) {
       const label =
         typeof m === "string"
           ? m
           : m?.name || m?.label || JSON.stringify(m);
-      doc.text(`- ${label}`, 25, y);
-      y += lh;
-      if (y > 270) {
-        doc.addPage();
+      pdf.text(`- ${label}`, 12, y);
+      y += 6;
+      if (y > 280) {
+        pdf.addPage();
         y = 20;
       }
     }
   }
 
-  // --- 5) Upload dans le bucket ---
-  const pdfBytes = doc.output("arraybuffer");
+  // 3) Upload dans le bucket
+  const pdfBytes = pdf.output("arraybuffer");
   const fileName = `consultation-${consultationId}.pdf`;
 
   const { error: uploadError } = await supabase.storage
@@ -167,32 +171,34 @@ serve(async (req) => {
     });
 
   if (uploadError) {
-    console.error("[generate-consultation-pdf] upload error:", uploadError);
-    return new Response("Upload failed", { status: 500 });
+    console.error("[generate-consultation-pdf] upload error", uploadError);
+    return new Response(
+      JSON.stringify({ error: "Storage upload failed", details: uploadError }),
+      { status: 500, headers: jsonHeaders },
+    );
   }
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("consultation-files").getPublicUrl(fileName);
+  const publicUrl = supabase
+    .storage
+    .from("consultation-files")
+    .getPublicUrl(fileName).data.publicUrl;
 
+  // 4) Mise à jour de la consultation
   const { error: updateError } = await supabase
     .from("consultations")
     .update({ pdf_url: publicUrl })
     .eq("id", consultationId);
 
   if (updateError) {
-    console.error("[generate-consultation-pdf] update pdf_url error:", updateError);
-    return new Response("Update pdf_url failed", { status: 500 });
+    console.error("[generate-consultation-pdf] update error", updateError);
+    return new Response(
+      JSON.stringify({ error: "DB update failed", details: updateError }),
+      { status: 500, headers: jsonHeaders },
+    );
   }
 
   return new Response(
-    JSON.stringify({ pdf_url: publicUrl }),
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    }
+    JSON.stringify({ pdfUrl: publicUrl }),
+    { status: 200, headers: jsonHeaders },
   );
 });

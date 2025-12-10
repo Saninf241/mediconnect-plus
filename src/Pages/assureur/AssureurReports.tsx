@@ -17,6 +17,7 @@ export default function AssureurReports() {
   const [dateEnd, setDateEnd] = useState("");
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Debug contexte
   useEffect(() => {
@@ -108,6 +109,9 @@ export default function AssureurReports() {
   }, [ctx?.insurerId, loading]);
 
   const handleValidate = async (id: string) => {
+    if (processingId) return;
+    setProcessingId(id);
+
     const { error } = await supabase
       .from("consultations")
       .update({
@@ -116,12 +120,22 @@ export default function AssureurReports() {
       })
       .eq("id", id);
 
-    if (!error) fetchConsultations();
+    if (!error) {
+      await fetchConsultations();
+    } else {
+      console.error("[Assureur] erreur validate :", error);
+    }
+
+    setProcessingId(null);
   };
 
   const handleReject = async (id: string) => {
+    if (processingId) return;
+
     const reason = prompt("Raison du rejet ?") || null;
     if (!reason) return;
+
+    setProcessingId(id);
 
     const { error } = await supabase
       .from("consultations")
@@ -132,8 +146,15 @@ export default function AssureurReports() {
       })
       .eq("id", id);
 
-    if (!error) fetchConsultations();
+    if (!error) {
+      await fetchConsultations();
+    } else {
+      console.error("[Assureur] erreur reject :", error);
+    }
+
+    setProcessingId(null);
   };
+
 
   if (loading) {
     return <p className="p-6">Chargement de l’espace assureur…</p>;
@@ -173,11 +194,11 @@ export default function AssureurReports() {
         setDateEnd={setDateEnd}
         clinics={clinics}
       />
-
       <ConsultationTable
         consultations={consultations}
         onValidate={handleValidate}
         onReject={handleReject}
+        processingId={processingId}
       />
     </div>
   );

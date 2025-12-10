@@ -31,8 +31,10 @@ type ConsultationRow = {
 
 interface Props {
   consultations: ConsultationRow[];
-  onValidate: (id: string) => void;
-  onReject: (id: string) => void;
+  onValidate: (id: string) => void | Promise<void>;
+  onReject: (id: string) => void | Promise<void>;
+  /** id de la consultation en cours de traitement (valider/rejeter) */
+  processingId?: string | null;
 }
 
 function getPatientLabel(c: ConsultationRow): string {
@@ -69,6 +71,7 @@ export default function ConsultationTable({
   consultations,
   onValidate,
   onReject,
+  processingId,
 }: Props) {
   return (
     <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -113,63 +116,79 @@ export default function ConsultationTable({
           </tr>
         )}
 
-        {consultations.map((c) => (
-          <tr key={c.id} className="border-t border-gray-100">
-            <td className="px-4 py-2 text-sm text-gray-700">
-              {new Date(c.created_at).toLocaleString()}
-            </td>
+        {consultations.map((c) => {
+          const isProcessing = processingId === c.id;
+          const isActionable = c.status === "sent";
+          const disabled = !isActionable || isProcessing;
 
-            <td className="px-4 py-2 text-sm text-gray-700">
-              {getPatientLabel(c)}
-            </td>
+          return (
+            <tr key={c.id} className="border-t border-gray-100">
+              <td className="px-4 py-2 text-sm text-gray-700">
+                {new Date(c.created_at).toLocaleString()}
+              </td>
 
-            <td className="px-4 py-2 text-sm text-gray-700">
-              {getDoctorLabel(c)}
-            </td>
+              <td className="px-4 py-2 text-sm text-gray-700">
+                {getPatientLabel(c)}
+              </td>
 
-            <td className="px-4 py-2 text-sm text-gray-700">
-              {getClinicLabel(c)}
-            </td>
+              <td className="px-4 py-2 text-sm text-gray-700">
+                {getDoctorLabel(c)}
+              </td>
 
-            <td className="px-4 py-2 text-sm text-gray-700 text-right">
-              {c.amount != null
-                ? `${c.amount.toLocaleString("fr-FR")} FCFA`
-                : "—"}
-            </td>
+              <td className="px-4 py-2 text-sm text-gray-700">
+                {getClinicLabel(c)}
+              </td>
 
-            <td className="px-4 py-2 text-sm text-gray-700">{c.status}</td>
+              <td className="px-4 py-2 text-sm text-gray-700 text-right">
+                {c.amount != null
+                  ? `${c.amount.toLocaleString("fr-FR")} FCFA`
+                  : "—"}
+              </td>
 
-            <td className="px-4 py-2 text-sm text-center">
-              {c.pdf_url ? (
-                <a
-                  href={c.pdf_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-600 underline"
+              <td className="px-4 py-2 text-sm text-gray-700">{c.status}</td>
+
+              <td className="px-4 py-2 text-sm text-center">
+                {c.pdf_url ? (
+                  <a
+                    href={c.pdf_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 underline"
+                  >
+                    Voir
+                  </a>
+                ) : (
+                  <span className="text-gray-400">Non disponible</span>
+                )}
+              </td>
+
+              <td className="px-4 py-2 text-sm text-center space-x-2">
+                <button
+                  className={`px-3 py-1 rounded text-xs ${
+                    disabled
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-green-600 text-white hover:bg-green-700"
+                  }`}
+                  onClick={() => onValidate(c.id)}
+                  disabled={disabled}
                 >
-                  Voir
-                </a>
-              ) : (
-                <span className="text-gray-400">Non disponible</span>
-              )}
-            </td>
-
-            <td className="px-4 py-2 text-sm text-center space-x-2">
-              <button
-                className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-xs"
-                onClick={() => onValidate(c.id)}
-              >
-                Valider
-              </button>
-              <button
-                className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-xs"
-                onClick={() => onReject(c.id)}
-              >
-                Rejeter
-              </button>
-            </td>
-          </tr>
-        ))}
+                  {isProcessing ? "Validation..." : "Valider"}
+                </button>
+                <button
+                  className={`px-3 py-1 rounded text-xs ${
+                    disabled
+                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      : "bg-red-600 text-white hover:bg-red-700"
+                  }`}
+                  onClick={() => onReject(c.id)}
+                  disabled={disabled}
+                >
+                  {isProcessing ? "Rejet..." : "Rejeter"}
+                </button>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
