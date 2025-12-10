@@ -8,8 +8,8 @@ import {
 
 interface Props {
   consultationId: string;
-  doctorStaffId: string;    // id de clinic_staff (médecin)
-  insurerAgentId: string;   // id de insurer_staff (agent assureur)
+  doctorStaffId: string;   // pas utilisé dans l'insert mais utile si tu veux plus tard
+  insurerAgentId: string;  // id dans insurer_staff
 }
 
 export default function ConsultationChatAssureur({
@@ -22,40 +22,21 @@ export default function ConsultationChatAssureur({
   const [loading, setLoading] = useState(false);
 
   const fetchMessages = async () => {
-    try {
-      const data = await getMessages(consultationId);
-      setMessages(data);
-    } catch (e) {
-      console.error("[AssureurChat] erreur getMessages :", e);
-    }
+    const data = await getMessages(consultationId);
+    setMessages(data);
   };
 
-  // Chargement initial
   useEffect(() => {
-    if (!consultationId) return;
     fetchMessages();
   }, [consultationId]);
 
   const handleSend = async () => {
-    if (!newMessage.trim()) return;
-    if (!insurerAgentId || !doctorStaffId) {
-      console.warn(
-        "[AssureurChat] sender ou receiver manquant",
-        insurerAgentId,
-        doctorStaffId
-      );
-      return;
-    }
+    const text = newMessage.trim();
+    if (!text || !insurerAgentId) return;
 
     setLoading(true);
     try {
-      await sendMessage(
-        consultationId,
-        insurerAgentId,      // sender_id = agent assureur
-        doctorStaffId,       // receiver_id = médecin
-        "assurer",           // ✅ rôle canonique dans la table messages
-        newMessage.trim()
-      );
+      await sendMessage(consultationId, insurerAgentId, "insurer", text);
       setNewMessage("");
       await fetchMessages();
     } catch (e) {
@@ -68,7 +49,7 @@ export default function ConsultationChatAssureur({
 
   return (
     <div className="border rounded-lg p-4 space-y-4 bg-white">
-      <h2 className="font-semibold text-lg">Discussion avec le médecin</h2>
+      <h2 className="font-semibold text-lg">Messagerie avec le médecin</h2>
 
       <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
         {messages.length > 0 ? (
@@ -76,17 +57,17 @@ export default function ConsultationChatAssureur({
             <div
               key={m.id}
               className={`mb-2 ${
-                m.sender_id === insurerAgentId ? "text-right" : "text-left"
+                m.sender_role === "insurer" ? "text-right" : "text-left"
               }`}
             >
               <div
                 className={`inline-block px-4 py-2 rounded-lg text-sm ${
-                  m.sender_id === insurerAgentId
+                  m.sender_role === "insurer"
                     ? "bg-indigo-600 text-white"
                     : "bg-gray-200 text-gray-900"
                 }`}
               >
-                {m.message}
+                {m.content}
               </div>
             </div>
           ))
@@ -103,7 +84,7 @@ export default function ConsultationChatAssureur({
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           className="flex-1 border p-2 rounded"
-          placeholder="Votre message…"
+          placeholder="Votre message..."
         />
         <button
           onClick={handleSend}
