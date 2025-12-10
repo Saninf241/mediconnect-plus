@@ -1,85 +1,99 @@
-// src/components/ui/assureur/ConsultationChatAssureur.tsx
-import { useEffect, useState } from 'react';
-import { getMessages, sendMessage, Message } from '../../../lib/queries/messages';
-import { supabase } from '../../../lib/supabase';
+// src/components/ui/assureur/ConsultationChat.tsx
+import { useEffect, useState } from "react";
+import {
+  getMessages,
+  sendMessage,
+  Message,
+} from "../../../lib/queries/messages";
 
 interface Props {
   consultationId: string;
-  doctorId: string; // id dans clinic_staff ou autre
+  doctorStaffId: string;    // id de clinic_staff (médecin)
+  insurerAgentId: string;   // id de insurer_staff (agent assureur)
 }
 
-export default function ConsultationChatAssureur({ consultationId, doctorId }: Props) {
+export default function ConsultationChatAssureur({
+  consultationId,
+  doctorStaffId,
+  insurerAgentId,
+}: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState('');
+  const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   const fetchMessages = async () => {
-    const data = await getMessages(consultationId);
-    setMessages(data);
+    try {
+      const data = await getMessages(consultationId);
+      setMessages(data);
+    } catch (e) {
+      console.error("[AssureurChat] erreur getMessages :", e);
+    }
   };
 
+  // Chargement initial
   useEffect(() => {
+    if (!consultationId) return;
     fetchMessages();
-
-    const channel = supabase
-      .channel('messages-assurer')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'messages' },
-        (payload) => {
-          if ((payload.new as { consultation_id?: string })?.consultation_id === consultationId) {
-            fetchMessages();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [consultationId]);
 
   const handleSend = async () => {
-    setLoading(true);
-
-    const { data: authData } = await supabase.auth.getUser();
-    const senderId = authData.user?.id;
-    if (!senderId || !newMessage.trim()) {
-      setLoading(false);
+    if (!newMessage.trim()) return;
+    if (!insurerAgentId || !doctorStaffId) {
+      console.warn(
+        "[AssureurChat] sender ou receiver manquant",
+        insurerAgentId,
+        doctorStaffId
+      );
       return;
     }
 
-    await sendMessage(
-      consultationId,
-      senderId,
-      doctorId,
-      'assurer',
-      newMessage.trim()
-    );
-
-    setNewMessage('');
-    await fetchMessages();
-    setLoading(false);
+    setLoading(true);
+    try {
+      await sendMessage(
+        consultationId,
+        insurerAgentId,      // sender_id = agent assureur
+        doctorStaffId,       // receiver_id = médecin
+        "assurer",           // ✅ rôle canonique dans la table messages
+        newMessage.trim()
+      );
+      setNewMessage("");
+      await fetchMessages();
+    } catch (e) {
+      console.error("[AssureurChat] erreur sendMessage :", e);
+      alert("Impossible d'envoyer le message pour le moment.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="border rounded-lg p-4 space-y-4 bg-white mt-6">
+    <div className="border rounded-lg p-4 space-y-4 bg-white">
       <h2 className="font-semibold text-lg">Discussion avec le médecin</h2>
 
       <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
-        {messages.map((m) => (
-          <div key={m.id} className={`mb-2 ${m.sender_role === 'assurer' ? 'text-right' : 'text-left'}`}>
+        {messages.length > 0 ? (
+          messages.map((m) => (
             <div
-              className={`inline-block px-4 py-2 rounded-lg text-sm ${
-                m.sender_role === 'assurer' ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-900'
+              key={m.id}
+              className={`mb-2 ${
+                m.sender_id === insurerAgentId ? "text-right" : "text-left"
               }`}
             >
-              {m.message}
+              <div
+                className={`inline-block px-4 py-2 rounded-lg text-sm ${
+                  m.sender_id === insurerAgentId
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-200 text-gray-900"
+                }`}
+              >
+                {m.message}
+              </div>
             </div>
-          </div>
-        ))}
-        {messages.length === 0 && (
-          <p className="text-center text-gray-400">Aucun message pour cette consultation.</p>
+          ))
+        ) : (
+          <p className="text-center text-gray-400">
+            Aucun message pour cette consultation.
+          </p>
         )}
       </div>
 
@@ -89,7 +103,7 @@ export default function ConsultationChatAssureur({ consultationId, doctorId }: P
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           className="flex-1 border p-2 rounded"
-          placeholder="Votre message..."
+          placeholder="Votre message…"
         />
         <button
           onClick={handleSend}
