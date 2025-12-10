@@ -5,6 +5,7 @@ import { useInsurerContext } from "../../hooks/useInsurerContext";
 import ConsultationTable from "../../components/ui/ConsultationTable";
 import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
+import { toast } from "react-toastify";
 
 export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
@@ -18,12 +19,15 @@ export default function AssureurReports() {
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Debug contexte
+  // pour désactiver les boutons pendant l’action
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // just debug
   useEffect(() => {
     console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
   }, [ctx, loading]);
 
-  // Charger la liste des cliniques (pour le filtre)
+  // charger la liste des cliniques (pour les filtres)
   useEffect(() => {
     getAllClinics()
       .then(setClinics)
@@ -32,118 +36,126 @@ export default function AssureurReports() {
 
   const fetchConsultations = async () => {
     if (!ctx?.insurerId) {
-      console.warn("[AssureurReports] Pas d'insurerId → pas de requête.");
-      setConsultations([]);
+      console.warn(
+        "[AssureurReports] Pas d'insurerId, on n'appelle pas filter-consultations."
+      );
       return;
     }
 
+    const payload = {
+      search,
+      status,
+      clinicId,
+      dateStart,
+      dateEnd,
+      insurerId: ctx.insurerId,
+    };
+
+    console.log("▶️ Payload envoyé à filter-consultations :", payload);
     setIsLoading(true);
 
     try {
-      let q = supabase
-        .from("consultations")
-        .select(
-          `
-          id,
-          created_at,
-          amount,
-          status,
-          pdf_url,
-          insurer_id,
-          patient_id,
-          doctor_id,
-          clinic_id,
-          patients ( name ),
-          clinic_staff ( name ),
-          clinics ( name )
-        `
-        )
-        // ✅ très important : on ne ramène que les consultations de CET assureur
-        .eq("insurer_id", ctx.insurerId);
-
-      if (status) q = q.eq("status", status);
-      if (clinicId) q = q.eq("clinic_id", clinicId);
-      if (dateStart) q = q.gte("created_at", dateStart);
-      if (dateEnd) q = q.lte("created_at", dateEnd);
-
-      if (search.trim()) {
-        const s = `%${search.trim()}%`;
-        // filtre sur nom patient / médecin / clinique
-        q = q.or(
-          `patients.name.ilike.${s},clinic_staff.name.ilike.${s},clinics.name.ilike.${s}`
-        );
-      }
-
-      const { data, error } = await q.order("created_at", {
-        ascending: false,
-      });
-
-      if (error) {
-        console.error("⛔ Erreur lors de la récupération des consultations :", error);
-        setConsultations([]);
-        return;
-      }
-
-      console.log(
-        "✅ Consultations brutes pour insurerId",
-        ctx.insurerId,
-        ":",
-        data
+      const res = await fetch(
+        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
       );
-      setConsultations(data ?? []);
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Erreur HTTP ${res.status} : ${text}`);
+      }
+
+      const { data } = await res.json();
+      console.log("✅ DATA reçue de filter-consultations:", data);
+      setConsultations(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("⛔ Exception fetchConsultations :", err);
+      console.error("⛔ Erreur lors de la récupération :", err);
       setConsultations([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Premier chargement quand le contexte assureur est prêt
+  // premier chargement quand le contexte assureur est prêt
   useEffect(() => {
-    if (ctx?.insurerId && !loading) {
+    if (ctx?.insurerId) {
       fetchConsultations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.insurerId, loading]);
+  }, [ctx?.insurerId]);
 
+  // 🔹 Valider
   const handleValidate = async (id: string) => {
-    const { error } = await supabase
-      .from("consultations")
-      .update({
-        status: "accepted",                           // 👈 valeur ENUM correcte
-        insurer_decision_at: new Date().toISOString()
-      })
-      .eq("id", id);
+    if (!window.confirm("Confirmer la validation de cette consultation ?")) return;
 
-    if (error) {
-      console.error("[Assureur] erreur validate :", error);
-      return;
+    setProcessingId(id);
+    try {
+      const updates = {
+        status: "accepted" as const, // ✅ enum: accepted / rejected / sent / draft
+        insurer_decision_at: new Date().toISOString(),
+      };
+
+      console.log("[Assureur] payload validate =", updates);
+
+      const { error } = await supabase
+        .from("consultations")
+        .update(updates)
+        .eq("id", id);
+
+      if (error) {
+        console.error("[Assureur] erreur validate :", error);
+        toast.error("Impossible de valider la consultation.");
+        return;
+      }
+
+      toast.success("Consultation validée.");
+      await fetchConsultations();
+    } catch (e) {
+      console.error("[Assureur] exception validate :", e);
+      toast.error("Erreur inattendue lors de la validation.");
+    } finally {
+      setProcessingId(null);
     }
-
-    // on recharge la liste pour refléter le nouveau statut
-    fetchConsultations();
   };
 
+  // 🔹 Rejeter
   const handleReject = async (id: string) => {
     const reason = prompt("Raison du rejet ?") || null;
     if (!reason) return;
 
-    const { error } = await supabase
-      .from("consultations")
-      .update({
-        status: "rejected",                           // 👈 déjà OK
+    setProcessingId(id);
+    try {
+      const updates = {
+        status: "rejected" as const,
         insurer_comment: reason,
-        insurer_decision_at: new Date().toISOString()
-      })
-      .eq("id", id);
+        insurer_decision_at: new Date().toISOString(),
+      };
 
-    if (error) {
-      console.error("[Assureur] erreur reject :", error);
-      return;
+      console.log("[Assureur] payload reject =", updates);
+
+      const { error } = await supabase
+        .from("consultations")
+        .update(updates)
+        .eq("id", id);
+
+      if (error) {
+        console.error("[Assureur] erreur reject :", error);
+        toast.error("Impossible de rejeter la consultation.");
+        return;
+      }
+
+      toast.success("Consultation rejetée.");
+      await fetchConsultations();
+    } catch (e) {
+      console.error("[Assureur] exception reject :", e);
+      toast.error("Erreur inattendue lors du rejet.");
+    } finally {
+      setProcessingId(null);
     }
-
-    fetchConsultations();
   };
 
   if (loading) {
@@ -184,12 +196,15 @@ export default function AssureurReports() {
         setDateEnd={setDateEnd}
         clinics={clinics}
       />
+
       <ConsultationTable
         consultations={consultations}
         onValidate={handleValidate}
         onReject={handleReject}
+        processingId={processingId}
       />
     </div>
   );
 }
+
 

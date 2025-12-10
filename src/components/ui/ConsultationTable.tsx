@@ -31,10 +31,9 @@ type ConsultationRow = {
 
 interface Props {
   consultations: ConsultationRow[];
-  onValidate: (id: string) => void | Promise<void>;
-  onReject: (id: string) => void | Promise<void>;
-  /** id de la consultation en cours de traitement (valider/rejeter) */
-  processingId?: string | null;
+  onValidate: (id: string) => void;
+  onReject: (id: string) => void;
+  processingId?: string | null; // ✅ nouveau
 }
 
 function getPatientLabel(c: ConsultationRow): string {
@@ -118,8 +117,6 @@ export default function ConsultationTable({
 
         {consultations.map((c) => {
           const isProcessing = processingId === c.id;
-          const isActionable = c.status === "sent";
-          const disabled = !isActionable || isProcessing;
 
           return (
             <tr key={c.id} className="border-t border-gray-100">
@@ -164,26 +161,18 @@ export default function ConsultationTable({
 
               <td className="px-4 py-2 text-sm text-center space-x-2">
                 <button
-                  className={`px-3 py-1 rounded text-xs ${
-                    disabled
-                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-green-600 text-white hover:bg-green-700"
-                  }`}
+                  className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-xs disabled:opacity-50"
                   onClick={() => onValidate(c.id)}
-                  disabled={disabled}
+                  disabled={isProcessing}
                 >
-                  {isProcessing ? "Validation..." : "Valider"}
+                  {isProcessing ? "..." : "Valider"}
                 </button>
                 <button
-                  className={`px-3 py-1 rounded text-xs ${
-                    disabled
-                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-red-600 text-white hover:bg-red-700"
-                  }`}
+                  className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 text-xs disabled:opacity-50"
                   onClick={() => onReject(c.id)}
-                  disabled={disabled}
+                  disabled={isProcessing}
                 >
-                  {isProcessing ? "Rejet..." : "Rejeter"}
+                  {isProcessing ? "..." : "Rejeter"}
                 </button>
               </td>
             </tr>
@@ -193,3 +182,4 @@ export default function ConsultationTable({
     </table>
   );
 }
+
