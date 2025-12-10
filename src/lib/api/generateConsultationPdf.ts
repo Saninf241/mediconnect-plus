@@ -1,9 +1,8 @@
 // src/lib/api/generateConsultationPdf.ts
 export async function generateConsultationPdf(consultationId: string) {
-  const url =
-    "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/generate-consultation-pdf";
-
-  console.log("[generateConsultationPdf] call with", consultationId);
+  const url = `${
+    import.meta.env.VITE_SUPABASE_URL
+  }/functions/v1/generate-consultation-pdf`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -13,17 +12,13 @@ export async function generateConsultationPdf(consultationId: string) {
     body: JSON.stringify({ consultationId }),
   });
 
-  console.log("[generateConsultationPdf] HTTP status", res.status);
-
   if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(
-      `Edge function error ${res.status}: ${txt || "no body"}`
-    );
+    const text = await res.text();
+    console.error("[generateConsultationPdf] HTTP error", res.status, text);
+    throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
   const data = await res.json().catch(() => ({}));
-  console.log("[generateConsultationPdf] response body", data);
+  console.log("[generateConsultationPdf] réponse fonction", data);
   return data;
 }
-
