@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { useUser } from "@clerk/clerk-react";           // ✅ NOUVEAU
 import ConsultationChat from "../../components/ui/assureur/ConsultationChat";
 
 interface ConsultationRow {
@@ -14,7 +15,6 @@ interface ConsultationRow {
   insurer_comment: string | null;
   insurer_decision_at: string | null;
 
-  // jointures – Supabase peut renvoyer un objet OU un tableau
   clinic:
     | { name: string | null }
     | { name: string | null }[]
@@ -44,6 +44,7 @@ interface MembershipRow {
 export default function AssureurConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useUser();                       // ✅ on récupère l’utilisateur Clerk
 
   const [consultation, setConsultation] = useState<ConsultationRow | null>(null);
   const [patient, setPatient] = useState<PatientRow | null>(null);
@@ -83,7 +84,6 @@ export default function AssureurConsultationDetailsPage() {
         return;
       }
 
-      // On caste dans notre type “large”
       setConsultation(consult as ConsultationRow);
 
       // 2) Patient
@@ -122,21 +122,18 @@ export default function AssureurConsultationDetailsPage() {
         }
       }
 
-      // 4) Récupérer l’agent assureur lié à l’utilisateur connecté
-      const { data: currentUser } = await supabase.auth.getUser();
-      const clerkId = currentUser?.user?.id || null;
-
-      if (clerkId) {
+      // 4) Récupérer l’agent assureur via Clerk → insurer_staff
+      if (user?.id) {
         const { data: staffRow, error: staffError } = await supabase
           .from("insurer_staff")
           .select("id")
-          .eq("clerk_user_id", clerkId)
+          .eq("clerk_user_id", user.id)          // ✅ on utilise l’id Clerk
           .maybeSingle();
 
         if (staffError) {
           console.error("[AssureurDetails] erreur insurer_staff:", staffError);
         } else if (staffRow?.id) {
-          setInsurerAgentId(staffRow.id);  // ✅ UUID interne pour messages.sender_id
+          setInsurerAgentId(staffRow.id);        // UUID interne pour messages.sender_id
         }
       }
 
@@ -144,7 +141,7 @@ export default function AssureurConsultationDetailsPage() {
     };
 
     fetchDetails();
-  }, [id]);
+  }, [id, user?.id]);                               // ✅ dépend aussi de user.id
 
   if (loading) return <p className="p-6">Chargement...</p>;
   if (!consultation) return <p className="p-6">Consultation introuvable</p>;
@@ -182,16 +179,10 @@ export default function AssureurConsultationDetailsPage() {
     ? new Date(consultation.insurer_decision_at).toLocaleString()
     : "—";
 
-  const prettyTitle = patientName !== "—"
-    ? `Consultation – ${patientName}`
-    : `Consultation #${consultation.id.slice(0, 8)}…`;
-
-  const canChat = !!(doctorStaffId && insurerAgentId);
-
-  console.log(
-    "[AssureurDetails] doctorStaffId =", doctorStaffId,
-    "insurerAgentId =", insurerAgentId
-  );
+  const prettyTitle =
+    patientName !== "—"
+      ? `Consultation – ${patientName}`
+      : `Consultation #${consultation.id.slice(0, 8)}…`;
 
   return (
     <div className="p-6 space-y-6">
@@ -262,23 +253,23 @@ export default function AssureurConsultationDetailsPage() {
         )}
       </div>
 
-      {/* Messagerie assureur ↔ médecin */}
+      {/* ✅ Messagerie assureur ↔ médecin */}
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-2">
           Messagerie avec le médecin
         </h2>
 
-        {!canChat ? (
-          <p className="text-sm text-gray-500">
-            Messagerie indisponible pour cette consultation
-            (médecin ou agent assureur introuvable).
-          </p>
-        ) : (
+        {doctorStaffId && insurerAgentId ? (
           <ConsultationChat
             consultationId={consultation.id}
-            doctorStaffId={doctorStaffId as string}
-            insurerAgentId={insurerAgentId as string}
+            doctorStaffId={doctorStaffId}
+            insurerAgentId={insurerAgentId}
           />
+        ) : (
+          <p className="text-sm text-gray-500">
+            Messagerie indisponible pour cette consultation (médecin ou agent
+            assureur introuvable).
+          </p>
         )}
       </div>
     </div>
