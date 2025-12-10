@@ -186,6 +186,13 @@ export default function AssureurConsultationDetailsPage() {
     ? `Consultation – ${patientName}`
     : `Consultation #${consultation.id.slice(0, 8)}…`;
 
+  const canChat = !!(doctorStaffId && insurerAgentId);
+
+  console.log(
+    "[AssureurDetails] doctorStaffId =", doctorStaffId,
+    "insurerAgentId =", insurerAgentId
+  );
+
   return (
     <div className="p-6 space-y-6">
       <button
@@ -256,18 +263,24 @@ export default function AssureurConsultationDetailsPage() {
       </div>
 
       {/* Messagerie assureur ↔ médecin */}
-      {doctorStaffId && insurerAgentId && (
-        <div className="mt-8">
-          <h2 className="text-xl font-semibold mb-2">
-            Messagerie avec le médecin
-          </h2>
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-2">
+          Messagerie avec le médecin
+        </h2>
+
+        {!canChat ? (
+          <p className="text-sm text-gray-500">
+            Messagerie indisponible pour cette consultation
+            (médecin ou agent assureur introuvable).
+          </p>
+        ) : (
           <ConsultationChat
             consultationId={consultation.id}
-            doctorStaffId={doctorStaffId}
-            insurerAgentId={insurerAgentId}
+            doctorStaffId={doctorStaffId as string}
+            insurerAgentId={insurerAgentId as string}
           />
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
