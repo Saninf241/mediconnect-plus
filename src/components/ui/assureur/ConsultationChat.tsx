@@ -1,16 +1,12 @@
 // src/components/ui/assureur/ConsultationChat.tsx
 import { useEffect, useState } from "react";
-import {
-  getMessages,
-  sendMessage,
-  Message,
-} from "../../../lib/queries/messages";
+import { getMessages, sendMessage, Message } from "../../../lib/queries/messages";
 import { supabase } from "../../../lib/supabase";
 
 interface Props {
   consultationId: string;
-  doctorStaffId: string | null;   // clinic_staff.id du médecin
-  insurerAgentId: string;         // insurer_staff.id de l'agent connecté
+  doctorStaffId: string | null;   // pas utilisé dans l'insert mais utile pour le contexte
+  insurerAgentId: string | null;  // ✅ uuid de insurer_staff.id
 }
 
 export default function ConsultationChatAssureur({
@@ -29,20 +25,15 @@ export default function ConsultationChatAssureur({
 
   useEffect(() => {
     fetchMessages();
-  }, [consultationId]);
 
-  // abonnement realtime
-  useEffect(() => {
     const channel = supabase
       .channel("messages-assureur")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "messages" },
         (payload) => {
-          if (
-            (payload.new as { consultation_id?: string })?.consultation_id ===
-            consultationId
-          ) {
+          const newRow = payload.new as { consultation_id?: string };
+          if (newRow.consultation_id === consultationId) {
             fetchMessages();
           }
         }
@@ -55,24 +46,18 @@ export default function ConsultationChatAssureur({
   }, [consultationId]);
 
   const handleSend = async () => {
-    if (!newMessage.trim()) return;
-    if (!doctorStaffId) {
+    if (!insurerAgentId) {
       alert(
-        "Impossible d’envoyer un message : médecin introuvable pour cette consultation."
+        "Impossible d'envoyer un message : aucun agent assureur interne (insurer_staff.id) n'est associé à cet utilisateur."
       );
       return;
     }
 
+    if (!newMessage.trim()) return;
+
     setLoading(true);
     try {
-      // ⚠️ ICI : sender_id = insurerAgentId (insurer_staff.id UUID)
-      await sendMessage(
-        consultationId,
-        insurerAgentId,
-        doctorStaffId,
-        "insurer",
-        newMessage.trim()
-      );
+      await sendMessage(consultationId, insurerAgentId, "insurer", newMessage);
       setNewMessage("");
       await fetchMessages();
     } catch (e) {
@@ -85,10 +70,14 @@ export default function ConsultationChatAssureur({
 
   return (
     <div className="border rounded-lg p-4 space-y-4 bg-white">
-      <h2 className="font-semibold text-lg">Messagerie avec le médecin</h2>
+      <h2 className="font-semibold text-lg">Discussion avec le médecin</h2>
 
       <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
-        {messages.length > 0 ? (
+        {messages.length === 0 ? (
+          <p className="text-center text-gray-400">
+            Aucun message pour cette consultation.
+          </p>
+        ) : (
           messages.map((m) => (
             <div
               key={m.id}
@@ -107,10 +96,6 @@ export default function ConsultationChatAssureur({
               </div>
             </div>
           ))
-        ) : (
-          <p className="text-center text-gray-400">
-            Aucun message pour cette consultation.
-          </p>
         )}
       </div>
 

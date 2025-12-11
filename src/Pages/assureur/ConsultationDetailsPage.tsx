@@ -262,8 +262,8 @@ export default function AssureurConsultationDetailsPage() {
         {doctorStaffId && insurerAgentId ? (
           <ConsultationChat
             consultationId={consultation.id}
-            doctorStaffId={doctorStaffId}
-            insurerAgentId={insurerAgentId}
+            doctorStaffId={doctorStaffId}      // optionnel pour l’instant
+            insurerAgentId={insurerAgentId}    // = insurer_staff.id (uuid)
           />
         ) : (
           <p className="text-sm text-gray-500">

@@ -228,11 +228,11 @@ export default function ConsultationDoctorDetailsPage() {
             <h2 className="font-semibold mb-3">Messagerie avec l’assureur</h2>
             <ConsultationChatDoctor
               consultationId={record.id}
-              senderId={record.doctor_id}      // ✅ uuid clinic_staff.id
-              senderRole="doctor"              // ✅ rôle côté messages
-              receiverId={record.insurer_id}   // uuid insurer_staff.id ou null
+              senderId={record.doctor_id}     // clinic_staff.id (uuid)
+              senderRole="doctor"
+              receiverId={record.insurer_id}
             />
-          </section>
+        </section>
         ) : (
           <section className="bg-white rounded-xl shadow-sm p-4">
             <h2 className="font-semibold mb-2">Messagerie</h2>
