@@ -69,6 +69,7 @@ export default function ConsultationChatAssureur({
       await sendMessage(
         consultationId,
         insurerAgentId,
+        doctorStaffId,
         "insurer",
         newMessage.trim()
       );
