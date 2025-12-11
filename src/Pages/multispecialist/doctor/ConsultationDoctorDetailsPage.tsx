@@ -16,6 +16,7 @@ interface ConsultationRecord {
   insurer_comment: string | null;
   insurer_id: string | null;
   medications: string[] | null;
+  doctor_id: string | null;
 
   // jointures
   patients?: {
@@ -56,6 +57,7 @@ export default function ConsultationDoctorDetailsPage() {
           insurer_comment,
           insurer_id,
           medications,
+          doctor_id,
           patients ( name, phone, date_of_birth ),
           clinics ( name ),
           clinic_staff:clinic_staff!consultations_doctor_id_fkey ( name )
@@ -221,10 +223,24 @@ export default function ConsultationDoctorDetailsPage() {
 
       {/* Bloc messagerie médecin ↔ assureur */}
       {hasInsurer ? (
-        <ConsultationChatDoctor
-          consultationId={record.id}
-          receiverId={record.insurer_id as string}
-        />
+        record.doctor_id ? (
+          <section className="bg-white rounded-xl shadow-sm p-4">
+            <h2 className="font-semibold mb-3">Messagerie avec l’assureur</h2>
+            <ConsultationChatDoctor
+              consultationId={record.id}
+              senderId={record.doctor_id}      // ✅ uuid clinic_staff.id
+              senderRole="doctor"              // ✅ rôle côté messages
+              receiverId={record.insurer_id}   // uuid insurer_staff.id ou null
+            />
+          </section>
+        ) : (
+          <section className="bg-white rounded-xl shadow-sm p-4">
+            <h2 className="font-semibold mb-2">Messagerie</h2>
+            <p className="text-sm text-gray-500">
+              Impossible d’activer la messagerie : aucun médecin (doctor_id) n’est associé à cette consultation.
+            </p>
+          </section>
+        )
       ) : (
         <section className="bg-white rounded-xl shadow-sm p-4">
           <h2 className="font-semibold mb-2">Messagerie</h2>
