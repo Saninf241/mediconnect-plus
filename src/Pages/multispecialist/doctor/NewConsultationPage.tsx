@@ -13,6 +13,7 @@ import { useSearchParams } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
+import DiagnosisSelector, { DiagnosisCodeRow } from "../../../components/ui/uidoctor/DiagnosisSelector";
 
 
 export default function NewConsultationPage() {
@@ -43,6 +44,8 @@ export default function NewConsultationPage() {
   // ✅ types explicites sur refs
   const symptomsCanvasRef = useRef<SignatureCanvas | null>(null);
   const diagnosisCanvasRef = useRef<SignatureCanvas | null>(null);
+  const [diagnosisCodeId, setDiagnosisCodeId] = useState<string | null>(null);
+  const [diagnosisCodeText, setDiagnosisCodeText] = useState<string>(""); // snapshot
 
   const doctorInfo = useDoctorContext();
 
@@ -330,6 +333,8 @@ const createConsultation = async () => {
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
       status: targetStatus, // 'sent' ou 'draft'
+      diagnosis_code_id: diagnosisCodeId,
+      diagnosis_code_text: diagnosisCodeText || null,
     };
 
     console.log("[createConsultation] payload=", payload);
@@ -412,6 +417,8 @@ const createConsultation = async () => {
     setAmount("");
     setPatientId(null);
     setFingerprintMissing(false);
+    setDiagnosisCodeId(null);
+    setDiagnosisCodeText("");
   } catch (e) {
     console.error("[createConsultation] unexpected error:", e);
     toast.error("Erreur inattendue lors de l'enregistrement.");
@@ -520,6 +527,30 @@ const createConsultation = async () => {
             <div className="flex gap-2 my-1">
               <Button onClick={() => setDiagnosisType("text")}>Clavier</Button>
               <Button onClick={() => setDiagnosisType("drawn")}>Écriture</Button>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+              <label className="font-medium">Code affection (assureur)</label>
+
+              <DiagnosisSelector
+                valueId={diagnosisCodeId}
+                valueText={diagnosisCodeText}
+                source="ICD10-CNAMGS-2012"
+                onSelect={(row: DiagnosisCodeRow | null) => {
+                  if (!row) {
+                    setDiagnosisCodeId(null);
+                    setDiagnosisCodeText("");
+                    return;
+                  }
+                  setDiagnosisCodeId(row.id);
+                  setDiagnosisCodeText(`${row.code} - ${row.title}`);
+                }}
+              />
+
+              <p className="text-xs text-gray-500">
+                Astuce : tape “pal”, “septi”, “tub”, ou directement le code (A01, C02.a).
+                Sinon utilise “Chapitres”.
+              </p>
             </div>
 
             {diagnosisType === "text" ? (
