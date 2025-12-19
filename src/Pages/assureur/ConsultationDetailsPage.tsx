@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useUser } from "@clerk/clerk-react";
 import ConsultationChat from "../../components/ui/assureur/ConsultationChat";
+import { generateConsultationPdf } from "../../lib/generateConsultationPdf";
 
 interface ConsultationRow {
   id: string;

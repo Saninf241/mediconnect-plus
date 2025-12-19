@@ -111,9 +111,12 @@ serve(async (req) => {
   const diagnosisLabel =
     safe((c as any).diagnosis_code_text, "").trim() ||
     (() => {
-      const dc = (c as any).diagnosis_code;
-      if (dc?.code || dc?.title) return `${safe(dc?.code)} - ${safe(dc?.title)}`.trim();
-      return "";
+      const dcAny = (c as any).diagnosis_code;
+      const dc = Array.isArray(dcAny) ? dcAny[0] : dcAny;
+      const code = safe(dc?.code, "").trim();
+      const title = safe(dc?.title, "").trim();
+      const txt = `${code}${code && title ? " - " : ""}${title}`.trim();
+      return txt;
     })();
 
   pdf.setFont("helvetica", "bold");
