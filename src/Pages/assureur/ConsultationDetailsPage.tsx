@@ -1,8 +1,8 @@
 // src/Pages/assureur/ConsultationDetailsPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import { useUser } from "@clerk/clerk-react";           // ✅ NOUVEAU
+import { useUser } from "@clerk/clerk-react";
 import ConsultationChat from "../../components/ui/assureur/ConsultationChat";
 
 interface ConsultationRow {
@@ -24,6 +24,12 @@ interface ConsultationRow {
     | { id: string; name: string | null }
     | { id: string; name: string | null }[]
     | null;
+
+  diagnosis_code_text: string | null;
+  diagnosis_code:
+    | { code: string | null; title: string | null }
+    | { code: string | null; title: string | null }[]
+    | null;
 }
 
 interface PatientRow {
@@ -44,104 +50,142 @@ interface MembershipRow {
 export default function AssureurConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useUser();                       // ✅ on récupère l’utilisateur Clerk
+  const { user } = useUser();
 
   const [consultation, setConsultation] = useState<ConsultationRow | null>(null);
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [membership, setMembership] = useState<MembershipRow | null>(null);
   const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // ✅ IMPORTANT : fetchDetails doit être réutilisable (PDF regen)
+  const fetchDetails = useCallback(async () => {
     if (!id) return;
 
-    const fetchDetails = async () => {
-      setLoading(true);
+    setLoading(true);
 
-      // 1) Consultation + jointures
-      const { data: consult, error: cError } = await supabase
-        .from("consultations")
-        .select(
-          `
-          id,
-          created_at,
-          amount,
-          status,
-          pdf_url,
-          patient_id,
-          insurer_comment,
-          insurer_decision_at,
-          clinic:clinics ( name ),
-          doctor:clinic_staff ( id, name )
+    // 1) Consultation + jointures
+    const { data: consult, error: cError } = await supabase
+      .from("consultations")
+      .select(
         `
-        )
-        .eq("id", id)
+        id,
+        created_at,
+        amount,
+        status,
+        pdf_url,
+        patient_id,
+        insurer_comment,
+        insurer_decision_at,
+        diagnosis_code_text,
+        diagnosis_code:diagnosis_codes ( code, title ),
+        clinic:clinics ( name ),
+        doctor:clinic_staff ( id, name )
+      `
+      )
+      .eq("id", id)
+      .maybeSingle();
+
+    if (cError || !consult) {
+      console.error("[AssureurDetails] error consultation:", cError);
+      setLoading(false);
+      return;
+    }
+
+    setConsultation(consult as ConsultationRow);
+
+    // 2) Patient
+    if (consult.patient_id) {
+      const { data: patientData, error: pError } = await supabase
+        .from("patients")
+        .select("id, name, is_assured")
+        .eq("id", consult.patient_id)
         .maybeSingle();
 
-      if (cError || !consult) {
-        console.error("[AssureurDetails] error consultation:", cError);
-        setLoading(false);
+      if (pError) {
+        console.error("[AssureurDetails] error patient:", pError);
+      } else if (patientData) {
+        setPatient(patientData as PatientRow);
+      }
+
+      // 3) Dernière affiliation assureur
+      const { data: membershipData, error: mError } = await supabase
+        .from("insurer_memberships")
+        .select(
+          `
+          member_no,
+          plan_code,
+          insurer:insurers ( name )
+        `
+        )
+        .eq("patient_id", consult.patient_id)
+        .order("last_verified_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (mError) {
+        console.error("[AssureurDetails] error membership:", mError);
+      } else if (membershipData) {
+        setMembership(membershipData as MembershipRow);
+      }
+    }
+
+    // 4) Récupérer insurer_agent via Clerk → insurer_staff
+    if (user?.id) {
+      const { data: staffRow, error: staffError } = await supabase
+        .from("insurer_staff")
+        .select("id")
+        .eq("clerk_user_id", user.id)
+        .maybeSingle();
+
+      if (staffError) {
+        console.error("[AssureurDetails] erreur insurer_staff:", staffError);
+      } else if (staffRow?.id) {
+        setInsurerAgentId(staffRow.id);
+      }
+    }
+
+    setLoading(false);
+  }, [id, user?.id]);
+
+  useEffect(() => {
+    fetchDetails();
+  }, [fetchDetails]);
+
+  const handleRegeneratePdf = async () => {
+    if (!consultation?.id) return;
+
+    setRegenerating(true);
+    try {
+      // ⚠️ même pattern que filter-consultations : call direct Edge Function
+      const res = await fetch(
+        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/generate-consultation-pdf",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ consultationId: consultation.id }),
+        }
+      );
+
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error("[RegeneratePDF] HTTP error:", res.status, txt);
+        alert("Impossible de régénérer le PDF (erreur serveur).");
         return;
       }
 
-      setConsultation(consult as ConsultationRow);
-
-      // 2) Patient
-      if (consult.patient_id) {
-        const { data: patientData, error: pError } = await supabase
-          .from("patients")
-          .select("id, name, is_assured")
-          .eq("id", consult.patient_id)
-          .maybeSingle();
-
-        if (pError) {
-          console.error("[AssureurDetails] error patient:", pError);
-        } else if (patientData) {
-          setPatient(patientData as PatientRow);
-        }
-
-        // 3) Dernière affiliation assureur
-        const { data: membershipData, error: mError } = await supabase
-          .from("insurer_memberships")
-          .select(
-            `
-            member_no,
-            plan_code,
-            insurer:insurers ( name )
-          `
-          )
-          .eq("patient_id", consult.patient_id)
-          .order("last_verified_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (mError) {
-          console.error("[AssureurDetails] error membership:", mError);
-        } else if (membershipData) {
-          setMembership(membershipData as MembershipRow);
-        }
-      }
-
-      // 4) Récupérer l’agent assureur via Clerk → insurer_staff
-      if (user?.id) {
-        const { data: staffRow, error: staffError } = await supabase
-          .from("insurer_staff")
-          .select("id")
-          .eq("clerk_user_id", user.id)          // ✅ on utilise l’id Clerk
-          .maybeSingle();
-
-        if (staffError) {
-          console.error("[AssureurDetails] erreur insurer_staff:", staffError);
-        } else if (staffRow?.id) {
-          setInsurerAgentId(staffRow.id);        // UUID interne pour messages.sender_id
-        }
-      }
-
-      setLoading(false);
-    };
-
-    fetchDetails();
-  }, [id, user?.id]);                               // ✅ dépend aussi de user.id
+      // refresh pour récupérer le nouveau pdf_url
+      await fetchDetails();
+      alert("PDF régénéré ✅");
+    } catch (e) {
+      console.error("[RegeneratePDF] unexpected:", e);
+      alert("Impossible de régénérer le PDF (erreur réseau).");
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   if (loading) return <p className="p-6">Chargement...</p>;
   if (!consultation) return <p className="p-6">Consultation introuvable</p>;
@@ -172,6 +216,18 @@ export default function AssureurConsultationDetailsPage() {
       ? membership.insurer[0]?.name ?? "—"
       : membership.insurer.name ?? "—"
     : "—";
+
+  const diagnosisLabel =
+    consultation.diagnosis_code_text?.trim() ||
+    (() => {
+      const dc = consultation.diagnosis_code;
+      const row = Array.isArray(dc) ? dc[0] : dc;
+      if (!row) return "—";
+      const code = row.code ?? "";
+      const title = row.title ?? "";
+      const txt = `${code} - ${title}`.trim();
+      return txt || "—";
+    })();
 
   const memberNo = membership?.member_no ?? "—";
   const planCode = membership?.plan_code ?? "—";
@@ -228,6 +284,9 @@ export default function AssureurConsultationDetailsPage() {
           <strong>Code plan :</strong> {planCode}
         </p>
         <p>
+          <strong>Affection(s) :</strong> {diagnosisLabel}
+        </p>
+        <p>
           <strong>Date de décision :</strong> {decisionDate}
         </p>
         <p>
@@ -237,20 +296,31 @@ export default function AssureurConsultationDetailsPage() {
             : "— aucun commentaire —"}
         </p>
 
-        {consultation.pdf_url ? (
-          <a
-            href={consultation.pdf_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 underline"
+        <div className="flex items-center gap-3 pt-2">
+          {consultation.pdf_url ? (
+            <a
+              href={consultation.pdf_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              📄 Télécharger le rapport PDF de la prestation
+            </a>
+          ) : (
+            <p className="text-gray-500 italic">
+          Aucun PDF disponible pour cette consultation.
+            </p>
+          )}
+
+          <button
+            onClick={handleRegeneratePdf}
+            disabled={regenerating}
+            className="text-sm bg-gray-900 text-white px-3 py-2 rounded disabled:opacity-60"
+            title="Utile si le diagnostic/actes ont changé après génération"
           >
-            📄 Télécharger le rapport PDF de la prestation
-          </a>
-        ) : (
-          <p className="text-gray-500 italic">
-            Aucun PDF disponible pour cette consultation.
-          </p>
-        )}
+            {regenerating ? "Régénération..." : "🔄 Régénérer le PDF"}
+          </button>
+        </div>
       </div>
 
       {/* ✅ Messagerie assureur ↔ médecin */}
@@ -262,8 +332,8 @@ export default function AssureurConsultationDetailsPage() {
         {doctorStaffId && insurerAgentId ? (
           <ConsultationChat
             consultationId={consultation.id}
-            doctorStaffId={doctorStaffId}      // optionnel pour l’instant
-            insurerAgentId={insurerAgentId}    // = insurer_staff.id (uuid)
+            doctorStaffId={doctorStaffId}
+            insurerAgentId={insurerAgentId}
           />
         ) : (
           <p className="text-sm text-gray-500">
