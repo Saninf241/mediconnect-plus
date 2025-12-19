@@ -1,3 +1,4 @@
+// src/Pages/multispecialist/doctor/NewConsultationPage.tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useUser } from '@clerk/clerk-react';
@@ -287,17 +288,10 @@ const createConsultation = async () => {
       (symptomsType === "text" && symptoms.trim().length > 0) ||
       !!symptomsDrawn;
     const hasDiagnosis =
-      (diagnosisType === "text" && diagnosis.trim().length > 0) ||
-      !!diagnosisDrawn;
-
-    if (!hasSymptoms) {
-      toast.error("Renseignez les symptômes.");
-      return;
-    }
-    if (!hasDiagnosis) {
-      toast.error("Renseignez le diagnostic.");
-      return;
-    }
+    (diagnosisType === "text" && diagnosis.trim().length > 0) ||
+    !!diagnosisDrawn ||
+    !!diagnosisCodeId ||
+    !!diagnosisCodeText.trim();
 
     // 3) Récupérer l'assureur du patient (s'il existe)
     let insurerId: string | null = null;
@@ -335,8 +329,8 @@ const createConsultation = async () => {
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
       status: targetStatus, // 'sent' ou 'draft'
-      diagnosis_code_id: primaryDiagnosis?.id ?? null,
-      diagnosis_code_text: diagnosisItems.length ? diagnosisItems.map((x) => x.label).join(" | ") : null,
+      diagnosis_code_id: diagnosisCodeId,
+      diagnosis_code_text: diagnosisCodeText.trim() || null,
     };
 
     console.log("[createConsultation] payload=", payload);
@@ -534,13 +528,26 @@ const createConsultation = async () => {
             <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
               <label className="font-medium">Code affection (assureur)</label>
 
-              <DiagnosisSelector
-                disabled={false}
-                source="ICD10-CNAMGS-2012"
-                onChange={(items) => setDiagnosisItems(items)}
-                onPrimaryChange={(p) => setPrimaryDiagnosis(p)}
-                maxItems={5}
-              />
+            <DiagnosisSelector
+              valueId={diagnosisCodeId}
+              valueText={diagnosisCodeText}
+              onSelect={(row: DiagnosisCodeRow | null) => {
+                if (!row) {
+                  setDiagnosisCodeId(null);
+                  setDiagnosisCodeText("");
+                  return;
+                }
+
+                const txt = `${row.code} - ${row.title}`.trim();
+                setDiagnosisCodeId(row.id);
+                setDiagnosisCodeText(txt);
+
+                // auto-remplir diagnosis si vide
+                if (!diagnosis.trim() && diagnosisType === "text") {
+                  setDiagnosis(txt);
+                }
+              }}
+            />
 
               <p className="text-xs text-gray-500">
                 Astuce : tape “pal”, “septi”, “tub”, ou directement le code (A01, C02.a).

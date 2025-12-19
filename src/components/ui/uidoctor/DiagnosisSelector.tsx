@@ -13,38 +13,48 @@ export type DiagnosisCodeRow = {
   source: string;
 };
 
-type SelectedItem = {
+export type SelectedItem = {
   id: string;
   label: string; // "A01 - PALUDISME"
   row: DiagnosisCodeRow;
 };
 
-type Props = {
-  /** Sélections initiales (MVP: tu peux laisser vide) */
-  valueIds?: string[]; // ids déjà sélectionnés
-  valueTexts?: string[]; // labels déjà sélectionnés
+/**
+ * ✅ Props multi (recommandé)
+ */
+type MultiProps = {
+  mode?: "multi";
+  valueIds?: string[] | null;
+  valueTexts?: string[] | null;
+  source?: string;
+  disabled?: boolean;
+  maxItems?: number;
 
-  source?: string; // ex: "ICD10-CNAMGS-2012"
+  onChange: (items: SelectedItem[]) => void;
+  onPrimaryChange?: (item: SelectedItem | null) => void;
+};
+
+/**
+ * ✅ Props single (compat)
+ */
+type SingleProps = {
+  mode?: "single";
+  valueId?: string | null;
+  valueText?: string | null;
+  source?: string;
   disabled?: boolean;
 
-  /** callback multi */
-  onChange: (items: SelectedItem[]) => void;
-
-  /** callback principal (toujours 1 ou null) */
-  onPrimaryChange?: (primary: SelectedItem | null) => void;
-
-  /** si tu veux limiter (par ex 3 max) */
-  maxItems?: number;
+  onSelect: (row: DiagnosisCodeRow | null) => void;
 };
+
+type Props = MultiProps | SingleProps;
 
 function normalize(s: string) {
   return s.trim();
 }
-
 function escapeLike(s: string) {
   return s.replace(/[%_]/g, "\\$&");
 }
-
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState<T>(value);
   useEffect(() => {
@@ -54,15 +64,12 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-export default function DiagnosisSelector({
-  valueIds = [],
-  valueTexts = [],
-  source = "ICD10-CNAMGS-2012",
-  disabled = false,
-  onChange,
-  onPrimaryChange,
-  maxItems = 5,
-}: Props) {
+export default function DiagnosisSelector(props: Props) {
+  const mode = props.mode ?? ("onChange" in props ? "multi" : "single");
+  const source = props.source ?? "ICD10-CNAMGS-2012";
+  const disabled = props.disabled ?? false;
+  const maxItems = "onChange" in props ? props.maxItems ?? 5 : 1;
+
   // input de recherche
   const [query, setQuery] = useState<string>("");
 
@@ -83,36 +90,50 @@ export default function DiagnosisSelector({
   const [chapterRows, setChapterRows] = useState<DiagnosisCodeRow[]>([]);
   const [chapterLoading, setChapterLoading] = useState(false);
 
-  // init depuis parent (si fourni)
+  // ✅ init depuis parent
   useEffect(() => {
-    // si déjà rempli, on ne ré-écrase pas
-    if (selected.length > 0) return;
+    let cancelled = false;
 
-    // MVP: si tu fournis seulement des textes, on les garde (sans row)
-    // Mais idéalement tu passes valueIds + valueTexts; ici on tente de recharger les rows si ids.
     (async () => {
-      if (!valueIds.length) {
-        if (valueTexts.length) {
-          const fake = valueTexts.map((t, idx) => ({
-            id: `text-${idx}`,
-            label: t,
-            row: {
-              id: `text-${idx}`,
-              code: t.split(" - ")[0] ?? t,
-              title: t,
-              chapter_roman: null,
-              chapter_title: null,
-              code_range: null,
-              source,
-            } as DiagnosisCodeRow,
-          }));
-          setSelected(fake);
-          setPrimaryId(fake[0]?.id ?? null);
-          onChange(fake);
-          onPrimaryChange?.(fake[0] ?? null);
-        }
+      if (mode === "single") {
+        // si valueText fourni, on met dans query (juste pour afficher)
+        const valueText = (props as SingleProps).valueText ?? "";
+        if (valueText) setQuery(valueText);
         return;
       }
+
+      // mode multi
+      if (selected.length > 0) return;
+
+      const valueIds = ((props as MultiProps).valueIds ?? []).filter(Boolean) as string[];
+      const valueTexts = ((props as MultiProps).valueTexts ?? []).filter(Boolean) as string[];
+
+      // Si pas d'IDs mais des textes => on crée des "fake rows" (fallback)
+      if (!valueIds.length && valueTexts.length) {
+        const fake = valueTexts.map((t, idx) => ({
+          id: `text-${idx}`,
+          label: t,
+          row: {
+            id: `text-${idx}`,
+            code: t.split(" - ")[0] ?? t,
+            title: t,
+            chapter_roman: null,
+            chapter_title: null,
+            code_range: null,
+            source,
+          } as DiagnosisCodeRow,
+        }));
+
+        if (cancelled) return;
+        setSelected(fake);
+        setPrimaryId(fake[0]?.id ?? null);
+
+        (props as MultiProps).onChange(fake);
+        (props as MultiProps).onPrimaryChange?.(fake[0] ?? null);
+        return;
+      }
+
+      if (!valueIds.length) return;
 
       const { data, error } = await supabase
         .from("diagnosis_codes")
@@ -132,21 +153,27 @@ export default function DiagnosisSelector({
         row: r as DiagnosisCodeRow,
       }));
 
-      // garder l’ordre de valueIds si possible
       const ordered = valueIds
         .map((id) => items.find((x) => x.id === id))
         .filter(Boolean) as SelectedItem[];
 
+      if (cancelled) return;
       setSelected(ordered);
+
       const p = ordered[0]?.id ?? null;
       setPrimaryId(p);
-      onChange(ordered);
-      onPrimaryChange?.(ordered[0] ?? null);
+
+      (props as MultiProps).onChange(ordered);
+      (props as MultiProps).onPrimaryChange?.(ordered[0] ?? null);
     })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  // charger chapitres
+  // ✅ charger chapitres
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -180,7 +207,7 @@ export default function DiagnosisSelector({
 
   const debouncedQuery = useDebouncedValue(query, 250);
 
-  // recherche
+  // ✅ recherche
   useEffect(() => {
     const q = normalize(debouncedQuery);
     if (!q || q.length < 2) {
@@ -222,11 +249,39 @@ export default function DiagnosisSelector({
     })();
   }, [debouncedQuery, source]);
 
-  const canClear = useMemo(() => selected.length > 0 || query.length > 0, [selected.length, query.length]);
+  const canClear = useMemo(() => {
+    if (mode === "single") {
+      const p = props as SingleProps;
+      return !!p.valueId || !!p.valueText;
+    }
+    return selected.length > 0 || query.trim().length > 0;
+  }, [mode, props, selected.length, query]);
+
+  const emitSingle = (row: DiagnosisCodeRow | null) => {
+    if (mode !== "single") return;
+    (props as SingleProps).onSelect(row);
+  };
+
+  const emitMulti = (items: SelectedItem[]) => {
+    if (mode !== "multi") return;
+    (props as MultiProps).onChange(items);
+  };
+
+  const emitPrimary = (item: SelectedItem | null) => {
+    if (mode !== "multi") return;
+    (props as MultiProps).onPrimaryChange?.(item);
+  };
 
   const addSelection = (r: DiagnosisCodeRow) => {
-    const id = r.id;
-    const exists = selected.some((x) => x.id === id);
+    if (mode === "single") {
+      const txt = `${r.code} - ${r.title}`.trim();
+      setQuery(txt);
+      setResults([]);
+      emitSingle(r);
+      return;
+    }
+
+    const exists = selected.some((x) => x.id === r.id);
     if (exists) return;
 
     if (selected.length >= maxItems) {
@@ -235,7 +290,7 @@ export default function DiagnosisSelector({
     }
 
     const item: SelectedItem = {
-      id,
+      id: r.id,
       label: `${r.code} - ${r.title}`,
       row: r,
     };
@@ -243,33 +298,38 @@ export default function DiagnosisSelector({
     const next = [...selected, item];
     setSelected(next);
 
-    // si aucun principal, on met le 1er
     if (!primaryId) {
       setPrimaryId(item.id);
-      onPrimaryChange?.(item);
+      emitPrimary(item);
     }
 
-    onChange(next);
-    setQuery(""); // important: reset recherche = gain de temps
+    emitMulti(next);
+
+    // 🔥 vrai gain de temps: on nettoie direct la recherche
+    setQuery("");
     setResults([]);
   };
 
   const removeSelection = (id: string) => {
+    if (mode !== "multi") return;
+
     const next = selected.filter((x) => x.id !== id);
     setSelected(next);
-    onChange(next);
+    emitMulti(next);
 
     if (primaryId === id) {
       const newPrimary = next[0] ?? null;
       setPrimaryId(newPrimary?.id ?? null);
-      onPrimaryChange?.(newPrimary);
+      emitPrimary(newPrimary);
     }
   };
 
   const setPrimary = (id: string) => {
+    if (mode !== "multi") return;
+
     setPrimaryId(id);
     const p = selected.find((x) => x.id === id) ?? null;
-    onPrimaryChange?.(p);
+    emitPrimary(p);
   };
 
   const loadChapter = async (chapterTitle: string) => {
@@ -295,10 +355,26 @@ export default function DiagnosisSelector({
     setChapterLoading(false);
   };
 
+  const clearAll = () => {
+    setQuery("");
+    setResults([]);
+    setChapterOpen(false);
+
+    if (mode === "single") {
+      emitSingle(null);
+      return;
+    }
+
+    setSelected([]);
+    setPrimaryId(null);
+    emitMulti([]);
+    emitPrimary(null);
+  };
+
   return (
     <div className="space-y-2">
-      {/* Sélection courante */}
-      {selected.length > 0 && (
+      {/* ✅ Sélection courante (multi) */}
+      {mode === "multi" && selected.length > 0 && (
         <div className="border rounded-lg bg-white p-2">
           <div className="text-sm font-semibold mb-2">Affections sélectionnées</div>
 
@@ -319,7 +395,11 @@ export default function DiagnosisSelector({
                     <div>
                       <div className="text-sm font-medium">
                         {it.row.code} — {it.row.title}
-                        {isPrimary && <span className="ml-2 text-xs text-green-700 font-semibold">(Principal)</span>}
+                        {isPrimary && (
+                          <span className="ml-2 text-xs text-green-700 font-semibold">
+                            (Principal)
+                          </span>
+                        )}
                       </div>
                       {it.row.chapter_title && (
                         <div className="text-xs text-gray-500">
@@ -345,7 +425,7 @@ export default function DiagnosisSelector({
         </div>
       )}
 
-      {/* Barre de recherche */}
+      {/* ✅ Barre de recherche */}
       <div className="flex items-center gap-2">
         <Input
           disabled={disabled}
@@ -353,6 +433,7 @@ export default function DiagnosisSelector({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Recherche affection (ex: palu, septicémie, A01...)"
         />
+
         <Button
           type="button"
           disabled={disabled}
@@ -361,24 +442,18 @@ export default function DiagnosisSelector({
         >
           Chapitres
         </Button>
+
         <Button
           type="button"
           disabled={disabled || !canClear}
-          onClick={() => {
-            setQuery("");
-            setResults([]);
-            setSelected([]);
-            setPrimaryId(null);
-            onChange([]);
-            onPrimaryChange?.(null);
-          }}
+          onClick={clearAll}
           className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
         >
-          Tout effacer
+          {mode === "multi" ? "Tout effacer" : "Effacer"}
         </Button>
       </div>
 
-      {/* Résultats recherche */}
+      {/* ✅ Résultats recherche */}
       {loading && <div className="text-sm text-gray-500">Recherche…</div>}
 
       {!loading && results.length > 0 && (
@@ -387,7 +462,7 @@ export default function DiagnosisSelector({
             <button
               type="button"
               key={r.id}
-              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
               onClick={() => addSelection(r)}
               disabled={disabled}
             >
@@ -405,7 +480,7 @@ export default function DiagnosisSelector({
         </div>
       )}
 
-      {/* Mode chapitres */}
+      {/* ✅ Mode chapitres */}
       {chapterOpen && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="border rounded-lg bg-white p-2">
@@ -446,7 +521,7 @@ export default function DiagnosisSelector({
                   <button
                     key={r.id}
                     type="button"
-                    className="w-full text-left px-2 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                    className="w-full text-left px-2 py-2 hover:bg-gray-50 border-b last:border-b-0 disabled:opacity-50"
                     onClick={() => addSelection(r)}
                     disabled={disabled}
                   >
@@ -465,7 +540,8 @@ export default function DiagnosisSelector({
       )}
 
       <div className="text-xs text-gray-500">
-        💡 Astuce : tape “palu”, “typho”, “VIH”, ou un code (“A01”). Tu peux sélectionner jusqu’à {maxItems} affections.
+        💡 Astuce : tape “palu”, “typho”, “VIH”, ou un code (“A01”).{" "}
+        {mode === "multi" ? <>Tu peux sélectionner jusqu’à {maxItems} affections.</> : null}
       </div>
     </div>
   );
