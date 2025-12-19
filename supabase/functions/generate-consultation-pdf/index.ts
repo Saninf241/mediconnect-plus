@@ -61,6 +61,8 @@ serve(async (req) => {
       status,
       acts,
       medications,
+      diagnosis_code_text,
+      diagnosis_code:diagnosis_codes ( code, title ),
       patients ( name ),
       clinic_staff ( name ),
       clinics ( name )
@@ -104,6 +106,37 @@ serve(async (req) => {
   pdf.text(`Établissement : ${safe(c.clinics?.name)}`, 10, y); y += 7;
   pdf.text(`Montant : ${safe(c.amount)} FCFA`, 10, y); y += 7;
   pdf.text(`Statut : ${safe(c.status)}`, 10, y); y += 10;
+
+    // ----- Affection / Diagnostic codifié -----
+  const diagnosisLabel =
+    safe((c as any).diagnosis_code_text, "").trim() ||
+    (() => {
+      const dc = (c as any).diagnosis_code;
+      if (dc?.code || dc?.title) return `${safe(dc?.code)} - ${safe(dc?.title)}`.trim();
+      return "";
+    })();
+
+  pdf.setFont("helvetica", "bold");
+  pdf.text("Affection(s) / Diagnostic codifié :", 10, y);
+  y += 7;
+
+  pdf.setFont("helvetica", "normal");
+  if (!diagnosisLabel) {
+    pdf.text("- Non renseigné", 12, y);
+    y += 6;
+  } else {
+    // split si c'est long
+    const lines = pdf.splitTextToSize(diagnosisLabel, 180);
+    for (const line of lines) {
+      pdf.text(line, 12, y);
+      y += 6;
+      if (y > 280) {
+        pdf.addPage();
+        y = 20;
+      }
+    }
+  }
+  y += 4;
 
   // ----- Actes -----
   pdf.setFont("helvetica", "bold");

@@ -13,31 +13,68 @@ export type DiagnosisCodeRow = {
   source: string;
 };
 
+type SelectedItem = {
+  id: string;
+  label: string; // "A01 - PALUDISME"
+  row: DiagnosisCodeRow;
+};
+
 type Props = {
-  valueId?: string | null;
-  valueText?: string | null;
+  /** Sélections initiales (MVP: tu peux laisser vide) */
+  valueIds?: string[]; // ids déjà sélectionnés
+  valueTexts?: string[]; // labels déjà sélectionnés
+
   source?: string; // ex: "ICD10-CNAMGS-2012"
   disabled?: boolean;
 
-  onSelect: (row: DiagnosisCodeRow | null) => void;
+  /** callback multi */
+  onChange: (items: SelectedItem[]) => void;
+
+  /** callback principal (toujours 1 ou null) */
+  onPrimaryChange?: (primary: SelectedItem | null) => void;
+
+  /** si tu veux limiter (par ex 3 max) */
+  maxItems?: number;
 };
 
 function normalize(s: string) {
   return s.trim();
 }
 
+function escapeLike(s: string) {
+  return s.replace(/[%_]/g, "\\$&");
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState<T>(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export default function DiagnosisSelector({
-  valueId = null,
-  valueText = null,
+  valueIds = [],
+  valueTexts = [],
   source = "ICD10-CNAMGS-2012",
   disabled = false,
-  onSelect,
+  onChange,
+  onPrimaryChange,
+  maxItems = 5,
 }: Props) {
-  const [query, setQuery] = useState<string>(valueText ?? "");
+  // input de recherche
+  const [query, setQuery] = useState<string>("");
+
+  // résultats recherche
   const [results, setResults] = useState<DiagnosisCodeRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Mode “par chapitres”
+  // sélection multi
+  const [selected, setSelected] = useState<SelectedItem[]>([]);
+  const [primaryId, setPrimaryId] = useState<string | null>(null);
+
+  // chapitres
   const [chapters, setChapters] = useState<
     { chapter_title: string; chapter_roman: string | null }[]
   >([]);
@@ -46,15 +83,70 @@ export default function DiagnosisSelector({
   const [chapterRows, setChapterRows] = useState<DiagnosisCodeRow[]>([]);
   const [chapterLoading, setChapterLoading] = useState(false);
 
-  // Garde query synchro quand parent change
+  // init depuis parent (si fourni)
   useEffect(() => {
-    if (valueText != null && valueText !== query) {
-      setQuery(valueText);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [valueText]);
+    // si déjà rempli, on ne ré-écrase pas
+    if (selected.length > 0) return;
 
-  // Charge les chapitres (une fois)
+    // MVP: si tu fournis seulement des textes, on les garde (sans row)
+    // Mais idéalement tu passes valueIds + valueTexts; ici on tente de recharger les rows si ids.
+    (async () => {
+      if (!valueIds.length) {
+        if (valueTexts.length) {
+          const fake = valueTexts.map((t, idx) => ({
+            id: `text-${idx}`,
+            label: t,
+            row: {
+              id: `text-${idx}`,
+              code: t.split(" - ")[0] ?? t,
+              title: t,
+              chapter_roman: null,
+              chapter_title: null,
+              code_range: null,
+              source,
+            } as DiagnosisCodeRow,
+          }));
+          setSelected(fake);
+          setPrimaryId(fake[0]?.id ?? null);
+          onChange(fake);
+          onPrimaryChange?.(fake[0] ?? null);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("diagnosis_codes")
+        .select("id, code, title, chapter_roman, chapter_title, code_range, source")
+        .eq("is_active", true)
+        .eq("source", source)
+        .in("id", valueIds);
+
+      if (error) {
+        console.warn("[DiagnosisSelector] init load error:", error);
+        return;
+      }
+
+      const items: SelectedItem[] = (data ?? []).map((r: any) => ({
+        id: r.id,
+        label: `${r.code} - ${r.title}`,
+        row: r as DiagnosisCodeRow,
+      }));
+
+      // garder l’ordre de valueIds si possible
+      const ordered = valueIds
+        .map((id) => items.find((x) => x.id === id))
+        .filter(Boolean) as SelectedItem[];
+
+      setSelected(ordered);
+      const p = ordered[0]?.id ?? null;
+      setPrimaryId(p);
+      onChange(ordered);
+      onPrimaryChange?.(ordered[0] ?? null);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source]);
+
+  // charger chapitres
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase
@@ -69,14 +161,12 @@ export default function DiagnosisSelector({
         return;
       }
 
-      // dédoublonnage
       const uniq = new Map<string, { chapter_title: string; chapter_roman: string | null }>();
       (data ?? []).forEach((r: any) => {
         const key = String(r.chapter_title);
         if (!uniq.has(key)) uniq.set(key, { chapter_title: key, chapter_roman: r.chapter_roman ?? null });
       });
 
-      // tri : roman (I, II...) puis alpha fallback
       const arr = Array.from(uniq.values()).sort((a, b) => {
         const ar = a.chapter_roman ?? "";
         const br = b.chapter_roman ?? "";
@@ -90,7 +180,7 @@ export default function DiagnosisSelector({
 
   const debouncedQuery = useDebouncedValue(query, 250);
 
-  // Recherche “intelligente” (code OU titre)
+  // recherche
   useEffect(() => {
     const q = normalize(debouncedQuery);
     if (!q || q.length < 2) {
@@ -101,8 +191,8 @@ export default function DiagnosisSelector({
     (async () => {
       setLoading(true);
 
-      // Si l’utilisateur tape un code (A01 / C02.a)
-      const looksLikeCode = /^[A-Z]\d{2}(\.[a-z])?$/i.test(q) || /^[A-Z]\d{2}$/i.test(q);
+      const looksLikeCode =
+        /^[A-Z]\d{2}(\.[a-z])?$/i.test(q) || /^[A-Z]\d{2}$/i.test(q);
 
       let builder = supabase
         .from("diagnosis_codes")
@@ -114,7 +204,6 @@ export default function DiagnosisSelector({
       if (looksLikeCode) {
         builder = builder.ilike("code", `${q.toUpperCase()}%`);
       } else {
-        // recherche sur title + fallback sur code (si q contient A0 etc)
         builder = builder.or(
           `title.ilike.%${escapeLike(q)}%,code.ilike.%${escapeLike(q)}%`
         );
@@ -133,7 +222,56 @@ export default function DiagnosisSelector({
     })();
   }, [debouncedQuery, source]);
 
-  // Charge les codes d’un chapitre
+  const canClear = useMemo(() => selected.length > 0 || query.length > 0, [selected.length, query.length]);
+
+  const addSelection = (r: DiagnosisCodeRow) => {
+    const id = r.id;
+    const exists = selected.some((x) => x.id === id);
+    if (exists) return;
+
+    if (selected.length >= maxItems) {
+      alert(`Maximum ${maxItems} affections pour le moment.`);
+      return;
+    }
+
+    const item: SelectedItem = {
+      id,
+      label: `${r.code} - ${r.title}`,
+      row: r,
+    };
+
+    const next = [...selected, item];
+    setSelected(next);
+
+    // si aucun principal, on met le 1er
+    if (!primaryId) {
+      setPrimaryId(item.id);
+      onPrimaryChange?.(item);
+    }
+
+    onChange(next);
+    setQuery(""); // important: reset recherche = gain de temps
+    setResults([]);
+  };
+
+  const removeSelection = (id: string) => {
+    const next = selected.filter((x) => x.id !== id);
+    setSelected(next);
+    onChange(next);
+
+    if (primaryId === id) {
+      const newPrimary = next[0] ?? null;
+      setPrimaryId(newPrimary?.id ?? null);
+      onPrimaryChange?.(newPrimary);
+    }
+  };
+
+  const setPrimary = (id: string) => {
+    setPrimaryId(id);
+    const p = selected.find((x) => x.id === id) ?? null;
+    onPrimaryChange?.(p);
+  };
+
   const loadChapter = async (chapterTitle: string) => {
     setActiveChapter(chapterTitle);
     setChapterLoading(true);
@@ -157,10 +295,57 @@ export default function DiagnosisSelector({
     setChapterLoading(false);
   };
 
-  const canClear = useMemo(() => !!valueId || !!valueText, [valueId, valueText]);
-
   return (
     <div className="space-y-2">
+      {/* Sélection courante */}
+      {selected.length > 0 && (
+        <div className="border rounded-lg bg-white p-2">
+          <div className="text-sm font-semibold mb-2">Affections sélectionnées</div>
+
+          <div className="space-y-2">
+            {selected.map((it) => {
+              const isPrimary = it.id === primaryId;
+              return (
+                <div key={it.id} className="flex items-center justify-between gap-2 border rounded p-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="primary-diagnosis"
+                      checked={isPrimary}
+                      onChange={() => setPrimary(it.id)}
+                      disabled={disabled}
+                      title="Définir comme diagnostic principal"
+                    />
+                    <div>
+                      <div className="text-sm font-medium">
+                        {it.row.code} — {it.row.title}
+                        {isPrimary && <span className="ml-2 text-xs text-green-700 font-semibold">(Principal)</span>}
+                      </div>
+                      {it.row.chapter_title && (
+                        <div className="text-xs text-gray-500">
+                          {it.row.chapter_roman ? `${it.row.chapter_roman} — ` : ""}
+                          {it.row.chapter_title}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => removeSelection(it.id)}
+                    className="bg-white text-red-700 border border-red-200 hover:bg-red-50"
+                  >
+                    Retirer
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Barre de recherche */}
       <div className="flex items-center gap-2">
         <Input
           disabled={disabled}
@@ -168,33 +353,33 @@ export default function DiagnosisSelector({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Recherche affection (ex: palu, septicémie, A01...)"
         />
-       <Button
-        type="button"
-        disabled={disabled}
-        onClick={() => setChapterOpen((v) => !v)}
-        className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
-        >
-        Chapitres
-        </Button>
-
         <Button
-        type="button"
-        disabled={disabled || !canClear}
-        onClick={() => {
+          type="button"
+          disabled={disabled}
+          onClick={() => setChapterOpen((v) => !v)}
+          className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+        >
+          Chapitres
+        </Button>
+        <Button
+          type="button"
+          disabled={disabled || !canClear}
+          onClick={() => {
             setQuery("");
             setResults([]);
-            onSelect(null);
-        }}
-        className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+            setSelected([]);
+            setPrimaryId(null);
+            onChange([]);
+            onPrimaryChange?.(null);
+          }}
+          className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
         >
-        Effacer
+          Tout effacer
         </Button>
       </div>
 
       {/* Résultats recherche */}
-      {loading && (
-        <div className="text-sm text-gray-500">Recherche…</div>
-      )}
+      {loading && <div className="text-sm text-gray-500">Recherche…</div>}
 
       {!loading && results.length > 0 && (
         <div className="border rounded-lg bg-white overflow-hidden">
@@ -203,17 +388,16 @@ export default function DiagnosisSelector({
               type="button"
               key={r.id}
               className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-              onClick={() => {
-                const text = `${r.code} - ${r.title}`;
-                setQuery(text);
-                setResults([]);
-                onSelect(r);
-              }}
+              onClick={() => addSelection(r)}
+              disabled={disabled}
             >
-              <div className="font-medium">{r.code} — {r.title}</div>
+              <div className="font-medium">
+                {r.code} — {r.title}
+              </div>
               {r.chapter_title && (
                 <div className="text-xs text-gray-500">
-                  {r.chapter_roman ? `${r.chapter_roman} — ` : ""}{r.chapter_title}
+                  {r.chapter_roman ? `${r.chapter_roman} — ` : ""}
+                  {r.chapter_title}
                 </div>
               )}
             </button>
@@ -235,16 +419,16 @@ export default function DiagnosisSelector({
                     activeChapter === c.chapter_title ? "bg-gray-50" : ""
                   }`}
                   onClick={() => loadChapter(c.chapter_title)}
+                  disabled={disabled}
                 >
                   <div className="text-sm font-medium">
-                    {c.chapter_roman ? `${c.chapter_roman} — ` : ""}{c.chapter_title}
+                    {c.chapter_roman ? `${c.chapter_roman} — ` : ""}
+                    {c.chapter_title}
                   </div>
                 </button>
               ))}
               {chapters.length === 0 && (
-                <div className="text-sm text-gray-500 p-2">
-                  Aucun chapitre trouvé.
-                </div>
+                <div className="text-sm text-gray-500 p-2">Aucun chapitre trouvé.</div>
               )}
             </div>
           </div>
@@ -263,22 +447,16 @@ export default function DiagnosisSelector({
                     key={r.id}
                     type="button"
                     className="w-full text-left px-2 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                    onClick={() => {
-                      const text = `${r.code} - ${r.title}`;
-                      setQuery(text);
-                      onSelect(r);
-                      setChapterOpen(false);
-                      setActiveChapter(null);
-                      setChapterRows([]);
-                    }}
+                    onClick={() => addSelection(r)}
+                    disabled={disabled}
                   >
-                    <div className="text-sm font-medium">{r.code} — {r.title}</div>
+                    <div className="text-sm font-medium">
+                      {r.code} — {r.title}
+                    </div>
                   </button>
                 ))}
                 {chapterRows.length === 0 && (
-                  <div className="text-sm text-gray-500 p-2">
-                    Aucun code dans ce chapitre.
-                  </div>
+                  <div className="text-sm text-gray-500 p-2">Aucun code dans ce chapitre.</div>
                 )}
               </div>
             )}
@@ -286,27 +464,9 @@ export default function DiagnosisSelector({
         </div>
       )}
 
-      {/* Valeur sélectionnée */}
-      {valueId && valueText && (
-        <div className="text-xs text-gray-600">
-          ✅ Sélection : <span className="font-medium">{valueText}</span>
-        </div>
-      )}
+      <div className="text-xs text-gray-500">
+        💡 Astuce : tape “palu”, “typho”, “VIH”, ou un code (“A01”). Tu peux sélectionner jusqu’à {maxItems} affections.
+      </div>
     </div>
   );
-}
-
-/** Debounce hook */
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debounced, setDebounced] = useState<T>(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(t);
-  }, [value, delayMs]);
-  return debounced;
-}
-
-/** échappe % _ pour LIKE */
-function escapeLike(s: string) {
-  return s.replace(/[%_]/g, "\\$&");
 }

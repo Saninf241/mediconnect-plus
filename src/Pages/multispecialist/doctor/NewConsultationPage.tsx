@@ -46,6 +46,8 @@ export default function NewConsultationPage() {
   const diagnosisCanvasRef = useRef<SignatureCanvas | null>(null);
   const [diagnosisCodeId, setDiagnosisCodeId] = useState<string | null>(null);
   const [diagnosisCodeText, setDiagnosisCodeText] = useState<string>(""); // snapshot
+  const [diagnosisItems, setDiagnosisItems] = useState<{ id: string; label: string; row: any }[]>([]);
+  const [primaryDiagnosis, setPrimaryDiagnosis] = useState<{ id: string; label: string; row: any } | null>(null);
 
   const doctorInfo = useDoctorContext();
 
@@ -333,8 +335,8 @@ const createConsultation = async () => {
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
       status: targetStatus, // 'sent' ou 'draft'
-      diagnosis_code_id: diagnosisCodeId,
-      diagnosis_code_text: diagnosisCodeText || null,
+      diagnosis_code_id: primaryDiagnosis?.id ?? null,
+      diagnosis_code_text: diagnosisItems.length ? diagnosisItems.map((x) => x.label).join(" | ") : null,
     };
 
     console.log("[createConsultation] payload=", payload);
@@ -533,18 +535,11 @@ const createConsultation = async () => {
               <label className="font-medium">Code affection (assureur)</label>
 
               <DiagnosisSelector
-                valueId={diagnosisCodeId}
-                valueText={diagnosisCodeText}
+                disabled={false}
                 source="ICD10-CNAMGS-2012"
-                onSelect={(row: DiagnosisCodeRow | null) => {
-                  if (!row) {
-                    setDiagnosisCodeId(null);
-                    setDiagnosisCodeText("");
-                    return;
-                  }
-                  setDiagnosisCodeId(row.id);
-                  setDiagnosisCodeText(`${row.code} - ${row.title}`);
-                }}
+                onChange={(items) => setDiagnosisItems(items)}
+                onPrimaryChange={(p) => setPrimaryDiagnosis(p)}
+                maxItems={5}
               />
 
               <p className="text-xs text-gray-500">
