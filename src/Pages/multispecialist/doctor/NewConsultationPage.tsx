@@ -14,7 +14,7 @@ import { useSearchParams } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
-import DiagnosisSelector, { DiagnosisCodeRow } from "../../../components/ui/uidoctor/DiagnosisSelector";
+import DiagnosisSelector, { type DiagnosisCodeRow, type SelectedItem,} from "../../../components/ui/uidoctor/DiagnosisSelector";
 
 
 export default function NewConsultationPage() {
@@ -48,7 +48,8 @@ export default function NewConsultationPage() {
   const [diagnosisCodeId, setDiagnosisCodeId] = useState<string | null>(null);
   const [diagnosisCodeText, setDiagnosisCodeText] = useState<string>(""); // snapshot
   const [diagnosisItems, setDiagnosisItems] = useState<{ id: string; label: string; row: any }[]>([]);
-  const [primaryDiagnosis, setPrimaryDiagnosis] = useState<{ id: string; label: string; row: any } | null>(null);
+  const [diagnosisSelected, setDiagnosisSelected] = useState<SelectedItem[]>([]);
+  const [primaryDiagnosis, setPrimaryDiagnosis] = useState<SelectedItem | null>(null);
 
   const doctorInfo = useDoctorContext();
 
@@ -529,22 +530,23 @@ const createConsultation = async () => {
               <label className="font-medium">Code affection (assureur)</label>
 
             <DiagnosisSelector
-              valueId={diagnosisCodeId}
-              valueText={diagnosisCodeText}
-              onSelect={(row: DiagnosisCodeRow | null) => {
-                if (!row) {
-                  setDiagnosisCodeId(null);
-                  setDiagnosisCodeText("");
-                  return;
-                }
+              mode="multi"
+              maxItems={5}
+              valueIds={primaryDiagnosis?.id ? [primaryDiagnosis.id] : []}
+              valueTexts={primaryDiagnosis?.label ? [primaryDiagnosis.label] : []}
+              onChange={(items) => {
+                setDiagnosisSelected(items);
+              }}
+              onPrimaryChange={(item) => {
+                setPrimaryDiagnosis(item);
 
-                const txt = `${row.code} - ${row.title}`.trim();
-                setDiagnosisCodeId(row.id);
-                setDiagnosisCodeText(txt);
+                // ✅ pour ton MVP actuel (1 seul champ en DB)
+                setDiagnosisCodeId(item?.id ?? null);
+                setDiagnosisCodeText(item?.label ?? "");
 
-                // auto-remplir diagnosis si vide
-                if (!diagnosis.trim() && diagnosisType === "text") {
-                  setDiagnosis(txt);
+                // option: auto-remplir le champ diagnosis si vide
+                if (!diagnosis.trim() && diagnosisType === "text" && item?.label) {
+                  setDiagnosis(item.label);
                 }
               }}
             />
