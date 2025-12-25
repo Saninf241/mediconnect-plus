@@ -70,7 +70,7 @@ serve(async (req) => {
     amount_delta,
     insurer_amount,
     patient_amount,
-    missing_tariffs
+    missing_tariffs,
     patients(name),
     clinic_staff(name),
     clinics(name)
