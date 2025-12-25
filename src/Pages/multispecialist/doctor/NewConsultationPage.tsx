@@ -15,6 +15,7 @@ import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
 import DiagnosisSelector, { type DiagnosisCodeRow, type SelectedItem,} from "../../../components/ui/uidoctor/DiagnosisSelector";
+import ActSelector, { SelectedAct } from "../../../components/ui/uidoctor/ActSelector";
 
 
 export default function NewConsultationPage() {
@@ -50,6 +51,7 @@ export default function NewConsultationPage() {
   const [diagnosisItems, setDiagnosisItems] = useState<{ id: string; label: string; row: any }[]>([]);
   const [diagnosisSelected, setDiagnosisSelected] = useState<SelectedItem[]>([]);
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState<SelectedItem | null>(null);
+  const [selectedActs, setSelectedActs] = useState<SelectedAct[]>([]);
 
   const doctorInfo = useDoctorContext();
 
@@ -294,6 +296,23 @@ const createConsultation = async () => {
     !!diagnosisCodeId ||
     !!diagnosisCodeText.trim();
 
+    // Symptômes / diagnostic requis
+    if (!hasSymptoms) {
+      toast.error("Symptômes requis (texte ou écriture).");
+      return;
+    }
+    if (!hasDiagnosis) {
+      toast.error("Diagnostic requis (texte / écriture / code affection).");
+      return;
+    }
+
+    // Au moins un acte (nomenclature OU manuel)
+    const hasActs = selectedActs.length > 0 || acts.length > 0;
+    if (!hasActs) {
+      toast.error("Ajoute au moins un acte médical.");
+      return;
+    }
+
     // 3) Récupérer l'assureur du patient (s'il existe)
     let insurerId: string | null = null;
     if (patientId) {
@@ -325,7 +344,28 @@ const createConsultation = async () => {
       diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
       diagnosis_drawn: diagnosisDrawn,
       amount: parsedAmount,
-      acts: acts.map((a) => ({ type: a })), // colonne 'acts' (jsonb)
+      acts: [
+        ...selectedActs.map((a) => ({
+          act_id: a.act_id,
+          code: a.code,
+          title: a.title,
+          key_letter: a.key_letter,
+          coefficient: a.coefficient,
+          profession_scope: a.profession_scope ?? null,
+          source: a.source ?? null,
+          origin: "catalog",
+        })),
+        ...acts.map((label) => ({
+          act_id: null,
+          code: null,
+          title: label,
+          key_letter: null,
+          coefficient: null,
+          profession_scope: null,
+          source: null,
+          origin: "manual",
+        })),
+      ],
       medications: medications, // colonne 'medications' (jsonb / text[])
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
@@ -407,6 +447,7 @@ const createConsultation = async () => {
     // Reset minimum pour la prochaine consultation
     setActs([]);
     setCurrentAct("");
+    setSelectedActs([]);
     setMedications([]);
     setCurrentMedication("");
     setSymptoms("");
@@ -566,6 +607,17 @@ const createConsultation = async () => {
 
           <div>
             <label>Actes médicaux :</label>
+            <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+              <label className="font-medium">Actes médicaux (nomenclature)</label>
+
+              <ActSelector
+                value={selectedActs}
+                onChange={setSelectedActs}
+                source="ACTES-CNAMGS-2012"
+                professionScope="physician"
+                maxItems={10}
+              />
+            </div>
             <div className="flex gap-2">
               <Input
                 value={currentAct}
