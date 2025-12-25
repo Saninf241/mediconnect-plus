@@ -15,6 +15,12 @@ interface ConsultationRow {
   patient_id: string | null;
   insurer_comment: string | null;
   insurer_decision_at: string | null;
+  pricing_status: string | null;
+  pricing_total: number | null;
+  amount_delta: number | null;
+  insurer_amount: number | null;
+  patient_amount: number | null;
+  missing_tariffs: number | null;
 
   clinic:
     | { name: string | null }
@@ -61,6 +67,11 @@ export default function AssureurConsultationDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
 
+  const [tariffContext, setTariffContext] = useState<"private_weekday" | "private_weekend">("private_weekday");
+  const [coverageCase, setCoverageCase] = useState<"acute" | "chronic">("acute");
+
+  const [pricingComputing, setPricingComputing] = useState(false);
+
   // ✅ IMPORTANT : fetchDetails doit être réutilisable (PDF regen)
   const fetchDetails = useCallback(async () => {
     if (!id) return;
@@ -77,6 +88,12 @@ export default function AssureurConsultationDetailsPage() {
         amount,
         status,
         pdf_url,
+        pricing_status,
+        pricing_total,
+        amount_delta,
+        insurer_amount,
+        patient_amount,
+        missing_tariffs,
         patient_id,
         insurer_comment,
         insurer_decision_at,
@@ -155,35 +172,59 @@ export default function AssureurConsultationDetailsPage() {
     fetchDetails();
   }, [fetchDetails]);
 
-  const handleRegeneratePdf = async () => {
+  const handleRegeneratePdfWithPricing = async () => {
     if (!consultation?.id) return;
 
     setRegenerating(true);
+    setPricingComputing(true);
+
     try {
-      // ⚠️ même pattern que filter-consultations : call direct Edge Function
+      // 1) Compute pricing (écrit dans consultations)
+      const { data: pricingRes, error: rpcErr } = await supabase.rpc(
+        "compute_consultation_pricing",
+        {
+          p_consultation_id: consultation.id,
+          p_context: tariffContext,   // enum tariff_context
+          p_case: coverageCase,       // enum coverage_case
+        }
+      );
+
+      if (rpcErr) {
+        console.error("[Pricing RPC] error:", rpcErr);
+        alert("Impossible de calculer le pricing.");
+        return;
+      }
+
+      console.log("[Pricing RPC] result:", pricingRes);
+
+      // 2) Régénérer PDF (qui va lire les colonnes pricing_* en DB)
       const res = await fetch(
         "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/generate-consultation-pdf",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ consultationId: consultation.id }),
+          body: JSON.stringify({
+            consultationId: consultation.id,
+            pricing_context: tariffContext,
+            coverage_case: coverageCase,
+          }),
         }
       );
 
       if (!res.ok) {
         const txt = await res.text();
         console.error("[RegeneratePDF] HTTP error:", res.status, txt);
-        alert("Impossible de régénérer le PDF (erreur serveur).");
+        alert("Impossible de régénérer le PDF.");
         return;
       }
 
-      // refresh pour récupérer le nouveau pdf_url
       await fetchDetails();
-      alert("PDF régénéré ✅");
+      alert("Pricing calculé + PDF régénéré ✅");
     } catch (e) {
-      console.error("[RegeneratePDF] unexpected:", e);
-      alert("Impossible de régénérer le PDF (erreur réseau).");
+      console.error("[RegeneratePDFWithPricing] unexpected:", e);
+      alert("Erreur réseau / inattendue.");
     } finally {
+      setPricingComputing(false);
       setRegenerating(false);
     }
   };
@@ -266,6 +307,55 @@ export default function AssureurConsultationDetailsPage() {
         <p>
           <strong>Statut :</strong> {consultation.status}
         </p>
+
+        <div className="mt-3 p-3 rounded border bg-gray-50">
+          <p className="font-semibold">Tarification (calcul Mediconnect+)</p>
+
+          <div className="text-sm mt-2 space-y-1">
+            <p><strong>Montant déclaré :</strong> {consultation.amount?.toLocaleString("fr-FR") ?? "—"} FCFA</p>
+            <p><strong>Total calculé :</strong> {consultation.pricing_total?.toLocaleString("fr-FR") ?? "—"} FCFA</p>
+            <p><strong>Part assureur :</strong> {consultation.insurer_amount?.toLocaleString("fr-FR") ?? "—"} FCFA</p>
+            <p><strong>Reste patient :</strong> {consultation.patient_amount?.toLocaleString("fr-FR") ?? "—"} FCFA</p>
+
+            {typeof consultation.amount_delta === "number" && (
+              <p>
+                <strong>Δ (déclaré - calculé) :</strong>{" "}
+                {consultation.amount_delta.toLocaleString("fr-FR")} FCFA
+              </p>
+            )}
+
+            {typeof consultation.missing_tariffs === "number" && consultation.missing_tariffs > 0 && (
+              <p className="text-orange-700">
+                ⚠️ Tarifs manquants : {consultation.missing_tariffs}
+              </p>
+            )}
+
+            <p className="text-xs text-gray-600">
+              Contexte: {tariffContext} • Cas: {coverageCase}
+            </p>
+          </div>
+
+          <div className="flex gap-2 mt-3">
+            <select
+              className="border rounded px-2 py-1 text-sm"
+              value={tariffContext}
+              onChange={(e) => setTariffContext(e.target.value as any)}
+            >
+              <option value="private_weekday">Privé – semaine</option>
+              <option value="private_weekend">Privé – week-end</option>
+            </select>
+
+            <select
+              className="border rounded px-2 py-1 text-sm"
+              value={coverageCase}
+              onChange={(e) => setCoverageCase(e.target.value as any)}
+            >
+              <option value="acute">Aigu</option>
+              <option value="chronic">Chronique</option>
+            </select>
+          </div>
+        </div>
+
         <p>
           <strong>Établissement :</strong> {clinicName}
         </p>
@@ -314,12 +404,11 @@ export default function AssureurConsultationDetailsPage() {
           )}
 
           <button
-            onClick={handleRegeneratePdf}
-            disabled={regenerating}
+            onClick={handleRegeneratePdfWithPricing}
+            disabled={regenerating || pricingComputing}
             className="text-sm bg-gray-900 text-white px-3 py-2 rounded disabled:opacity-60"
-            title="Utile si le diagnostic/actes ont changé après génération"
           >
-            {regenerating ? "Régénération..." : "🔄 Régénérer le PDF"}
+            {(regenerating || pricingComputing) ? "Traitement..." : "🔄 Recalculer + Régénérer PDF"}
           </button>
         </div>
       </div>
