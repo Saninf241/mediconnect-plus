@@ -608,13 +608,12 @@ const createConsultation = async () => {
           <div>
             <label>Actes médicaux :</label>
             <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-              <label className="font-medium">Actes médicaux (nomenclature)</label>
+              <label className="font-medium">Actes libres (si non trouvés)</label>
 
               <ActSelector
                 value={selectedActs}
                 onChange={setSelectedActs}
                 source="ACTES-CNAMGS-2012"
-                professionScope="physician"
                 maxItems={10}
               />
             </div>
