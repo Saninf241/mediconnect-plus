@@ -607,36 +607,115 @@ const createConsultation = async () => {
 
           <div>
             <label>Actes médicaux :</label>
+
             <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-              <label className="font-medium">Actes libres (si non trouvés)</label>
+              <label className="font-medium">Actes (nomenclature)</label>
 
               <ActSelector
                 value={selectedActs}
                 onChange={setSelectedActs}
                 source="ACTES-CNAMGS-2012"
                 maxItems={10}
+                // professionScope="physician" // si tu veux filtrer, sinon laisse sans
               />
+
+              {/* ✅ Affichage immédiat des actes choisis */}
+              {selectedActs.length > 0 && (
+                <div className="pt-2 space-y-2">
+                  <div className="text-sm font-semibold">Actes sélectionnés</div>
+
+                  <div className="space-y-2">
+                    {selectedActs.map((a) => (
+                      <div
+                        key={a.act_id}
+                        className="flex items-center justify-between gap-2 border rounded p-2 bg-white"
+                      >
+                        <div className="text-sm">
+                          <div className="font-medium">
+                            {a.code} — {a.title}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {a.key_letter ? `${a.key_letter} ` : ""}
+                            {a.coefficient ?? ""}
+                            {a.profession_scope ? ` • ${a.profession_scope}` : ""}
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          className="bg-white text-red-700 border border-red-200 hover:bg-red-50"
+                          onClick={() =>
+                            setSelectedActs((prev) => prev.filter((x) => x.act_id !== a.act_id))
+                          }
+                        >
+                          Retirer
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Optionnel : bouton clear */}
+                  <Button
+                    type="button"
+                    className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+                    onClick={() => setSelectedActs([])}
+                  >
+                    Tout effacer (nomenclature)
+                  </Button>
+                </div>
+              )}
             </div>
-            <div className="flex gap-2">
-              <Input
-                value={currentAct}
-                onChange={(e) => setCurrentAct(e.target.value)}
-                placeholder="Acte médical"
-              />
-              <Button
-                onClick={() => {
-                  if (currentAct.trim()) {
-                    setActs((prev) => [...prev, currentAct.trim()]);
-                    setCurrentAct("");
-                  }
-                }}
-              >
-                Ajouter acte
-              </Button>
+
+            {/* ✅ Actes manuels (si non trouvés) */}
+            <div className="mt-3 bg-white rounded-xl shadow-sm p-4 space-y-2">
+              <label className="font-medium">Actes libres (si non trouvés)</label>
+
+              <div className="flex gap-2">
+                <Input
+                  value={currentAct}
+                  onChange={(e) => setCurrentAct(e.target.value)}
+                  placeholder="Ex: Pansement simple..."
+                />
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (currentAct.trim()) {
+                      setActs((prev) => [...prev, currentAct.trim()]);
+                      setCurrentAct("");
+                    }
+                  }}
+                >
+                  Ajouter acte
+                </Button>
+              </div>
+
+              {acts.length > 0 && (
+                <ul className="list-disc pl-5">
+                  {acts.map((a, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2">
+                      <span>{a}</span>
+                      <Button
+                        type="button"
+                        className="bg-white text-red-700 border border-red-200 hover:bg-red-50"
+                        onClick={() => setActs((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        Retirer
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {acts.length > 0 && (
+                <Button
+                  type="button"
+                  className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+                  onClick={() => setActs([])}
+                >
+                  Tout effacer (libres)
+                </Button>
+              )}
             </div>
-            <ul className="list-disc pl-5">
-              {acts.map((a, i) => <li key={i}>{a}</li>)}
-            </ul>
           </div>
 
           <div>
