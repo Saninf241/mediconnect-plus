@@ -175,27 +175,39 @@ export default function AssureurReports() {
     return <p className="p-6">Aucun assureur attaché à ce compte.</p>;
   }
 
-  const handleComputePricing = async (id: string) => {
-      setPricingProcessingId(id);
-      try {
-        const { data, error } = await supabase.rpc("compute_consultation_pricing", {
-          p_consultation_id: id,
-          p_context: "private_weekday",
-          p_case: "acute",
-        });
+const handleComputePricing = async (id: string) => {
+    if (!ctx?.insurerId) return;
 
-        if (error) {
-          console.error("[compute_pricing] error:", error);
-          toast.error("Erreur calcul pricing.");
-          return;
-        }
+    setPricingProcessingId(id);
+    try {
+      // 👉 DEMO: valeurs fixes (tu pourras les rendre dynamiques après)
+      const p_context = "private_weekday";
+      const p_case = "acute";
 
-        toast.success("Pricing calculé.");
-        await fetchConsultations();
-      } finally {
-        setPricingProcessingId(null);
+      console.log("[Assureur] compute pricing for", id, p_context, p_case);
+
+      const { data, error } = await supabase.rpc("compute_consultation_pricing", {
+        p_consultation_id: id,
+        p_context,
+        p_case,
+      });
+
+      if (error) {
+        console.error("[Assureur] compute pricing error:", error);
+        toast.error("Erreur calcul pricing (RPC).");
+        return;
       }
-    };
+
+      console.log("[Assureur] compute pricing result:", data);
+      toast.success("Pricing calculé.");
+      await fetchConsultations(); // ✅ indispensable pour voir 'computed'
+    } catch (e) {
+      console.error("[Assureur] compute pricing exception:", e);
+      toast.error("Erreur inattendue calcul pricing.");
+    } finally {
+      setPricingProcessingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
