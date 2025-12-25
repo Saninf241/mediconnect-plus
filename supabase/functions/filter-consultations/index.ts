@@ -2,9 +2,28 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+const jsonHeaders = {
+  "Content-Type": "application/json",
+  ...corsHeaders,
+};
+
 serve(async (req) => {
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: jsonHeaders,
+    });
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -12,6 +31,8 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   const body = await req.json().catch(() => ({}));
+  console.log("auth header exists:", !!req.headers.get("authorization"));
+
   const {
     search = "",
     status = "",
@@ -28,8 +49,15 @@ serve(async (req) => {
     insurerId?: string;
   };
 
-  // On log pour debug (visible dans Supabase → Logs)
   console.log("filter-consultations body:", body);
+
+  // ✅ Garde-fou sécurité : on exige insurerId (sinon fuite)
+  if (!insurerId) {
+    return new Response(
+      JSON.stringify({ data: [], error: "Missing insurerId" }),
+      { status: 400, headers: jsonHeaders }
+    );
+  }
 
   let q = supabase
     .from("consultations")
@@ -44,13 +72,21 @@ serve(async (req) => {
         patient_id,
         doctor_id,
         clinic_id,
+
+        -- ✅ PRICING (nouveau)
+        pricing_status,
+        pricing_total,
+        amount_delta,
+        insurer_amount,
+        patient_amount,
         patients ( name ),
         clinic_staff ( name ),
         clinics ( name )
       `
-    );
+    )
+    // ✅ IMPORTANT : on filtre côté serveur
+    .eq("insurer_id", insurerId);
 
-  // ⚠ on NE filtre PLUS ici par insurer_id, on le fera côté front
   if (status) q = q.eq("status", status);
   if (clinicId) q = q.eq("clinic_id", clinicId);
   if (dateStart) q = q.gte("created_at", dateStart);
@@ -67,20 +103,28 @@ serve(async (req) => {
 
   if (error) {
     console.error("filter-consultations error:", error);
-    return new Response(
-      JSON.stringify({ data: [], error }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ data: [], error }), {
+      status: 400,
+      headers: jsonHeaders,
+    });
   }
 
-  // Pour debug : on renvoie aussi l’insurerId reçu
+  // Debug utile
   console.log(
-    "filter-consultations result (ids):",
-    (data || []).map((r) => ({ id: r.id, insurer_id: r.insurer_id }))
+    "filter-consultations first row:",
+    data?.[0]
+      ? {
+          id: data[0].id,
+          insurer_id: data[0].insurer_id,
+          pricing_status: (data[0] as any).pricing_status,
+          pricing_total: (data[0] as any).pricing_total,
+          amount_delta: (data[0] as any).amount_delta,
+        }
+      : null
   );
 
-  return new Response(
-    JSON.stringify({ data, error: null }),
-    { headers: { "Content-Type": "application/json" } }
-  );
+  return new Response(JSON.stringify({ data, error: null }), {
+    status: 200,
+    headers: jsonHeaders,
+  });
 });

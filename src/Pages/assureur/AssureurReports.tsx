@@ -7,9 +7,11 @@ import ConsultationTable from "../../components/ui/ConsultationTable";
 import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 import { toast } from "react-toastify";
+import { useAuth } from "@clerk/clerk-react";
 
 export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
+  const { getToken } = useAuth();
   const navigate = useNavigate();
 
   const [consultations, setConsultations] = useState<any[]>([]);
@@ -38,52 +40,61 @@ export default function AssureurReports() {
       .catch(console.error);
   }, []);
 
-  const fetchConsultations = async () => {
-    if (!ctx?.insurerId) {
-      console.warn(
-        "[AssureurReports] Pas d'insurerId, on n'appelle pas filter-consultations."
-      );
-      return;
-    }
-
-    const payload = {
-      search,
-      status,
-      clinicId,
-      dateStart,
-      dateEnd,
-      insurerId: ctx.insurerId,
-    };
-
-    console.log("▶️ Payload envoyé à filter-consultations :", payload);
-    setIsLoading(true);
-
-    try {
-      const res = await fetch(
-        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Erreur HTTP ${res.status} : ${text}`);
+    const fetchConsultations = async () => {
+      if (!ctx?.insurerId) {
+        console.warn(
+          "[AssureurReports] Pas d'insurerId, on n'appelle pas filter-consultations."
+        );
+        return;
       }
 
-      const { data } = await res.json();
-      console.log("🔎 first row =", data?.[0]);
-      console.log("✅ DATA reçue de filter-consultations:", data);
-      setConsultations(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("⛔ Erreur lors de la récupération :", err);
-      setConsultations([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      const payload = {
+        search,
+        status,
+        clinicId,
+        dateStart,
+        dateEnd,
+        insurerId: ctx.insurerId,
+      };
+
+      console.log("▶️ Payload envoyé à filter-consultations :", payload);
+      setIsLoading(true);
+
+      try {
+        // ✅ IMPORTANT : JWT ON => on doit envoyer Authorization
+        const token = await getToken({ template: "supabase" });
+        if (!token) {
+          throw new Error("Clerk token introuvable. Vérifie le template JWT 'supabase'.");
+        }
+
+        const res = await fetch(
+          "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`, // ✅ FIX 401
+            },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Erreur HTTP ${res.status} : ${text}`);
+        }
+
+        const { data } = await res.json();
+        console.log("🔎 first row =", data?.[0]);
+        console.log("✅ DATA reçue de filter-consultations:", data);
+        setConsultations(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("⛔ Erreur lors de la récupération :", err);
+        setConsultations([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
   // premier chargement quand le contexte assureur est prêt
   useEffect(() => {
