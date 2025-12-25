@@ -27,6 +27,14 @@ type ConsultationRow = {
   patient_id?: string | null;
   doctor_id?: string | null;
   clinic_id?: string | null;
+
+  pricing_status?: string | null;
+  pricing_total?: number | null;
+  amount_delta?: number | null;
+  insurer_amount?: number | null;
+  patient_amount?: number | null;
+  missing_tariffs?: number | null;
+
 };
 
 interface Props {
@@ -35,6 +43,8 @@ interface Props {
   onReject: (id: string) => void;
   processingId?: string | null;            // pour afficher "..." pendant PATCH
   onOpenDetails?: (id: string) => void;    // ✅ nouveau : ouvrir la page détail
+  onComputePricing?: (id: string) => void;
+  pricingProcessingId?: string | null;
 }
 
 function getPatientLabel(c: ConsultationRow): string {
@@ -73,6 +83,8 @@ export default function ConsultationTable({
   onReject,
   processingId,
   onOpenDetails,
+  onComputePricing,
+  pricingProcessingId,
 }: Props) {
   return (
     <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -99,6 +111,9 @@ export default function ConsultationTable({
           <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
             Fiche PDF
           </th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Pricing
+          </th>
           <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
             Détails
           </th>
@@ -112,7 +127,7 @@ export default function ConsultationTable({
         {consultations.length === 0 && (
           <tr>
             <td
-              colSpan={9}
+              colSpan={10}
               className="px-4 py-6 text-center text-sm text-gray-500"
             >
               Aucune consultation trouvée.
@@ -163,6 +178,60 @@ export default function ConsultationTable({
                   </a>
                 ) : (
                   <span className="text-gray-400">Non disponible</span>
+                )}
+              </td>
+
+              {/* Colonne Pricing */}
+              <td className="px-4 py-2 text-sm text-gray-700">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2 py-1 rounded bg-gray-100">
+                    {c.pricing_status ?? "not computed"}
+                  </span>
+
+                  {typeof c.amount_delta === "number" && (
+                    <span
+                      className={`text-xs ${
+                        c.amount_delta === 0 ? "text-green-700" : "text-red-700"
+                      }`}
+                    >
+                      Δ {c.amount_delta.toLocaleString("fr-FR")} FCFA
+                    </span>
+                  )}
+
+                  {onComputePricing && (
+                    <button
+                      className="ml-auto text-xs text-blue-600 underline hover:text-blue-800 disabled:opacity-50"
+                      onClick={() => onComputePricing(c.id)}
+                      disabled={pricingProcessingId === c.id}
+                    >
+                      {pricingProcessingId === c.id ? "..." : "Calculer"}
+                    </button>
+                  )}
+                </div>
+
+                {(c.pricing_total != null ||
+                  c.insurer_amount != null ||
+                  c.patient_amount != null) && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Total:{" "}
+                    {c.pricing_total != null
+                      ? c.pricing_total.toLocaleString("fr-FR")
+                      : "—"}{" "}
+                    | Ass:{" "}
+                    {c.insurer_amount != null
+                      ? c.insurer_amount.toLocaleString("fr-FR")
+                      : "—"}{" "}
+                    | Pat:{" "}
+                    {c.patient_amount != null
+                      ? c.patient_amount.toLocaleString("fr-FR")
+                      : "—"}
+                  </div>
+                )}
+
+                {typeof c.missing_tariffs === "number" && c.missing_tariffs > 0 && (
+                  <div className="text-xs text-orange-700 mt-1">
+                    Tarifs manquants: {c.missing_tariffs}
+                  </div>
                 )}
               </td>
 

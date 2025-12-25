@@ -24,6 +24,8 @@ export default function AssureurReports() {
   // pour désactiver les boutons pendant l’action
   const [processingId, setProcessingId] = useState<string | null>(null);
 
+  const [pricingProcessingId, setPricingProcessingId] = useState<string | null>(null);
+
   // debug
   useEffect(() => {
     console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
@@ -173,6 +175,28 @@ export default function AssureurReports() {
     return <p className="p-6">Aucun assureur attaché à ce compte.</p>;
   }
 
+  const handleComputePricing = async (id: string) => {
+      setPricingProcessingId(id);
+      try {
+        const { data, error } = await supabase.rpc("compute_consultation_pricing", {
+          p_consultation_id: id,
+          p_context: "private_weekday",
+          p_case: "acute",
+        });
+
+        if (error) {
+          console.error("[compute_pricing] error:", error);
+          toast.error("Erreur calcul pricing.");
+          return;
+        }
+
+        toast.success("Pricing calculé.");
+        await fetchConsultations();
+      } finally {
+        setPricingProcessingId(null);
+      }
+    };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -210,6 +234,8 @@ export default function AssureurReports() {
         onReject={handleReject}
         processingId={processingId}
         onOpenDetails={handleOpenDetails}   // ✅ bouton "Ouvrir" → page détail + chat
+        onComputePricing={handleComputePricing}
+        pricingProcessingId={pricingProcessingId}
       />
     </div>
   );
