@@ -74,6 +74,7 @@ export default function AssureurReports() {
       }
 
       const { data } = await res.json();
+      console.log("🔎 first row =", data?.[0]);
       console.log("✅ DATA reçue de filter-consultations:", data);
       setConsultations(Array.isArray(data) ? data : []);
     } catch (err) {
