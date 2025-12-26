@@ -14,61 +14,123 @@ const jsonHeaders = {
   ...corsHeaders,
 };
 
+// ✅ jsPDF n'aime pas les espaces insécables (NBSP/Narrow NBSP) -> remplace par espace normal
+function cleanText(input: any): string {
+  const s = input === null || input === undefined ? "" : String(input);
+  return s.replace(/[\u00A0\u202F]/g, " "); // NBSP + narrow NBSP
+}
+
+function safe(v: any, fallback = "-") {
+  const s = v === null || v === undefined || v === "" ? fallback : String(v);
+  return cleanText(s);
+}
+
+function formatNumberFr(n: number): string {
+  // toLocaleString("fr-FR") met souvent U+202F => on le normalise
+  return cleanText(n.toLocaleString("fr-FR"));
+}
+
+function formatFCFA(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return `${formatNumberFr(value)} FCFA`;
+}
+
+function money(v: any): string {
+  const n =
+    typeof v === "number"
+      ? v
+      : Number(String(v ?? "").replace(/[^\d.-]/g, ""));
+  if (Number.isFinite(n)) return formatNumberFr(n);
+  return "—";
+}
+
+function ensurePage(pdf: jsPDF, y: number) {
+  if (y > 280) {
+    pdf.addPage();
+    return 20;
+  }
+  return y;
+}
+
+// ✅ Statut biométrie dérivé (sans migration DB)
+function getBiometricLabel(c: any): string {
+  if (c?.biometric_verified_at) return "Vérifiée ✅";
+  if (c?.fingerprint_missing) return "Empreinte manquante ⚠️";
+  if (!c?.insurer_id) return "Non requis —";
+  return "Non vérifiée ⏳";
+}
+
 serve(async (req) => {
-  // Pré-vol CORS
+  // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ error: "Method not allowed" }),
-      { status: 405, headers: jsonHeaders },
-    );
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: jsonHeaders,
+    });
   }
 
-  // ----- Lecture du body -----
   let body: any = {};
   try {
     body = await req.json();
   } catch {
-    return new Response(
-      JSON.stringify({ error: "Invalid JSON body" }),
-      { status: 400, headers: jsonHeaders },
-    );
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400,
+      headers: jsonHeaders,
+    });
   }
 
   const consultationId = body.consultationId as string | undefined;
   if (!consultationId) {
-    return new Response(
-      JSON.stringify({ error: "Missing consultationId" }),
-      { status: 400, headers: jsonHeaders },
-    );
+    return new Response(JSON.stringify({ error: "Missing consultationId" }), {
+      status: 400,
+      headers: jsonHeaders,
+    });
   }
 
-  // ----- Supabase service role -----
+  // Supabase service role
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
-  // 1) Récupérer la consultation + relations existantes
+  // ✅ IMPORTANT: virgules OK + pas de doublons
+  const selectFields = `
+    id,
+    created_at,
+    amount,
+    status,
+
+    pricing_status,
+    pricing_total,
+    insurer_amount,
+    patient_amount,
+    amount_delta,
+
+    biometric_verified_at,
+    biometric_operator_id,
+    biometric_clinic_id,
+    fingerprint_missing,
+    insurer_id,
+
+    acts,
+    medications,
+
+    diagnosis_code_text,
+    diagnosis_code:diagnosis_codes(code,title),
+
+    patients(name),
+    clinic_staff(name),
+    clinics(name)
+  `;
+
   const { data: c, error: fetchError } = await supabase
     .from("consultations")
-    .select(`
-      id,
-      created_at,
-      amount,
-      status,
-      acts,
-      medications,
-      diagnosis_code_text,
-      diagnosis_code:diagnosis_codes ( code, title ),
-      patients ( name ),
-      clinic_staff ( name ),
-      clinics ( name )
-    `)
+    .select(selectFields)
     .eq("id", consultationId)
-    .single();
+    .maybeSingle();
 
   if (fetchError || !c) {
     console.error("[generate-consultation-pdf] fetch error", fetchError);
@@ -81,33 +143,7 @@ serve(async (req) => {
     );
   }
 
-  // 2) Génération du PDF
-  const pdf = new jsPDF();
-  let y = 20;
-
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(16);
-  pdf.text("Fiche consultation Mediconnect+", 10, y);
-  y += 12;
-
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(11);
-
-  const safe = (v: any, fallback = "-") =>
-    v === null || v === undefined || v === "" ? fallback : String(v);
-
-  pdf.text(`ID consultation : ${c.id}`, 10, y); y += 7;
-
-  const dateStr = new Date(c.created_at).toLocaleString("fr-FR");
-  pdf.text(`Date : ${dateStr}`, 10, y); y += 7;
-
-  pdf.text(`Patient : ${safe(c.patients?.name)}`, 10, y); y += 7;
-  pdf.text(`Médecin : ${safe(c.clinic_staff?.name)}`, 10, y); y += 7;
-  pdf.text(`Établissement : ${safe(c.clinics?.name)}`, 10, y); y += 7;
-  pdf.text(`Montant : ${safe(c.amount)} FCFA`, 10, y); y += 7;
-  pdf.text(`Statut : ${safe(c.status)}`, 10, y); y += 10;
-
-    // ----- Affection / Diagnostic codifié -----
+  // Diagnostic label
   const diagnosisLabel =
     safe((c as any).diagnosis_code_text, "").trim() ||
     (() => {
@@ -119,91 +155,158 @@ serve(async (req) => {
       return txt;
     })();
 
+  // PDF
+  const pdf = new jsPDF();
+  let y = 20;
+
   pdf.setFont("helvetica", "bold");
-  pdf.text("Affection(s) / Diagnostic codifié :", 10, y);
+  pdf.setFontSize(16);
+  pdf.text(cleanText("Fiche consultation Mediconnect+"), 10, y);
+  y += 12;
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+
+  pdf.text(cleanText(`ID consultation : ${safe((c as any).id)}`), 10, y);
+  y += 7;
+
+  const dateStr = new Date((c as any).created_at).toLocaleString("fr-FR");
+  pdf.text(cleanText(`Date : ${dateStr}`), 10, y);
+  y += 7;
+
+  pdf.text(cleanText(`Patient : ${safe((c as any).patients?.name)}`), 10, y);
+  y += 7;
+  pdf.text(cleanText(`Médecin : ${safe((c as any).clinic_staff?.name)}`), 10, y);
+  y += 7;
+  pdf.text(cleanText(`Établissement : ${safe((c as any).clinics?.name)}`), 10, y);
+  y += 7;
+
+  pdf.text(cleanText(`Montant déclaré : ${money((c as any).amount)} FCFA`), 10, y);
+  y += 7;
+  pdf.text(cleanText(`Statut : ${safe((c as any).status)}`), 10, y);
+  y += 10;
+
+  // ----- TARIFICATION (Mediconnect+) -----
+  pdf.setFont("helvetica", "bold");
+  pdf.text(cleanText("Tarification (calcul Mediconnect+)"), 10, y);
+  y += 8;
+
+  pdf.setFont("helvetica", "normal");
+
+  pdf.text(cleanText(`Statut pricing : ${safe((c as any).pricing_status)}`), 12, y); y += 6;
+  pdf.text(cleanText(`Total calculé : ${formatFCFA((c as any).pricing_total)}`), 12, y); y += 6;
+  pdf.text(cleanText(`Part assureur : ${formatFCFA((c as any).insurer_amount)}`), 12, y); y += 6;
+  pdf.text(cleanText(`Reste patient : ${formatFCFA((c as any).patient_amount)}`), 12, y); y += 6;
+  pdf.text(
+    cleanText(`Écart (déclaré - calculé) : ${formatFCFA((c as any).amount_delta)}`),
+    12,
+    y
+  );
+  y += 10;
+
+  y = ensurePage(pdf, y);
+
+  // ----- PREUVE BIOMÉTRIQUE -----
+  pdf.setFont("helvetica", "bold");
+  pdf.text(cleanText("Preuve biométrique"), 10, y);
+  y += 8;
+
+  pdf.setFont("helvetica", "normal");
+  const bioLabel = getBiometricLabel(c);
+  pdf.text(cleanText(`Statut : ${bioLabel}`), 12, y);
+  y += 6;
+
+  if ((c as any).biometric_verified_at) {
+    const bioDate = new Date((c as any).biometric_verified_at).toLocaleString("fr-FR");
+    pdf.text(cleanText(`Date vérification : ${bioDate}`), 12, y);
+    y += 6;
+  }
+
+  y += 6;
+  y = ensurePage(pdf, y);
+
+  // --- Diagnosis ---
+  pdf.setFont("helvetica", "bold");
+  pdf.text(cleanText("Affection(s) / Diagnostic codifié :"), 10, y);
   y += 7;
 
   pdf.setFont("helvetica", "normal");
   if (!diagnosisLabel) {
-    pdf.text("- Non renseigné", 12, y);
+    pdf.text(cleanText("- Non renseigné"), 12, y);
     y += 6;
   } else {
-    // split si c'est long
-    const lines = pdf.splitTextToSize(diagnosisLabel, 180);
+    const lines = pdf.splitTextToSize(cleanText(diagnosisLabel), 180);
     for (const line of lines) {
-      pdf.text(line, 12, y);
+      pdf.text(cleanText(line), 12, y);
       y += 6;
-      if (y > 280) {
-        pdf.addPage();
-        y = 20;
-      }
+      y = ensurePage(pdf, y);
     }
   }
   y += 4;
 
-  // ----- Actes -----
+  // --- Acts ---
   pdf.setFont("helvetica", "bold");
-  pdf.text("Actes réalisés :", 10, y);
+  pdf.text(cleanText("Actes réalisés :"), 10, y);
   y += 7;
 
   pdf.setFont("helvetica", "normal");
-  const acts = (c.acts as any[]) || [];
+  const acts = ((c as any).acts as any[]) || [];
   if (!acts.length) {
-    pdf.text("- Aucun acte déclaré", 12, y);
+    pdf.text(cleanText("- Aucun acte déclaré"), 12, y);
     y += 6;
   } else {
     for (const act of acts) {
+      const code = safe(act?.code, "").trim();
+      const title = safe(act?.title, "").trim();
+      const manual =
+        safe(act?.label, "").trim() ||
+        safe(act?.name, "").trim() ||
+        safe(act?.type, "").trim();
+
       const label =
-        act?.type ||
-        act?.label ||
-        act?.code ||
-        act?.name ||
-        JSON.stringify(act);
-      pdf.text(`- ${label}`, 12, y);
+        (code || title)
+          ? `${code}${code && title ? " - " : ""}${title}`.trim()
+          : manual || cleanText(JSON.stringify(act));
+
+      pdf.text(cleanText(`- ${label}`), 12, y);
       y += 6;
-      if (y > 280) {
-        pdf.addPage();
-        y = 20;
-      }
+      y = ensurePage(pdf, y);
     }
   }
 
   y += 4;
 
-  // ----- Médicaments -----
+  // --- Medications ---
   pdf.setFont("helvetica", "bold");
-  pdf.text("Médicaments :", 10, y);
+  pdf.text(cleanText("Médicaments :"), 10, y);
   y += 7;
 
   pdf.setFont("helvetica", "normal");
-  const meds = (c.medications as any[]) || [];
+  const meds = ((c as any).medications as any[]) || [];
   if (!meds.length) {
-    pdf.text("- Aucun médicament déclaré", 12, y);
+    pdf.text(cleanText("- Aucun médicament déclaré"), 12, y);
     y += 6;
   } else {
     for (const m of meds) {
       const label =
-        typeof m === "string"
-          ? m
-          : m?.name || m?.label || JSON.stringify(m);
-      pdf.text(`- ${label}`, 12, y);
+        typeof m === "string" ? m : (m?.name || m?.label || JSON.stringify(m));
+      pdf.text(cleanText(`- ${label}`), 12, y);
       y += 6;
-      if (y > 280) {
-        pdf.addPage();
-        y = 20;
-      }
+      y = ensurePage(pdf, y);
     }
   }
 
-  // 3) Upload dans le bucket
+  // Upload (nom unique pour éviter cache)
   const pdfBytes = pdf.output("arraybuffer");
-  const fileName = `consultation-${consultationId}.pdf`;
+  const version = Date.now();
+  const fileName = `consultation-${consultationId}-${version}.pdf`;
 
   const { error: uploadError } = await supabase.storage
     .from("consultation-files")
     .upload(fileName, pdfBytes, {
       contentType: "application/pdf",
       upsert: true,
+      cacheControl: "0",
     });
 
   if (uploadError) {
@@ -214,12 +317,10 @@ serve(async (req) => {
     );
   }
 
-  const publicUrl = supabase
-    .storage
+  const publicUrl = supabase.storage
     .from("consultation-files")
     .getPublicUrl(fileName).data.publicUrl;
 
-  // 4) Mise à jour de la consultation
   const { error: updateError } = await supabase
     .from("consultations")
     .update({ pdf_url: publicUrl })
@@ -233,8 +334,9 @@ serve(async (req) => {
     );
   }
 
-  return new Response(
-    JSON.stringify({ pdfUrl: publicUrl }),
-    { status: 200, headers: jsonHeaders },
-  );
+  return new Response(JSON.stringify({ pdfUrl: publicUrl }), {
+    status: 200,
+    headers: jsonHeaders,
+  });
 });
+

@@ -71,6 +71,12 @@ serve(async (req) => {
     insurer_amount,
     patient_amount,
     missing_tariffs,
+    
+    biometric_verified_at,
+    biometric_operator_id,
+    biometric_clinic_id,
+    fingerprint_missing,
+
     patients(name),
     clinic_staff(name),
     clinics(name)

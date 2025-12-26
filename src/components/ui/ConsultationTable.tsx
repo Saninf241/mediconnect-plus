@@ -35,6 +35,11 @@ type ConsultationRow = {
   patient_amount?: number | null;
   missing_tariffs?: number | null;
 
+  insurer_id?: string | null;
+  biometric_verified_at?: string | null;
+  biometric_operator_id?: string | null;
+  biometric_clinic_id?: string | null;
+  fingerprint_missing?: boolean | null;
 };
 
 interface Props {
@@ -77,6 +82,13 @@ function getClinicLabel(c: ConsultationRow): string {
   );
 }
 
+function getBiometricLabel(c: ConsultationRow) {
+  if (c.biometric_verified_at) return { text: "Vérifiée ✅", tone: "bg-green-100 text-green-800" };
+  if (c.fingerprint_missing) return { text: "Empreinte manquante ⚠️", tone: "bg-orange-100 text-orange-800" };
+  if (!c.insurer_id) return { text: "Non requis —", tone: "bg-gray-100 text-gray-700" };
+  return { text: "Non vérifiée ⏳", tone: "bg-yellow-100 text-yellow-800" };
+}
+
 export default function ConsultationTable({
   consultations,
   onValidate,
@@ -107,6 +119,9 @@ export default function ConsultationTable({
           </th>
           <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
             Statut
+          </th>
+          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+            Biométrie
           </th>
           <th className="px-4 py-2 text-center text-sm font-semibold text-gray-700">
             Fiche PDF
@@ -164,6 +179,17 @@ export default function ConsultationTable({
 
               <td className="px-4 py-2 text-sm text-gray-700">
                 {c.status}
+              </td>
+
+              <td className="px-4 py-2 text-sm">
+              {(() => {
+                const b = getBiometricLabel(c);
+                return (
+                  <span className={`text-xs px-2 py-1 rounded ${b.tone}`}>
+                    {b.text}
+                  </span>
+                );
+              })()}
               </td>
 
               <td className="px-4 py-2 text-sm text-center">
