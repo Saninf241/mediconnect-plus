@@ -211,20 +211,31 @@ const [searchParams] = useSearchParams();
         setFingerprintMissing(false);
         setStep("consultation");
 
-        if (finalConsultationId) {
-          try {
-            await supabase
-              .from("consultations")
-              .update({
-                patient_id: finalPatientId,
-                biometric_verified_at: new Date().toISOString(),
-                status: "draft", // on reste en brouillon tant que non envoyé à l'assureur
-              })
-              .eq("id", finalConsultationId);
-          } catch (e) {
-            console.error("[NewConsultation] update après identify:", e);
+          if (finalConsultationId) {
+            try {
+              const ctx =
+                doctorInfo?.clinic_id && doctorInfo?.doctor_id
+                  ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+                  : await resolveDoctorContext();
+
+              await supabase
+                .from("consultations")
+                .update({
+                  patient_id: finalPatientId,
+                  fingerprint_missing: false,
+
+                  // ✅ preuve biométrique
+                  biometric_verified_at: new Date().toISOString(),
+                  biometric_operator_id: ctx?.doctorId ?? null,
+                  biometric_clinic_id: ctx?.clinicId ?? null,
+
+                  status: "draft",
+                })
+                .eq("id", finalConsultationId);
+            } catch (e) {
+              console.error("[NewConsultation] update après identify:", e);
+            }
           }
-        }
       } else if (urlIdNot === "1") {
         // ❌ Empreinte non trouvée
         setFingerprintMissing(true);
@@ -366,7 +377,7 @@ const createConsultation = async () => {
           origin: "manual",
         })),
       ],
-      medications: medications, // colonne 'medications' (jsonb / text[])
+      medications: medications.map((name) => ({ name })),
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
       status: targetStatus, // 'sent' ou 'draft'
