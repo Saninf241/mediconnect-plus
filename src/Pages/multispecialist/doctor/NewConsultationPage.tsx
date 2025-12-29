@@ -128,6 +128,34 @@ export default function NewConsultationPage() {
     [consultationId]
   );
 
+    async function markBiometryVerified(params: {
+    consultationId: string;
+    patientId: string;
+  }) {
+    const ctx =
+      doctorInfo?.clinic_id && doctorInfo?.doctor_id
+        ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+        : await resolveDoctorContext();
+
+    const { error } = await supabase
+      .from("consultations")
+      .update({
+        patient_id: params.patientId,
+        fingerprint_missing: false,
+        biometric_verified_at: new Date().toISOString(),
+        biometric_operator_id: ctx?.doctorId ?? null,
+        biometric_clinic_id: ctx?.clinicId ?? null,
+        status: "draft",
+      })
+      .eq("id", params.consultationId);
+
+    if (error) {
+      console.error("[markBiometryVerified] DB update error:", error);
+    } else {
+      console.log("[markBiometryVerified] OK", params.consultationId);
+    }
+  }
+
   // 🔹 Déclencheur biométrie
   const handleBiometrySuccess = async () => {
     try {
@@ -166,10 +194,26 @@ export default function NewConsultationPage() {
   };
 
   const handleBiometryFailure = async () => {
-    const ctx = await resolveDoctorContext();
-    await ensureDraftConsultation(ctx);
-    setFingerprintMissing(true);
-    setStep("consultation");
+  const ctx = await resolveDoctorContext();
+  const cid = await ensureDraftConsultation(ctx);
+
+  setFingerprintMissing(true);
+  setStep("consultation");
+
+  // ✅ IMPORTANT : écrire aussi en base (sinon l'assureur/PDF voient "non vérifié" sans logique)
+  if (cid) {
+    const { error } = await supabase
+      .from("consultations")
+      .update({
+        fingerprint_missing: true,
+        biometric_verified_at: null,
+        biometric_operator_id: null,
+        biometric_clinic_id: null,
+      })
+      .eq("id", cid);
+
+    if (error) console.error("[handleBiometryFailure] DB update error:", error);
+     }
   };
 
   // 🔹 Callback biométrie + nettoyage
@@ -201,41 +245,33 @@ const [searchParams] = useSearchParams();
       const finalConsultationId =
         urlCid || (lastIsIdentify ? last.consultation_id || null : null);
 
+        let finalCid = finalConsultationId;
+
+        if (finalCid) {
+          setConsultationId(finalCid);
+        }
+
       if (finalConsultationId) {
         setConsultationId(finalConsultationId);
       }
 
-      if (finalPatientId) {
-        // ✅ Patient reconnu → on passe en étape consultation
-        setPatientId(finalPatientId);
-        setFingerprintMissing(false);
-        setStep("consultation");
+        if (finalPatientId) {
+          // ✅ Patient reconnu → on passe en étape consultation
+          setPatientId(finalPatientId);
+          setFingerprintMissing(false);
+          setStep("consultation");
 
-          if (finalConsultationId) {
+          if (finalCid) { // Changé ici
             try {
-              const ctx =
-                doctorInfo?.clinic_id && doctorInfo?.doctor_id
-                  ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
-                  : await resolveDoctorContext();
-
-              await supabase
-                .from("consultations")
-                .update({
-                  patient_id: finalPatientId,
-                  fingerprint_missing: false,
-
-                  // ✅ preuve biométrique
-                  biometric_verified_at: new Date().toISOString(),
-                  biometric_operator_id: ctx?.doctorId ?? null,
-                  biometric_clinic_id: ctx?.clinicId ?? null,
-
-                  status: "draft",
-                })
-                .eq("id", finalConsultationId);
+              await markBiometryVerified({
+                consultationId: finalCid, // Changé ici
+                patientId: finalPatientId,
+              });
             } catch (e) {
-              console.error("[NewConsultation] update après identify:", e);
+              console.error("[NewConsultation] markBiometryVerified failed:", e);
             }
           }
+
       } else if (urlIdNot === "1") {
         // ❌ Empreinte non trouvée
         setFingerprintMissing(true);
