@@ -1,10 +1,7 @@
 // supabase/functions/detect-anomalies/index.ts
+// supabase/functions/detect-anomalies/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.39.0";
-import {
-  createRemoteJWKSet,
-  jwtVerify,
-} from "https://deno.land/x/jose@v4.14.4/index.ts";
 
 type AlertType = "error" | "warning" | "info";
 
@@ -33,97 +30,63 @@ function getBearerToken(req: Request): string | null {
   return auth.slice("Bearer ".length).trim();
 }
 
-// ✅ Mets ici TON vrai domaine Clerk (celui qui marche dans ton app)
-const JWKS_URL =
-  "https://awaited-mayfly-26.clerk.accounts.dev/.well-known/jwks.json";
-
-const jwks = createRemoteJWKSet(new URL(JWKS_URL));
-
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // -------------------------
-    // 1) Auth Clerk (JWKS)
-    // -------------------------
+    // 0) Bearer
     const token = getBearerToken(req);
     if (!token) return json(401, { success: false, error: "Missing Authorization header" });
 
-    let clerkUserId: string | undefined;
-
-    try {
-      const { payload } = await jwtVerify(token, jwks);
-      clerkUserId = payload.sub as string | undefined;
-    } catch (e: any) {
-      console.error("[detect-anomalies] Clerk jwtVerify failed:", e);
-      return jsonnew Response(
-        JSON.stringify({ success: false, error: "Invalid Clerk token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!clerkUserId) return json(401, { success: false, error: "Token invalid: missing sub" });
-
-    // -------------------------
-    // 2) Supabase admin client
-    // -------------------------
+    // 1) Client "user" (validate token properly)
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!SUPABASE_URL || !SERVICE_ROLE) {
-      return json(500, {
-        success: false,
-        error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
-      });
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return json(500, { success: false, error: "Missing SUPABASE_URL or SUPABASE_ANON_KEY" });
     }
 
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
+    const supabaseUser = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
 
-    // -------------------------
-    // 3) Check user is assurer
-    // -------------------------
-    // ✅ accepte plusieurs libellés possibles
-    const allowedRoles = ["assurer", "assureur", "insurer"];
+    const { data: userData, error: userErr } = await supabaseUser.auth.getUser();
+    if (userErr || !userData?.user) {
+      return json(401, { success: false, error: "Invalid token" });
+    }
 
-    const { data: staffRow, error: staffErr } = await supabase
-      .from("clinic_staff")
-      .select("id, role, clinic_id, clerk_user_id, email, name")
+    // IMPORTANT: chez toi, l'id = Clerk user id (sub)
+    const clerkUserId = userData.user.id;
+    if (!clerkUserId) return json(401, { success: false, error: "Token invalid: missing user id" });
+
+    // 2) Admin client (service role) for DB queries
+    const SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY");
+    if (!SERVICE_ROLE_KEY) {
+      return json(500, { success: false, error: "Missing SERVICE_ROLE_KEY env var" });
+    }
+    const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+    // 3) Check insurer staff
+    const { data: staff, error: staffErr } = await supabaseAdmin
+      .from("insurer_staff")
+      .select("id, insurer_id, role, clerk_user_id")
       .eq("clerk_user_id", clerkUserId)
+      .eq("role", "insurer_agent")
       .maybeSingle();
 
     if (staffErr) {
-      console.error("[detect-anomalies] clinic_staff lookup error:", staffErr);
-      return json(500, { success: false, error: "DB error during assurer lookup" });
+      console.error("[detect-anomalies] insurer_staff lookup error:", staffErr);
+      return json(403, { success: false, error: "Unauthorized (insurer lookup failed)" });
     }
+    if (!staff) return json(403, { success: false, error: "Unauthorized - Not an insurer_agent" });
 
-    if (!staffRow) {
-      // ⚠️ message utile: ça te dit que clerk_user_id n'est pas enregistré en base
-      return json(403, {
-        success: false,
-        error: "Unauthorized - user not found in clinic_staff (missing clerk_user_id mapping)",
-        debug: { clerkUserId },
-      });
-    }
-
-    if (!allowedRoles.includes(String(staffRow.role))) {
-      return json(403, {
-        success: false,
-        error: "Unauthorized - Not an assurer",
-        debug: { role: staffRow.role, clerkUserId, staff_id: staffRow.id },
-      });
-    }
-
-    // -------------------------
-    // 4) Fetch last 7 days consultations
-    // -------------------------
+    // 4) Fetch last 7 days consultations for this insurer
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setDate(now.getDate() - 7);
 
-    const { data: consultations, error: qErr } = await supabase
+    const { data: consultations, error: qErr } = await supabaseAdmin
       .from("consultations")
-      .select(
-        `
+      .select(`
         id,
         patient_id,
         clinic_id,
@@ -132,11 +95,12 @@ serve(async (req: Request) => {
         amount,
         fingerprint_missing,
         biometric_verified_at,
+        insurer_id,
         patients ( name, is_assured ),
         clinics ( name ),
         clinic_staff!consultations_doctor_id_fkey ( name )
-      `
-      )
+      `)
+      .eq("insurer_id", staff.insurer_id)
       .gte("created_at", sevenDaysAgo.toISOString());
 
     if (qErr) {
@@ -146,7 +110,7 @@ serve(async (req: Request) => {
 
     const alerts: AlertRow[] = [];
 
-    // Rule 1: same patient multiple clinics same day
+    // Rule 1: Same patient visits multiple clinics same day
     const patientVisits = new Map<string, Set<string>>();
     for (const c of consultations || []) {
       if (!c.patient_id || !c.clinic_id) continue;
@@ -155,8 +119,8 @@ serve(async (req: Request) => {
 
       if (!patientVisits.has(key)) patientVisits.set(key, new Set([c.clinic_id]));
       else {
-        const set = patientVisits.get(key)!;
-        if (!set.has(c.clinic_id)) {
+        const clinicsSet = patientVisits.get(key)!;
+        if (!clinicsSet.has(c.clinic_id)) {
           alerts.push({
             type: "warning",
             message: `Patient ${c.patients?.name ?? "?"} consulté dans plusieurs établissements le ${new Date(
@@ -165,11 +129,11 @@ serve(async (req: Request) => {
             consultation_id: c.id,
           });
         }
-        set.add(c.clinic_id);
+        clinicsSet.add(c.clinic_id);
       }
     }
 
-    // Rule 2: insured but missing biometric proof
+    // Rule 2: Missing biometric proof for insured patient
     for (const c of consultations || []) {
       const isAssured = c.patients?.is_assured === true;
       const missingBio = c.fingerprint_missing === true || !c.biometric_verified_at;
@@ -185,7 +149,7 @@ serve(async (req: Request) => {
       }
     }
 
-    // Rule 3: rapid succession (<15 min) per clinic
+    // Rule 3: Rapid succession consultations per clinic (< 15 min)
     const byClinic = new Map<string, any[]>();
     for (const c of consultations || []) {
       if (!c.clinic_id) continue;
@@ -211,12 +175,35 @@ serve(async (req: Request) => {
       }
     }
 
+    // Rule 4: Unusual volume per clinic (avg/day > threshold)
+    const clinicVolumes = new Map<string, number>();
+    for (const c of consultations || []) {
+      if (!c.clinic_id) continue;
+      clinicVolumes.set(c.clinic_id, (clinicVolumes.get(c.clinic_id) || 0) + 1);
+    }
+
+    const avgDailyThreshold = 20;
+    const daysInPeriod = 7;
+
+    for (const [clinicId, count] of clinicVolumes.entries()) {
+      const avgDaily = count / daysInPeriod;
+      if (avgDaily > avgDailyThreshold) {
+        const clinicName = (consultations || []).find((x: any) => x.clinic_id === clinicId)?.clinics?.name;
+        alerts.push({
+          type: "warning",
+          message: `Volume inhabituel de consultations à ${clinicName ?? "?"} (${Math.round(avgDaily)} / jour)`,
+          consultation_id: null,
+        });
+      }
+    }
+
     return json(200, {
       success: true,
       alerts_count: alerts.length,
       alerts,
       from: sevenDaysAgo.toISOString(),
       to: now.toISOString(),
+      insurer_id: staff.insurer_id,
     });
   } catch (e: any) {
     console.error("[detect-anomalies] fatal:", e);
