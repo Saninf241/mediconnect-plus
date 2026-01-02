@@ -4,7 +4,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { Card } from "../../components/ui/card";
 
 interface Anomaly {
-  type: string;
+  type: "error" | "warning" | "info";
   message: string;
   consultation_id: string | null;
 }
@@ -13,16 +13,17 @@ export default function AnomaliesPage() {
   const { getToken } = useAuth();
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAnomalies = async () => {
       setLoading(true);
-      setErrorMsg(null);
+      setErrMsg(null);
 
       try {
-        const token = await getToken({ template: "supabase" });
-        if (!token) throw new Error("Token manquant (Clerk)");
+        // ✅ IMPORTANT : token Clerk standard (PAS template supabase)
+        const token = await getToken();
+        if (!token) throw new Error("No auth token (Clerk)");
 
         const res = await fetch(
           "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/detect-anomalies",
@@ -37,11 +38,12 @@ export default function AnomaliesPage() {
         );
 
         const raw = await res.text();
-        let data: any;
+        let data: any = null;
         try {
           data = JSON.parse(raw);
         } catch {
-          data = { success: false, error: raw };
+          // si la fonction renvoie un HTML / texte
+          throw new Error(`Réponse non JSON: ${raw.slice(0, 200)}`);
         }
 
         if (!res.ok) {
@@ -49,10 +51,9 @@ export default function AnomaliesPage() {
         }
 
         setAnomalies(data.alerts || []);
-      } catch (err: any) {
-        console.error("[AssureurAnomalies] fetch error:", err);
-        setErrorMsg(err?.message || "Erreur inconnue");
-        setAnomalies([]);
+      } catch (e: any) {
+        console.error("[AssureurAnomalies] fetch error:", e);
+        setErrMsg(e?.message || "Erreur inconnue");
       } finally {
         setLoading(false);
       }
@@ -67,13 +68,13 @@ export default function AnomaliesPage() {
 
       {loading ? (
         <p>Chargement...</p>
-      ) : errorMsg ? (
-        <div className="p-4 border border-red-200 bg-red-50 rounded">
-          <p className="font-semibold text-red-700">Erreur</p>
-          <p className="text-red-700">{errorMsg}</p>
-          <p className="text-sm text-red-500 mt-2">
+      ) : errMsg ? (
+        <div className="p-4 rounded border border-red-200 bg-red-50 text-red-700">
+          <div className="font-semibold">Erreur</div>
+          <div>{errMsg}</div>
+          <div className="text-sm mt-2 text-red-600">
             Vérifie les logs de la fonction Supabase <code>detect-anomalies</code>.
-          </p>
+          </div>
         </div>
       ) : anomalies.length === 0 ? (
         <p>Aucune anomalie détectée cette semaine.</p>
@@ -97,4 +98,3 @@ export default function AnomaliesPage() {
     </div>
   );
 }
-
