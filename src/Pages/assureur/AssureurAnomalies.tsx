@@ -22,7 +22,6 @@ export default function AnomaliesPage() {
 
       try {
         const token = await getToken({ template: "supabase" });
-        if (!token) throw new Error("Token Clerk introuvable (template: supabase)");
 
         const res = await fetch(
           "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/detect-anomalies",
@@ -36,24 +35,28 @@ export default function AnomaliesPage() {
           }
         );
 
+        // ✅ lire une seule fois
         const raw = await res.text();
+
         let data: any = null;
         try {
           data = raw ? JSON.parse(raw) : null;
         } catch {
-          throw new Error(`Réponse non JSON: ${raw}`);
+          data = { success: false, error: raw || "Réponse non JSON" };
         }
 
         if (!res.ok) {
-          const msg = data?.error || `Erreur serveur: ${res.status}`;
+          const msg =
+            data?.error ||
+            `Erreur serveur : ${res.status} ${res.statusText}`;
+          console.error("[AssureurAnomalies] API error:", res.status, data);
           throw new Error(msg);
         }
 
-        setAnomalies(data?.alerts || []);
+        setAnomalies(data.alerts || []);
       } catch (err: any) {
         console.error("[AssureurAnomalies] fetch error:", err);
         setErrorMsg(err?.message || "Erreur inconnue");
-        setAnomalies([]);
       } finally {
         setLoading(false);
       }
@@ -70,10 +73,10 @@ export default function AnomaliesPage() {
         <p>Chargement...</p>
       ) : errorMsg ? (
         <div className="p-4 border border-red-200 bg-red-50 rounded">
-          <p className="font-bold text-red-700">Erreur</p>
+          <p className="font-semibold text-red-700">Erreur</p>
           <p className="text-red-700">{errorMsg}</p>
-          <p className="text-sm text-red-500 mt-2">
-            Vérifie la fonction Supabase <code>detect-anomalies</code> (logs) et le secret <code>JWT_SECRET</code>.
+          <p className="text-xs text-red-600 mt-2">
+            Vérifie les logs de la fonction Supabase <code>detect-anomalies</code>.
           </p>
         </div>
       ) : anomalies.length === 0 ? (
@@ -88,7 +91,9 @@ export default function AnomaliesPage() {
           >
             <p className="font-medium">{a.message}</p>
             {a.consultation_id && (
-              <p className="text-sm text-gray-500">Consultation ID : {a.consultation_id}</p>
+              <p className="text-sm text-gray-500">
+                Consultation ID : {a.consultation_id}
+              </p>
             )}
           </Card>
         ))
