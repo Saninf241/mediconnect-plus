@@ -35,22 +35,29 @@ serve(async (req: Request) => {
 
   try {
     // -------------------------
-    // 1) Verify Supabase JWT (HS256)
+    // 1) Auth: verify JWT (HS256)
     // -------------------------
     const token = getBearerToken(req);
     if (!token) return json(401, { success: false, error: "Missing Authorization header" });
 
-    const jwtSecret = Deno.env.get("SUPABASE_JWT_SECRET");
-    if (!jwtSecret) return json(500, { success: false, error: "Missing SUPABASE_JWT_SECRET env var" });
+    const jwtSecret = Deno.env.get("JWT_SECRET");
+    if (!jwtSecret) {
+      return json(500, {
+        success: false,
+        error: "Missing JWT_SECRET env var (Supabase Edge Function secret)",
+      });
+    }
 
-    let clerkUserId: string | undefined;
+    let clerkUserId: string | null = null;
 
     try {
       const { payload } = await jwtVerify(token, new TextEncoder().encode(jwtSecret), {
         algorithms: ["HS256"],
       });
-      clerkUserId = payload.sub as string | undefined;
-    } catch (e: any) {
+
+      // Clerk user id (sub) — c’est ce qu’on utilise pour matcher clinic_staff / insurer_staff
+      clerkUserId = (payload?.sub as string) ?? null;
+    } catch (e) {
       console.error("[detect-anomalies] jwtVerify failed:", e);
       return json(401, { success: false, error: "Invalid token" });
     }
@@ -64,29 +71,62 @@ serve(async (req: Request) => {
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!SUPABASE_URL || !SERVICE_ROLE) {
-      return json(500, { success: false, error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" });
+      return json(500, {
+        success: false,
+        error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
+      });
     }
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     // -------------------------
-    // 3) Check user is assurer (via clerk_user_id)
+    // 3) Identify insurer staff user + insurer_id
+    //    (selon ton schéma: clinic_staff OU insurer_staff)
     // -------------------------
-    const { data: assurer, error: assurerError } = await supabase
-      .from("clinic_staff")
-      .select("id, role, clinic_id, clerk_user_id, email")
-      .eq("clerk_user_id", clerkUserId)
-      .eq("role", "assurer")
-      .maybeSingle();
+    let insurerStaff: any = null;
 
-    if (assurerError) {
-      console.error("[detect-anomalies] assurer lookup error:", assurerError);
-      return json(403, { success: false, error: "Unauthorized (assurer lookup failed)" });
+    // A) Essai 1: insurer_staff (le plus logique)
+    {
+      const { data, error } = await supabase
+        .from("insurer_staff")
+        .select("id, insurer_id, role, clerk_user_id, email, name")
+        .eq("clerk_user_id", clerkUserId)
+        .maybeSingle();
+
+      if (error) console.error("[detect-anomalies] insurer_staff lookup error:", error);
+      if (data) insurerStaff = data;
     }
-    if (!assurer) return json(403, { success: false, error: "Unauthorized - Not an assurer" });
+
+    // B) Fallback: clinic_staff (si chez toi c’est stocké là)
+    if (!insurerStaff) {
+      const { data, error } = await supabase
+        .from("clinic_staff")
+        .select("id, role, clerk_user_id, email, name, insurer_id")
+        .eq("clerk_user_id", clerkUserId)
+        .maybeSingle();
+
+      if (error) console.error("[detect-anomalies] clinic_staff lookup error:", error);
+
+      // Attention: ici on accepte seulement si role="assurer" OU "assureur"
+      if (data && (data.role === "assurer" || data.role === "assureur")) {
+        insurerStaff = data;
+      }
+    }
+
+    if (!insurerStaff) {
+      return json(403, { success: false, error: "Unauthorized - Not an assurer" });
+    }
+
+    const insurerId = insurerStaff.insurer_id;
+    if (!insurerId) {
+      return json(500, {
+        success: false,
+        error: "Assurer user has no insurer_id (cannot scope anomalies)",
+      });
+    }
 
     // -------------------------
-    // 4) Fetch last 7 days consultations
+    // 4) Fetch last 7 days consultations (SCOPED to insurer)
     // -------------------------
     const now = new Date();
     const sevenDaysAgo = new Date(now);
@@ -102,6 +142,7 @@ serve(async (req: Request) => {
         doctor_id,
         created_at,
         amount,
+        insurer_id,
         fingerprint_missing,
         biometric_verified_at,
         patients ( name, is_assured ),
@@ -109,6 +150,7 @@ serve(async (req: Request) => {
         clinic_staff!consultations_doctor_id_fkey ( name )
       `
       )
+      .eq("insurer_id", insurerId)
       .gte("created_at", sevenDaysAgo.toISOString());
 
     if (error) {
@@ -122,13 +164,16 @@ serve(async (req: Request) => {
     // Rule 1: Same patient visits multiple clinics same day
     // -------------------------
     const patientVisits = new Map<string, Set<string>>();
+
     for (const c of consultations || []) {
       if (!c.patient_id || !c.clinic_id) continue;
+
       const dateStr = new Date(c.created_at).toISOString().split("T")[0];
       const key = `${c.patient_id}-${dateStr}`;
 
-      if (!patientVisits.has(key)) patientVisits.set(key, new Set([c.clinic_id]));
-      else {
+      if (!patientVisits.has(key)) {
+        patientVisits.set(key, new Set([c.clinic_id]));
+      } else {
         const clinicsSet = patientVisits.get(key)!;
         if (!clinicsSet.has(c.clinic_id)) {
           alerts.push({
@@ -145,7 +190,6 @@ serve(async (req: Request) => {
 
     // -------------------------
     // Rule 2: Missing biometric proof for insured patient
-    // (based on YOUR real fields)
     // -------------------------
     for (const c of consultations || []) {
       const isAssured = c.patients?.is_assured === true;
@@ -166,6 +210,7 @@ serve(async (req: Request) => {
     // Rule 3: Rapid succession consultations per clinic (< 15 min)
     // -------------------------
     const byClinic = new Map<string, any[]>();
+
     for (const c of consultations || []) {
       if (!c.clinic_id) continue;
       if (!byClinic.has(c.clinic_id)) byClinic.set(c.clinic_id, []);
@@ -174,6 +219,7 @@ serve(async (req: Request) => {
 
     for (const list of byClinic.values()) {
       list.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
       for (let i = 1; i < list.length; i++) {
         const prev = list[i - 1];
         const curr = list[i];
@@ -194,6 +240,7 @@ serve(async (req: Request) => {
     // Rule 4: Unusual activity volume per clinic (avg/day > threshold)
     // -------------------------
     const clinicVolumes = new Map<string, number>();
+
     for (const c of consultations || []) {
       if (!c.clinic_id) continue;
       clinicVolumes.set(c.clinic_id, (clinicVolumes.get(c.clinic_id) || 0) + 1);
@@ -214,9 +261,9 @@ serve(async (req: Request) => {
       }
     }
 
-    // (Optionnel) ici tu peux enregistrer dans alerts/notifications plus tard
     return json(200, {
       success: true,
+      insurer_id: insurerId,
       alerts_count: alerts.length,
       alerts,
       from: sevenDaysAgo.toISOString(),
