@@ -152,6 +152,7 @@ export default function NewConsultationPage() {
     if (error) {
       console.error("[markBiometryVerified] DB update error:", error);
     } else {
+      console.log("[markBiometryVerified] wrote biometrics on", params.consultationId);
       console.log("[markBiometryVerified] OK", params.consultationId);
     }
   }
@@ -247,13 +248,7 @@ const [searchParams] = useSearchParams();
 
         let finalCid = finalConsultationId;
 
-        if (finalCid) {
-          setConsultationId(finalCid);
-        }
-
-      if (finalConsultationId) {
-        setConsultationId(finalConsultationId);
-      }
+        if (finalCid) setConsultationId(finalCid);
 
         if (finalPatientId) {
           // ✅ Patient reconnu → on passe en étape consultation
@@ -316,6 +311,19 @@ const createConsultation = async () => {
       toast.error("Impossible d'identifier votre clinique (doctor).");
       return;
     }
+
+    // ✅ Toujours travailler sur UN SEUL brouillon (évite de créer une consultation "B")
+    let cid = consultationId;
+    if (!cid) {
+      cid = await ensureDraftConsultation(ctx);
+      if (!cid) {
+        toast.error("Impossible de créer/charger la consultation brouillon.");
+        return;
+      }
+      setConsultationId(cid);
+    }
+
+    console.log("[createConsultation] using cid=", cid, "state consultationId=", consultationId);
 
     // 2) Validations minimum
     const parsedAmount = parseInt(amount, 10);
@@ -386,6 +394,17 @@ const createConsultation = async () => {
       doctor_id: ctx.doctorId,
       clinic_id: ctx.clinicId,
       patient_id: patientId, // peut être null si pas d'empreinte / pas identifié
+      ...(patientId && !fingerprintMissing
+  ? {
+      biometric_verified_at: new Date().toISOString(),
+      biometric_operator_id: ctx.doctorId,
+      biometric_clinic_id: ctx.clinicId,
+    }
+  : {
+      biometric_verified_at: null,
+      biometric_operator_id: null,
+      biometric_clinic_id: null,
+    }),
       symptoms: symptomsType === "text" ? symptoms.trim() : null,
       symptoms_drawn: symptomsDrawn,
       diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
@@ -413,7 +432,7 @@ const createConsultation = async () => {
           origin: "manual",
         })),
       ],
-      medications: medications.map((name) => ({ name })),
+      medications: medications,
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
       status: targetStatus, // 'sent' ou 'draft'
@@ -423,40 +442,25 @@ const createConsultation = async () => {
 
     console.log("[createConsultation] payload=", payload);
 
-    let error: any = null;
-    let newId: string | null = null;
+    // ✅ UPDATE ONLY : on met à jour le brouillon existant (pas de 2e consultation)
+    const { error } = await supabase
+      .from("consultations")
+      .update(payload)
+      .eq("id", cid);
 
-    // 6) Si pas encore de consultationId => INSERT
-    if (!consultationId) {
-      const { data, error: insertError } = await supabase
-        .from("consultations")
-        .insert([payload])
-        .select("id")
-        .single();
-
-      error = insertError;
-      if (!insertError && data?.id) {
-        newId = data.id as string;
-        setConsultationId(newId);
-      }
-    } else {
-      // 7) Sinon UPDATE sur la ligne existante
-      const { error: updateError } = await supabase
-        .from("consultations")
-        .update(payload)
-        .eq("id", consultationId);
-
-      error = updateError;
+    if (error) {
+      console.error("[createConsultation] update error:", error);
+      toast.error("Erreur lors de l'enregistrement de la consultation.");
+      return;
     }
+
+    const finalId = cid;
 
     if (error) {
       console.error("[createConsultation] error:", error);
       toast.error("Erreur lors de l'enregistrement de la consultation.");
       return;
     }
-
-    // 8) ID final de la consultation (INSERT ou UPDATE)
-    const finalId = consultationId || newId;
 
     // 9) Si la consultation est envoyée à l’assureur → génération du PDF
     if (targetStatus === "sent" && finalId) {
