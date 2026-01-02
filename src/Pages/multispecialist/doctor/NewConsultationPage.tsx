@@ -295,6 +295,16 @@ const [searchParams] = useSearchParams();
     })();
   }, [searchParams]);
 
+  function buildMedsFinal(meds: string[], current: string) {
+  return [
+    ...(meds ?? []),
+    ...(current?.trim() ? [current.trim()] : []),
+  ]
+    .map((m) => String(m).trim())
+    .filter(Boolean);
+}
+
+
 // ---------- Enregistrement consultation ----------
 const createConsultation = async () => {
   try {
@@ -389,6 +399,12 @@ const createConsultation = async () => {
     // 4) Statut : 'sent' uniquement si patient assuré + assureur trouvé
     const targetStatus = patientId && insurerId ? "sent" : "draft";
 
+    const medsFinal = buildMedsFinal(medications, currentMedication);
+
+    console.log("[createConsultation] meds state=", medications);
+    console.log("[createConsultation] currentMedication=", currentMedication);
+    console.log("[createConsultation] medsFinal=", medsFinal);
+
     // 5) Payload commun INSERT / UPDATE
     const payload: any = {
       doctor_id: ctx.doctorId,
@@ -432,7 +448,7 @@ const createConsultation = async () => {
           origin: "manual",
         })),
       ],
-      medications: medications,
+      medications: medsFinal,
       fingerprint_missing: fingerprintMissing,
       insurer_id: insurerId, // relie bien la consultation à l’assureur
       status: targetStatus, // 'sent' ou 'draft'
@@ -454,13 +470,14 @@ const createConsultation = async () => {
       return;
     }
 
-    const finalId = cid;
+    const { data: check, error: checkErr } = await supabase
+    .from("consultations")
+    .select("id, medications")
+    .eq("id", cid)
+    .single();
+    console.log("[createConsultation] DB medications after update=", check?.medications, checkErr);
 
-    if (error) {
-      console.error("[createConsultation] error:", error);
-      toast.error("Erreur lors de l'enregistrement de la consultation.");
-      return;
-    }
+    const finalId = cid;
 
     // 9) Si la consultation est envoyée à l’assureur → génération du PDF
     if (targetStatus === "sent" && finalId) {
@@ -777,12 +794,19 @@ const createConsultation = async () => {
                 onChange={(e) => setCurrentMedication(e.target.value)}
                 placeholder="Médicament"
               />
-              <Button
+             <Button
+                type="button"
                 onClick={() => {
-                  if (currentMedication.trim()) {
-                    setMedications((prev) => [...prev, currentMedication.trim()]);
-                    setCurrentMedication("");
-                  }
+                  const v = currentMedication.trim();
+                  if (!v) return;
+
+                  setMedications((prev) => {
+                    // évite doublons exacts
+                    if (prev.includes(v)) return prev;
+                    return [...prev, v];
+                  });
+
+                  setCurrentMedication("");
                 }}
               >
                 Ajouter médicament
