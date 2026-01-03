@@ -14,6 +14,7 @@ export default function ConsultationChatDoctor({
   consultationId,
   senderId,
   senderRole,
+  receiverId: _unusedReceiverId, // ✅ Ajustement "propre" : renommé pour indiquer qu'il n'est pas utilisé
 }: ConsultationChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -28,15 +29,17 @@ export default function ConsultationChatDoctor({
     fetchMessages();
 
     const channel = supabase
-      .channel("messages-doctor")
+      .channel(`messages-${consultationId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
-        (payload) => {
-          const newRow = payload.new as { consultation_id?: string };
-          if (newRow.consultation_id === consultationId) {
-            fetchMessages();
-          }
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `consultation_id=eq.${consultationId}`,
+        },
+        () => {
+          fetchMessages();
         }
       )
       .subscribe();
@@ -68,7 +71,7 @@ export default function ConsultationChatDoctor({
     }
   };
 
-  const isDraft = false; // tu peux rebrancher ton contrôle sur status si tu veux
+  const isDraft = false; // Tu peux rebrancher ton contrôle sur status si tu veux
 
   return (
     <div className="border rounded-lg p-4 space-y-4 bg-white">
@@ -115,7 +118,7 @@ export default function ConsultationChatDoctor({
           disabled={loading || !newMessage.trim() || isDraft}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          Envoyer
+          {loading ? "Envoi..." : "Envoyer"}
         </button>
       </div>
     </div>

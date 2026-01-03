@@ -26,19 +26,21 @@ export default function ConsultationChatAssureur({
   useEffect(() => {
     fetchMessages();
 
-    const channel = supabase
-      .channel("messages-assureur")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "messages" },
-        (payload) => {
-          const newRow = payload.new as { consultation_id?: string };
-          if (newRow.consultation_id === consultationId) {
+      const channel = supabase
+        .channel(`messages-${consultationId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `consultation_id=eq.${consultationId}`,
+          },
+          () => {
             fetchMessages();
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
