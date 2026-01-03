@@ -1,95 +1,111 @@
 // src/components/ui/uidoctor/ConsultationChat.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { getMessages, sendMessage, Message } from "../../../lib/queries/messages";
 import { supabase } from "../../../lib/supabase";
 
 interface ConsultationChatProps {
   consultationId: string;
-  senderId: string;                    // clinic_staff.id
-  senderRole: "doctor" | "insurer";    // ici : "doctor"
-  receiverId: string | null;           // insurer_staff.id (optionnel)
+  senderId: string;                 // clinic_staff.id
+  senderRole: "doctor" | "insurer"; // ici : "doctor"
+  receiverId: string | null;        // pas utilisé ici pour l’insert
 }
 
 export default function ConsultationChatDoctor({
   consultationId,
   senderId,
   senderRole,
-  receiverId: _unusedReceiverId, // ✅ Ajustement "propre" : renommé pour indiquer qu'il n'est pas utilisé
 }: ConsultationChatProps) {
+  const { getToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     const data = await getMessages(consultationId);
     setMessages(data);
-  };
+  }, [consultationId]);
 
   useEffect(() => {
-    fetchMessages();
+    let channel: any;
 
-    const channel = supabase
-      .channel(`messages-${consultationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `consultation_id=eq.${consultationId}`,
-        },
-        () => {
-          fetchMessages();
-        }
-      )
-      .subscribe();
+    (async () => {
+      await fetchMessages();
+
+      // ✅ Auth Realtime avec le JWT Supabase (Clerk template supabase)
+      const token = await getToken({ template: "supabase" });
+      if (token) {
+        supabase.realtime.setAuth(token);
+      }
+
+      channel = supabase
+        .channel(`messages:${consultationId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `consultation_id=eq.${consultationId}`,
+          },
+          (payload) => {
+            const row = payload.new as Message;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === row.id)) return prev;
+              return [...prev, row];
+            });
+          }
+        )
+        .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [consultationId]);
+  }, [consultationId, fetchMessages, getToken]);
 
   const handleSend = async () => {
     if (!senderId) {
-      alert(
-        "Impossible d'envoyer un message : aucun identifiant interne de médecin (clinic_staff.id) n’est associé à cette consultation."
-      );
+      alert("Impossible d'envoyer : clinic_staff.id introuvable.");
       return;
     }
-    if (!newMessage.trim()) return;
+    const txt = newMessage.trim();
+    if (!txt) return;
 
     setLoading(true);
     try {
-      await sendMessage(consultationId, senderId, senderRole, newMessage);
+      const inserted = await sendMessage(consultationId, senderId, senderRole, txt);
       setNewMessage("");
-      await fetchMessages();
+
+      if (inserted) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === inserted.id)) return prev;
+          return [...prev, inserted];
+        });
+      }
     } catch (e) {
-      console.error("[DoctorChat] erreur sendMessage :", e);
-      alert("Impossible d'envoyer le message pour le moment.");
+      console.error("[DoctorChat] sendMessage error:", e);
+      alert("Impossible d'envoyer le message.");
     } finally {
       setLoading(false);
     }
   };
 
-  const isDraft = false; // Tu peux rebrancher ton contrôle sur status si tu veux
-
   return (
     <div className="border rounded-lg p-4 space-y-4 bg-white">
       <h2 className="font-semibold text-lg">Discussion liée à cette consultation</h2>
 
-      <div className={`h-64 overflow-y-auto border p-2 bg-gray-50 rounded`}>
+      <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
         {messages.length > 0 ? (
           messages.map((m) => (
             <div
               key={m.id}
-              className={`mb-2 ${
-                m.sender_role === senderRole ? "text-right" : "text-left"
-              }`}
+              className={`mb-2 ${m.sender_role === senderRole ? "text-right" : "text-left"}`}
             >
               <div
                 className={`inline-block px-4 py-2 rounded-lg text-sm ${
                   m.sender_role === senderRole
-                    ? "bg-blue-500 text-white"
+                    ? "bg-blue-600 text-white"
                     : "bg-gray-200 text-gray-900"
                 }`}
               >
@@ -98,9 +114,7 @@ export default function ConsultationChatDoctor({
             </div>
           ))
         ) : (
-          <p className="text-center text-gray-400">
-            Aucun message pour cette consultation.
-          </p>
+          <p className="text-center text-gray-400">Aucun message pour cette consultation.</p>
         )}
       </div>
 
@@ -111,14 +125,13 @@ export default function ConsultationChatDoctor({
           onChange={(e) => setNewMessage(e.target.value)}
           className="flex-1 border p-2 rounded"
           placeholder="Votre message..."
-          disabled={isDraft}
         />
         <button
           onClick={handleSend}
-          disabled={loading || !newMessage.trim() || isDraft}
+          disabled={loading || !newMessage.trim()}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? "Envoi..." : "Envoyer"}
+          Envoyer
         </button>
       </div>
     </div>

@@ -1,12 +1,13 @@
 // src/components/ui/assureur/ConsultationChat.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { getMessages, sendMessage, Message } from "../../../lib/queries/messages";
 import { supabase } from "../../../lib/supabase";
 
 interface Props {
   consultationId: string;
-  doctorStaffId: string | null;   // pas utilisé dans l'insert mais utile pour le contexte
-  insurerAgentId: string | null;  // ✅ uuid de insurer_staff.id
+  doctorStaffId: string | null;
+  insurerAgentId: string | null;
 }
 
 export default function ConsultationChatAssureur({
@@ -14,20 +15,32 @@ export default function ConsultationChatAssureur({
   doctorStaffId,
   insurerAgentId,
 }: Props) {
+  const { getToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const fetchMessages = async () => {
+  const fetchMessages = useCallback(async () => {
     const data = await getMessages(consultationId);
     setMessages(data);
-  };
+  }, [consultationId]);
 
   useEffect(() => {
-    fetchMessages();
+    let channel: any;
 
-      const channel = supabase
-        .channel(`messages-${consultationId}`)
+    (async () => {
+      // 1) Fetch initial
+      await fetchMessages();
+
+      // 2) ✅ IMPORTANT: authentifier Realtime avec le JWT Supabase (issu de Clerk)
+      const token = await getToken({ template: "supabase" });
+      if (token) {
+        supabase.realtime.setAuth(token);
+      }
+
+      // 3) Subscribe INSERT only + filter server-side
+      channel = supabase
+        .channel(`messages:${consultationId}`)
         .on(
           "postgres_changes",
           {
@@ -36,35 +49,47 @@ export default function ConsultationChatAssureur({
             table: "messages",
             filter: `consultation_id=eq.${consultationId}`,
           },
-          () => {
-            fetchMessages();
+          (payload) => {
+            const row = payload.new as Message;
+
+            // évite les doublons si optimistic déjà ajouté
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === row.id)) return prev;
+              return [...prev, row];
+            });
           }
         )
         .subscribe();
+    })();
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [consultationId]);
+  }, [consultationId, fetchMessages, getToken]);
 
   const handleSend = async () => {
     if (!insurerAgentId) {
-      alert(
-        "Impossible d'envoyer un message : aucun agent assureur interne (insurer_staff.id) n'est associé à cet utilisateur."
-      );
+      alert("Impossible d'envoyer : insurer_staff.id introuvable.");
       return;
     }
-
-    if (!newMessage.trim()) return;
+    const txt = newMessage.trim();
+    if (!txt) return;
 
     setLoading(true);
     try {
-      await sendMessage(consultationId, insurerAgentId, "insurer", newMessage);
+      // ✅ optimistic: on ajoute immédiatement si sendMessage renvoie la row
+      const inserted = await sendMessage(consultationId, insurerAgentId, "insurer", txt);
       setNewMessage("");
-      await fetchMessages();
+
+      if (inserted) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === inserted.id)) return prev;
+          return [...prev, inserted];
+        });
+      }
     } catch (e) {
-      console.error("[AssureurChat] erreur sendMessage :", e);
-      alert("Impossible d'envoyer le message pour le moment.");
+      console.error("[AssureurChat] sendMessage error:", e);
+      alert("Impossible d'envoyer le message.");
     } finally {
       setLoading(false);
     }
@@ -76,16 +101,12 @@ export default function ConsultationChatAssureur({
 
       <div className="h-64 overflow-y-auto border p-2 bg-gray-50 rounded">
         {messages.length === 0 ? (
-          <p className="text-center text-gray-400">
-            Aucun message pour cette consultation.
-          </p>
+          <p className="text-center text-gray-400">Aucun message pour cette consultation.</p>
         ) : (
           messages.map((m) => (
             <div
               key={m.id}
-              className={`mb-2 ${
-                m.sender_role === "insurer" ? "text-right" : "text-left"
-              }`}
+              className={`mb-2 ${m.sender_role === "insurer" ? "text-right" : "text-left"}`}
             >
               <div
                 className={`inline-block px-4 py-2 rounded-lg text-sm ${
