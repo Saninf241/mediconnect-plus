@@ -1,66 +1,44 @@
 // src/Pages/assureur/AssureurAnomalies.tsx
 import { useEffect, useState } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { supabase } from "../../lib/supabase";
 import { Card } from "../../components/ui/card";
 
-interface Anomaly {
+type AnomalyRow = {
   type: "error" | "warning" | "info";
+  title: string;
   message: string;
   consultation_id: string | null;
-}
+  created_at: string;
+};
 
 export default function AnomaliesPage() {
-  const { getToken } = useAuth();
-  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [anomalies, setAnomalies] = useState<AnomalyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchAnomalies = async () => {
+    const run = async () => {
       setLoading(true);
       setErrMsg(null);
 
-      try {
-        // ✅ IMPORTANT : token Clerk standard (PAS template supabase)
-        const token = await getToken();
-        if (!token) throw new Error("No auth token (Clerk)");
+      const { data, error } = await supabase
+        .from("consultations_anomalies_7d")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-        const res = await fetch(
-          "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/detect-anomalies",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({}),
-          }
-        );
-
-        const raw = await res.text();
-        let data: any = null;
-        try {
-          data = JSON.parse(raw);
-        } catch {
-          // si la fonction renvoie un HTML / texte
-          throw new Error(`Réponse non JSON: ${raw.slice(0, 200)}`);
-        }
-
-        if (!res.ok) {
-          throw new Error(data?.error || `Erreur serveur: ${res.status}`);
-        }
-
-        setAnomalies(data.alerts || []);
-      } catch (e: any) {
-        console.error("[AssureurAnomalies] fetch error:", e);
-        setErrMsg(e?.message || "Erreur inconnue");
-      } finally {
-        setLoading(false);
+      if (error) {
+        console.error("[AssureurAnomalies] view error:", error);
+        setErrMsg(error.message);
+        setAnomalies([]);
+      } else {
+        setAnomalies((data || []) as AnomalyRow[]);
       }
+
+      setLoading(false);
     };
 
-    fetchAnomalies();
-  }, [getToken]);
+    run();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -69,13 +47,10 @@ export default function AnomaliesPage() {
       {loading ? (
         <p>Chargement...</p>
       ) : errMsg ? (
-        <div className="p-4 rounded border border-red-200 bg-red-50 text-red-700">
-          <div className="font-semibold">Erreur</div>
-          <div>{errMsg}</div>
-          <div className="text-sm mt-2 text-red-600">
-            Vérifie les logs de la fonction Supabase <code>detect-anomalies</code>.
-          </div>
-        </div>
+        <Card className="p-4 border border-red-200 bg-red-50">
+          <p className="font-semibold text-red-700">Erreur</p>
+          <p className="text-red-700">{errMsg}</p>
+        </Card>
       ) : anomalies.length === 0 ? (
         <p>Aucune anomalie détectée cette semaine.</p>
       ) : (
@@ -86,12 +61,16 @@ export default function AnomaliesPage() {
               a.type === "error" ? "border-red-500" : "border-orange-400"
             }`}
           >
+            <p className="font-semibold">{a.title}</p>
             <p className="font-medium">{a.message}</p>
             {a.consultation_id && (
               <p className="text-sm text-gray-500">
                 Consultation ID : {a.consultation_id}
               </p>
             )}
+            <p className="text-xs text-gray-500">
+              {new Date(a.created_at).toLocaleString()}
+            </p>
           </Card>
         ))
       )}
