@@ -50,6 +50,7 @@ interface Props {
   onOpenDetails?: (id: string) => void;    // ✅ nouveau : ouvrir la page détail
   onComputePricing?: (id: string) => void;
   pricingProcessingId?: string | null;
+  unreadByConsultation?: Record<string, number>;
 }
 
 function getPatientLabel(c: ConsultationRow): string {
@@ -97,6 +98,7 @@ export default function ConsultationTable({
   onOpenDetails,
   onComputePricing,
   pricingProcessingId,
+  unreadByConsultation,
 }: Props) {
   return (
     <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -265,10 +267,16 @@ export default function ConsultationTable({
               <td className="px-4 py-2 text-sm text-center">
                 {onOpenDetails ? (
                   <button
-                    className="text-xs text-indigo-600 underline hover:text-indigo-800"
+                    className="text-xs text-indigo-600 underline hover:text-indigo-800 inline-flex items-center gap-2"
                     onClick={() => onOpenDetails(c.id)}
                   >
                     Ouvrir
+
+                    {((unreadByConsultation?.[c.id] ?? 0) > 0) && (
+                      <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                        {unreadByConsultation?.[c.id]} new
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <span className="text-gray-400">—</span>

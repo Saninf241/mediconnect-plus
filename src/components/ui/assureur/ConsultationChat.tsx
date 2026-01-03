@@ -26,46 +26,34 @@ export default function ConsultationChatAssureur({
   }, [consultationId]);
 
   useEffect(() => {
-    let channel: any;
+    fetchMessages();
 
-    (async () => {
-      // 1) Fetch initial
-      await fetchMessages();
+    const channel = supabase
+      .channel(`messages:consultation:${consultationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `consultation_id=eq.${consultationId}`,
+        },
+        (payload) => {
+          const row = payload.new as Message;
 
-      // 2) ✅ IMPORTANT: authentifier Realtime avec le JWT Supabase (issu de Clerk)
-      const token = await getToken({ template: "supabase" });
-      if (token) {
-        supabase.realtime.setAuth(token);
-      }
-
-      // 3) Subscribe INSERT only + filter server-side
-      channel = supabase
-        .channel(`messages:${consultationId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-            filter: `consultation_id=eq.${consultationId}`,
-          },
-          (payload) => {
-            const row = payload.new as Message;
-
-            // évite les doublons si optimistic déjà ajouté
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === row.id)) return prev;
-              return [...prev, row];
-            });
-          }
-        )
-        .subscribe();
-    })();
+          // ✅ append local (pas de reload / pas de refetch)
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === row.id)) return prev;
+            return [...prev, row];
+          });
+        }
+      )
+      .subscribe();
 
     return () => {
-      if (channel) supabase.removeChannel(channel);
+      supabase.removeChannel(channel);
     };
-  }, [consultationId, fetchMessages, getToken]);
+  }, [consultationId]);
 
   const handleSend = async () => {
     if (!insurerAgentId) {

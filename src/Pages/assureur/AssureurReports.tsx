@@ -8,10 +8,16 @@ import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 import { toast } from "react-toastify";
 import { useAuth } from "@clerk/clerk-react";
+import { useUser } from "@clerk/clerk-react";
+import { getUnreadMessageCounts } from "../../lib/queries/notifications";
 
 export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
   const { getToken } = useAuth();
+  const { user } = useUser();
+
+  const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
+  const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});
   const navigate = useNavigate();
 
   const [consultations, setConsultations] = useState<any[]>([]);
@@ -95,6 +101,62 @@ export default function AssureurReports() {
         setIsLoading(false);
       }
     };
+
+  useEffect(() => {
+    const fetchAgentId = async () => {
+      if (!user?.id) return;
+
+      const { data, error } = await supabase
+        .from("insurer_staff")
+        .select("id")
+        .eq("clerk_user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[AssureurReports] insurer_staff lookup error:", error);
+        return;
+      }
+
+      setInsurerAgentId(data?.id ?? null);
+    };
+
+    fetchAgentId();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!insurerAgentId) return;
+
+    let alive = true;
+
+    const loadCounts = async () => {
+      const counts = await getUnreadMessageCounts(insurerAgentId);
+      if (alive) setUnreadByConsultation(counts);
+    };
+
+    loadCounts();
+
+    const channel = supabase
+      .channel(`notif:message:${insurerAgentId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${insurerAgentId}`,
+        },
+        () => {
+          // Simple + robuste : recharger le compteur
+          loadCounts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      alive = false;
+      supabase.removeChannel(channel);
+    };
+  }, [insurerAgentId]);
 
   // premier chargement quand le contexte assureur est prêt
   useEffect(() => {
@@ -210,7 +272,27 @@ export default function AssureurReports() {
   };
 
   // 🔹 Ouvrir la page de détails (avec messagerie)
-  const handleOpenDetails = (id: string) => {
+  const handleOpenDetails = async (id: string) => {
+    // 1) Mark notifications as read for this consultation
+    if (insurerAgentId) {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read: true })
+        .eq("user_id", insurerAgentId)
+        .eq("type", "message")
+        .eq("read", false)
+        .contains("metadata", { consultation_id: id });
+
+      if (error) {
+        console.error("[AssureurReports] mark read error:", error);
+      } else {
+        // refresh local counts
+        const counts = await getUnreadMessageCounts(insurerAgentId);
+        setUnreadByConsultation(counts);
+      }
+    }
+
+    // 2) Navigate
     navigate(`/assureur/consultations/${id}`);
   };
 
@@ -258,13 +340,11 @@ export default function AssureurReports() {
         onValidate={handleValidate}
         onReject={handleReject}
         processingId={processingId}
-        onOpenDetails={handleOpenDetails}   // ✅ bouton "Ouvrir" → page détail + chat
+        onOpenDetails={handleOpenDetails}  // ✅ bouton "Ouvrir" → page détail + chat
         onComputePricing={handleComputePricing}
         pricingProcessingId={pricingProcessingId}
+        unreadByConsultation={unreadByConsultation}
       />
     </div>
   );
 }
-
-
-

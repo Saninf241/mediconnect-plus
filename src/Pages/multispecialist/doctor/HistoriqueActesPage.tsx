@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
+import { getUnreadMessageCounts } from "../../../lib/queries/notifications";
 
 type RawConsultation = {
   id: string;
@@ -33,6 +34,7 @@ export default function HistoriqueActesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [coverageFilter, setCoverageFilter] = useState<string>(""); // "", "assured", "unassured"
+  const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});  
 
   useEffect(() => {
     const fetchConsultations = async () => {
@@ -82,6 +84,40 @@ export default function HistoriqueActesPage() {
     fetchConsultations();
   }, [doctorInfo]);
 
+  useEffect(() => {
+    if (!doctorInfo?.doctor_id) return;
+
+    let alive = true;
+
+    const loadCounts = async () => {
+      const counts = await getUnreadMessageCounts(doctorInfo.doctor_id);
+      if (alive) setUnreadByConsultation(counts);
+    };
+
+    loadCounts();
+
+    const channel = supabase
+      .channel(`notif:message:doctor:${doctorInfo.doctor_id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${doctorInfo.doctor_id}`,
+        },
+        () => {
+          loadCounts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      alive = false;
+      supabase.removeChannel(channel);
+    };
+  }, [doctorInfo?.doctor_id]);
+
   const filtered = useMemo(() => {
     let result = [...rows];
 
@@ -104,6 +140,28 @@ export default function HistoriqueActesPage() {
 
     return result;
   }, [rows, search, statusFilter, coverageFilter]);
+
+  const handleOpenDetails = async (consultationId: string) => {
+    // Mark “message” notifications read for this consultation
+    if (doctorInfo?.doctor_id) {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ read: true })
+        .eq("user_id", doctorInfo.doctor_id)
+        .eq("type", "message")
+        .eq("read", false)
+        .contains("metadata", { consultation_id: consultationId });
+
+      if (error) {
+        console.error("[HistoriqueActesPage] mark read error:", error);
+      } else {
+        const counts = await getUnreadMessageCounts(doctorInfo.doctor_id);
+        setUnreadByConsultation(counts);
+      }
+    }
+
+    navigate(`/multispecialist/doctor/consultations/${consultationId}`);
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -210,14 +268,15 @@ export default function HistoriqueActesPage() {
                   </td>
                   <td className="p-3 text-center">
                     <button
-                      onClick={() =>
-                        navigate(
-                          `/multispecialist/doctor/consultations/${c.id}`
-                        )
-                      }
-                      className="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700"
+                      onClick={() => handleOpenDetails(c.id)}
+                      className="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 inline-flex items-center gap-2"
                     >
                       Voir
+                      {((unreadByConsultation?.[c.id] ?? 0) > 0) && (
+                        <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          {unreadByConsultation?.[c.id]} new
+                        </span>
+                      )}
                     </button>
                   </td>
                 </tr>
