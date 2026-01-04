@@ -60,24 +60,20 @@ export default function ConsultationChatAssureur({
       alert("Impossible d'envoyer : insurer_staff.id introuvable.");
       return;
     }
-    const txt = newMessage.trim();
-    if (!txt) return;
+    if (!doctorStaffId) {
+      alert("Impossible d'envoyer : doctorStaffId introuvable.");
+      return;
+    }
+    if (!newMessage.trim()) return;
 
     setLoading(true);
     try {
-      // ✅ optimistic: on ajoute immédiatement si sendMessage renvoie la row
-      const inserted = await sendMessage(consultationId, insurerAgentId, "insurer", txt);
+      await sendMessage(consultationId, insurerAgentId, "insurer", newMessage, doctorStaffId);
       setNewMessage("");
-
-      if (inserted) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === inserted.id)) return prev;
-          return [...prev, inserted];
-        });
-      }
+      await fetchMessages();
     } catch (e) {
-      console.error("[AssureurChat] sendMessage error:", e);
-      alert("Impossible d'envoyer le message.");
+      console.error("[AssureurChat] erreur sendMessage :", e);
+      alert("Impossible d'envoyer le message pour le moment.");
     } finally {
       setLoading(false);
     }

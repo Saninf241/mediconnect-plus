@@ -7,19 +7,19 @@ import ConsultationTable from "../../components/ui/ConsultationTable";
 import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 import { toast } from "react-toastify";
-import { useAuth } from "@clerk/clerk-react";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import { getUnreadMessageCounts } from "../../lib/queries/notifications";
 
 export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
   const { getToken } = useAuth();
   const { user } = useUser();
+  
+  // ✅ State pour les badges de notifications
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-
   const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
+  
   const navigate = useNavigate();
-
   const [consultations, setConsultations] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("sent");
@@ -28,287 +28,192 @@ export default function AssureurReports() {
   const [dateEnd, setDateEnd] = useState("");
   const [clinics, setClinics] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // pour désactiver les boutons pendant l’action
   const [processingId, setProcessingId] = useState<string | null>(null);
-
   const [pricingProcessingId, setPricingProcessingId] = useState<string | null>(null);
 
-  // debug
+  // 1. Charger la liste des cliniques
   useEffect(() => {
-    console.log("[AssureurReports] Contexte assureur :", ctx, "loading:", loading);
-  }, [ctx, loading]);
-
-  // Charger la liste des cliniques (pour les filtres)
-  useEffect(() => {
-    getAllClinics()
-      .then(setClinics)
-      .catch(console.error);
+    getAllClinics().then(setClinics).catch(console.error);
   }, []);
 
-    const fetchConsultations = async () => {
-      if (!ctx?.insurerId) {
-        console.warn(
-          "[AssureurReports] Pas d'insurerId, on n'appelle pas filter-consultations."
-        );
+  // 2. Charger l'ID interne de l'agent assureur (insurer_staff)
+  useEffect(() => {
+    const loadAgentId = async () => {
+      if (!user?.id) return;
+      const { data, error } = await supabase
+        .from("insurer_staff")
+        .select("id")
+        .eq("clerk_user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[AssureurReports] insurer_staff lookup error:", error);
         return;
       }
-
-      const payload = {
-        search,
-        status,
-        clinicId,
-        dateStart,
-        dateEnd,
-        insurerId: ctx.insurerId,
-      };
-
-      console.log("▶️ Payload envoyé à filter-consultations :", payload);
-      setIsLoading(true);
-
-      try {
-        // ✅ IMPORTANT : JWT ON => on doit envoyer Authorization
-        const token = await getToken({ template: "supabase" });
-        if (!token) {
-          throw new Error("Clerk token introuvable. Vérifie le template JWT 'supabase'.");
-        }
-
-        const res = await fetch(
-          "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`, // ✅ FIX 401
-            },
-            body: JSON.stringify(payload),
-          }
-        );
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`Erreur HTTP ${res.status} : ${text}`);
-        }
-
-        const { data } = await res.json();
-        console.log("🔎 first row =", data?.[0]);
-        console.log("✅ DATA reçue de filter-consultations:", data);
-        setConsultations(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error("⛔ Erreur lors de la récupération :", err);
-        setConsultations([]);
-      } finally {
-        setIsLoading(false);
-      }
+      setInsurerAgentId(data?.id ?? null);
     };
+    loadAgentId();
+  }, [user?.id]);
 
-    useEffect(() => {
-      const load = async () => {
-        if (!user?.id) return;
+  // 3. ✅ PATCH 3.2 : Subscription Realtime sur les notifications
+  useEffect(() => {
+    if (!insurerAgentId) return;
 
-        const { data, error } = await supabase
-          .from("insurer_staff")
-          .select("id")
-          .eq("clerk_user_id", user.id)
-          .maybeSingle();
-
-        if (error) {
-          console.error("[AssureurReports] insurer_staff lookup error:", error);
-          return;
+    const channel = supabase
+      .channel(`notif-assureur-${insurerAgentId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${insurerAgentId}`,
+        },
+        async () => {
+          // Dès qu'une notification change (insert/update), on rafraîchit les compteurs
+          const counts = await getUnreadMessageCounts(insurerAgentId);
+          setUnreadCounts(counts);
         }
-        setInsurerAgentId(data?.id ?? null);
-      };
+      )
+      .subscribe();
 
-      load();
-    }, [user?.id]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [insurerAgentId]);
 
-    useEffect(() => {
-      if (!insurerAgentId) return;
-
-      const channel = supabase
-        .channel(`notif-assureur-${insurerAgentId}`)
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "notifications",
-            filter: `user_id=eq.${insurerAgentId}`,
-          },
-          async () => {
-            // dès qu'une notif arrive / change => recharge les compteurs
-            const counts = await getUnreadMessageCounts(insurerAgentId);
-            setUnreadCounts(counts);
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }, [insurerAgentId]);
-
+  // 4. Charger les compteurs initiaux
   useEffect(() => {
     const loadCounts = async () => {
       if (!insurerAgentId) return;
-      const counts = await getUnreadMessageCounts(insurerAgentId); // ✅ UUID
+      const counts = await getUnreadMessageCounts(insurerAgentId);
       setUnreadCounts(counts);
     };
     loadCounts();
-  }, [insurerAgentId, consultations?.length]);
+  }, [insurerAgentId]);
 
-  // premier chargement quand le contexte assureur est prêt
-  useEffect(() => {
-    if (ctx?.insurerId) {
-      fetchConsultations();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx?.insurerId]);
-
-  // 🔹 Calculer le pricing
-  const handleComputePricing = async (id: string) => {
+  // 5. Récupération des consultations
+  const fetchConsultations = async () => {
     if (!ctx?.insurerId) return;
 
+    const payload = { search, status, clinicId, dateStart, dateEnd, insurerId: ctx.insurerId };
+    setIsLoading(true);
+
+    try {
+      const token = await getToken({ template: "supabase" });
+      if (!token) throw new Error("Clerk token introuvable.");
+
+      const res = await fetch(
+        "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/filter-consultations",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+      const { data } = await res.json();
+      setConsultations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("⛔ Erreur fetchConsultations:", err);
+      setConsultations([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (ctx?.insurerId) fetchConsultations();
+  }, [ctx?.insurerId]);
+
+  // 6. Actions (Pricing, Valider, Rejeter)
+  const handleComputePricing = async (id: string) => {
+    if (!ctx?.insurerId) return;
     setPricingProcessingId(id);
     try {
-      // 👉 DEMO: valeurs fixes (tu pourras les rendre dynamiques après)
-      const p_context = "private_weekday";
-      const p_case = "acute";
-
-      console.log("[Assureur] compute pricing for", id, p_context, p_case);
-
-      const { data, error } = await supabase.rpc("compute_consultation_pricing", {
+      const { error } = await supabase.rpc("compute_consultation_pricing", {
         p_consultation_id: id,
-        p_context,
-        p_case,
+        p_context: "private_weekday",
+        p_case: "acute",
       });
-
-      if (error) {
-        console.error("[Assureur] compute pricing error:", error);
-        toast.error("Erreur calcul pricing (RPC).");
-        return;
-      }
-
-      console.log("[Assureur] compute pricing result:", data);
+      if (error) throw error;
       toast.success("Pricing calculé.");
-      await fetchConsultations(); // ✅ indispensable pour voir 'computed'
+      await fetchConsultations();
     } catch (e) {
-      console.error("[Assureur] compute pricing exception:", e);
-      toast.error("Erreur inattendue calcul pricing.");
+      toast.error("Erreur calcul pricing.");
     } finally {
       setPricingProcessingId(null);
     }
   };
 
-  // 🔹 Valider
   const handleValidate = async (id: string) => {
-    if (!window.confirm("Confirmer la validation de cette consultation ?")) return;
-
+    if (!window.confirm("Confirmer la validation ?")) return;
     setProcessingId(id);
     try {
-      const updates = {
-        status: "accepted" as const, // enum: accepted / rejected / sent / draft / paid
-        insurer_decision_at: new Date().toISOString(),
-      };
-
-      console.log("[Assureur] payload validate =", updates);
-
       const { error } = await supabase
         .from("consultations")
-        .update(updates)
+        .update({ status: "accepted", insurer_decision_at: new Date().toISOString() })
         .eq("id", id);
-
-      if (error) {
-        console.error("[Assureur] erreur validate :", error);
-        toast.error("Impossible de valider la consultation.");
-        return;
-      }
-
+      if (error) throw error;
       toast.success("Consultation validée.");
       await fetchConsultations();
     } catch (e) {
-      console.error("[Assureur] exception validate :", e);
-      toast.error("Erreur inattendue lors de la validation.");
+      toast.error("Erreur validation.");
     } finally {
       setProcessingId(null);
     }
   };
 
-  // 🔹 Rejeter
   const handleReject = async (id: string) => {
-    const reason = prompt("Raison du rejet ?") || null;
+    const reason = prompt("Raison du rejet ?");
     if (!reason) return;
-
     setProcessingId(id);
     try {
-      const updates = {
-        status: "rejected" as const,
-        insurer_comment: reason,
-        insurer_decision_at: new Date().toISOString(),
-      };
-
-      console.log("[Assureur] payload reject =", updates);
-
       const { error } = await supabase
         .from("consultations")
-        .update(updates)
+        .update({ status: "rejected", insurer_comment: reason, insurer_decision_at: new Date().toISOString() })
         .eq("id", id);
-
-      if (error) {
-        console.error("[Assureur] erreur reject :", error);
-        toast.error("Impossible de rejeter la consultation.");
-        return;
-      }
-
+      if (error) throw error;
       toast.success("Consultation rejetée.");
       await fetchConsultations();
     } catch (e) {
-      console.error("[Assureur] exception reject :", e);
-      toast.error("Erreur inattendue lors du rejet.");
+      toast.error("Erreur rejet.");
     } finally {
       setProcessingId(null);
     }
   };
 
-  // 🔹 Ouvrir la page de détails (avec messagerie)
+  // 7. ✅ handleOpenDetails avec refresh des compteurs
   const handleOpenDetails = async (id: string) => {
-    // 1) Mark notifications as read for this consultation
     if (insurerAgentId) {
-      const { error } = await supabase
+      // Marquer comme lu
+      await supabase
         .from("notifications")
         .update({ read: true })
         .eq("user_id", insurerAgentId)
         .eq("type", "message")
-        .eq("read", false)
         .contains("metadata", { consultation_id: id });
 
-      if (error) {
-        console.error("[AssureurReports] mark read error:", error);
-      } else {
-        // refresh local counts
-        const counts = await getUnreadMessageCounts(insurerAgentId);
-        setUnreadCounts(counts);
-      }
+      // ✅ REFRESH IMMEDIAT des compteurs après le "read"
+      const counts = await getUnreadMessageCounts(insurerAgentId);
+      setUnreadCounts(counts);
     }
-
-    // 2) Navigate
     navigate(`/assureur/consultations/${id}`);
   };
 
-  if (loading) {
-    return <p className="p-6">Chargement de l’espace assureur…</p>;
-  }
-
-  if (!ctx) {
-    return <p className="p-6">Aucun assureur attaché à ce compte.</p>;
-  }
+  if (loading) return <p className="p-6">Chargement...</p>;
+  if (!ctx) return <p className="p-6">Aucun assureur attaché.</p>;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <input
           type="text"
-          placeholder="🔍 Rechercher par nom, clinique..."
+          placeholder="🔍 Rechercher..."
           className="border rounded px-4 py-2 w-full"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -323,14 +228,10 @@ export default function AssureurReports() {
       </div>
 
       <FiltersPopover
-        status={status}
-        setStatus={setStatus}
-        clinicId={clinicId}
-        setClinicId={setClinicId}
-        dateStart={dateStart}
-        setDateStart={setDateStart}
-        dateEnd={dateEnd}
-        setDateEnd={setDateEnd}
+        status={status} setStatus={setStatus}
+        clinicId={clinicId} setClinicId={setClinicId}
+        dateStart={dateStart} setDateStart={setDateStart}
+        dateEnd={dateEnd} setDateEnd={setDateEnd}
         clinics={clinics}
       />
 
@@ -339,10 +240,10 @@ export default function AssureurReports() {
         onValidate={handleValidate}
         onReject={handleReject}
         processingId={processingId}
-        onOpenDetails={handleOpenDetails}  // ✅ bouton "Ouvrir" → page détail + chat
+        onOpenDetails={handleOpenDetails}
         onComputePricing={handleComputePricing}
         pricingProcessingId={pricingProcessingId}
-        unreadCounts={unreadCounts}
+        unreadCounts={unreadCounts} // ✅ Passe l'objet unique ici
       />
     </div>
   );

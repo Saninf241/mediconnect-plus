@@ -15,6 +15,7 @@ export default function ConsultationChatDoctor({
   consultationId,
   senderId,
   senderRole,
+  receiverId,
 }: ConsultationChatProps) {
   const { getToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -61,23 +62,20 @@ export default function ConsultationChatDoctor({
       alert("Impossible d'envoyer : clinic_staff.id introuvable.");
       return;
     }
-    const txt = newMessage.trim();
-    if (!txt) return;
+    if (!receiverId) {
+      alert("Impossible d'envoyer : insurer_staff.id introuvable.");
+      return;
+    }
+    if (!newMessage.trim()) return;
 
     setLoading(true);
     try {
-      const inserted = await sendMessage(consultationId, senderId, senderRole, txt);
+      await sendMessage(consultationId, senderId, senderRole, newMessage, receiverId);
       setNewMessage("");
-
-      if (inserted) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === inserted.id)) return prev;
-          return [...prev, inserted];
-        });
-      }
+      await fetchMessages();
     } catch (e) {
-      console.error("[DoctorChat] sendMessage error:", e);
-      alert("Impossible d'envoyer le message.");
+      console.error("[DoctorChat] erreur sendMessage :", e);
+      alert("Impossible d'envoyer le message pour le moment.");
     } finally {
       setLoading(false);
     }
