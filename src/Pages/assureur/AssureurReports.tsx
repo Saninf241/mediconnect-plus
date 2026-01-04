@@ -15,9 +15,9 @@ export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
   const { getToken } = useAuth();
   const { user } = useUser();
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
-  const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});
   const navigate = useNavigate();
 
   const [consultations, setConsultations] = useState<any[]>([]);
@@ -102,61 +102,60 @@ export default function AssureurReports() {
       }
     };
 
-  useEffect(() => {
-    const fetchAgentId = async () => {
-      if (!user?.id) return;
+    useEffect(() => {
+      const load = async () => {
+        if (!user?.id) return;
 
-      const { data, error } = await supabase
-        .from("insurer_staff")
-        .select("id")
-        .eq("clerk_user_id", user.id)
-        .maybeSingle();
+        const { data, error } = await supabase
+          .from("insurer_staff")
+          .select("id")
+          .eq("clerk_user_id", user.id)
+          .maybeSingle();
 
-      if (error) {
-        console.error("[AssureurReports] insurer_staff lookup error:", error);
-        return;
-      }
-
-      setInsurerAgentId(data?.id ?? null);
-    };
-
-    fetchAgentId();
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!insurerAgentId) return;
-
-    let alive = true;
-
-    const loadCounts = async () => {
-      const counts = await getUnreadMessageCounts(insurerAgentId);
-      if (alive) setUnreadByConsultation(counts);
-    };
-
-    loadCounts();
-
-    const channel = supabase
-      .channel(`notif:message:${insurerAgentId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${insurerAgentId}`,
-        },
-        () => {
-          // Simple + robuste : recharger le compteur
-          loadCounts();
+        if (error) {
+          console.error("[AssureurReports] insurer_staff lookup error:", error);
+          return;
         }
-      )
-      .subscribe();
+        setInsurerAgentId(data?.id ?? null);
+      };
 
-    return () => {
-      alive = false;
-      supabase.removeChannel(channel);
+      load();
+    }, [user?.id]);
+
+    useEffect(() => {
+      if (!insurerAgentId) return;
+
+      const channel = supabase
+        .channel(`notif-assureur-${insurerAgentId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${insurerAgentId}`,
+          },
+          async () => {
+            // dès qu'une notif arrive / change => recharge les compteurs
+            const counts = await getUnreadMessageCounts(insurerAgentId);
+            setUnreadCounts(counts);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }, [insurerAgentId]);
+
+  useEffect(() => {
+    const loadCounts = async () => {
+      if (!insurerAgentId) return;
+      const counts = await getUnreadMessageCounts(insurerAgentId); // ✅ UUID
+      setUnreadCounts(counts);
     };
-  }, [insurerAgentId]);
+    loadCounts();
+  }, [insurerAgentId, consultations?.length]);
 
   // premier chargement quand le contexte assureur est prêt
   useEffect(() => {
@@ -288,7 +287,7 @@ export default function AssureurReports() {
       } else {
         // refresh local counts
         const counts = await getUnreadMessageCounts(insurerAgentId);
-        setUnreadByConsultation(counts);
+        setUnreadCounts(counts);
       }
     }
 
@@ -343,7 +342,7 @@ export default function AssureurReports() {
         onOpenDetails={handleOpenDetails}  // ✅ bouton "Ouvrir" → page détail + chat
         onComputePricing={handleComputePricing}
         pricingProcessingId={pricingProcessingId}
-        unreadByConsultation={unreadByConsultation}
+        unreadCounts={unreadCounts}
       />
     </div>
   );

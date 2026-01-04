@@ -51,6 +51,7 @@ interface Props {
   onComputePricing?: (id: string) => void;
   pricingProcessingId?: string | null;
   unreadByConsultation?: Record<string, number>;
+  unreadCounts?: Record<string, number>;
 }
 
 function getPatientLabel(c: ConsultationRow): string {
