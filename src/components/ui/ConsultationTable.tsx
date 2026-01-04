@@ -23,6 +23,11 @@ type ConsultationRow = {
   doctor_name?: string | null;
   clinic_name?: string | null;
 
+  // ✅ FIX: Ajout des champs manquants pour corriger les erreurs critiques (Image 1e3a89.png)
+  patient_id?: string | null;
+  doctor_id?: string | null;
+  clinic_id?: string | null;
+
   pricing_status?: string | null;
   pricing_total?: number | null;
   amount_delta?: number | null;
@@ -45,20 +50,40 @@ interface Props {
   onOpenDetails?: (id: string) => void;
   onComputePricing?: (id: string) => void;
   pricingProcessingId?: string | null;
-  // ✅ Nouveau : Un seul objet pour tous les compteurs
-  unreadCounts?: Record<string, number>; 
+  // ✅ PATCH 3.3 : Ajout de la prop unreadCounts
+  unreadCounts?: Record<string, number>;
+  // On garde celui-là si tu l'utilises ailleurs pour ne pas casser ton code
+  unreadByConsultation?: Record<string, number>;
 }
 
 function getPatientLabel(c: ConsultationRow): string {
-  return c.patient_name || c.patients?.name || c.patient?.name || c.patient_id || "—";
+  return (
+    c.patient_name ||
+    c.patients?.name ||
+    c.patient?.name ||
+    c.patient_id ||
+    "—"
+  );
 }
 
 function getDoctorLabel(c: ConsultationRow): string {
-  return c.doctor_name || c.clinic_staff?.name || c.doctor?.name || c.doctor_id || "—";
+  return (
+    c.doctor_name ||
+    c.clinic_staff?.name ||
+    c.doctor?.name ||
+    c.doctor_id ||
+    "—"
+  );
 }
 
 function getClinicLabel(c: ConsultationRow): string {
-  return c.clinic_name || c.clinics?.name || c.clinic?.name || c.clinic_id || "—";
+  return (
+    c.clinic_name ||
+    c.clinics?.name ||
+    c.clinic?.name ||
+    c.clinic_id ||
+    "—"
+  );
 }
 
 function getBiometricLabel(c: ConsultationRow) {
@@ -76,7 +101,8 @@ export default function ConsultationTable({
   onOpenDetails,
   onComputePricing,
   pricingProcessingId,
-  unreadCounts = {}, // ✅ Valeur par défaut
+  unreadByConsultation,
+  unreadCounts = {}, // ✅ Initialisation
 }: Props) {
   return (
     <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -107,12 +133,14 @@ export default function ConsultationTable({
 
         {consultations.map((c) => {
           const isProcessing = processingId === c.id;
-          // ✅ Récupération du nombre de messages non lus pour CETTE ligne
-          const count = unreadCounts[c.id] || 0;
+          // ✅ Priorité au nouveau unreadCounts, sinon fallback sur l'ancien
+          const count = unreadCounts[c.id] || unreadByConsultation?.[c.id] || 0;
 
           return (
             <tr key={c.id} className="border-t border-gray-100">
-              <td className="px-4 py-2 text-sm text-gray-700">{new Date(c.created_at).toLocaleString()}</td>
+              <td className="px-4 py-2 text-sm text-gray-700">
+                {new Date(c.created_at).toLocaleString()}
+              </td>
               <td className="px-4 py-2 text-sm text-gray-700">{getPatientLabel(c)}</td>
               <td className="px-4 py-2 text-sm text-gray-700">{getDoctorLabel(c)}</td>
               <td className="px-4 py-2 text-sm text-gray-700">{getClinicLabel(c)}</td>
@@ -123,7 +151,11 @@ export default function ConsultationTable({
               <td className="px-4 py-2 text-sm">
                 {(() => {
                   const b = getBiometricLabel(c);
-                  return <span className={`text-xs px-2 py-1 rounded ${b.tone}`}>{b.text}</span>;
+                  return (
+                    <span className={`text-xs px-2 py-1 rounded ${b.tone}`}>
+                      {b.text}
+                    </span>
+                  );
                 })()}
               </td>
               <td className="px-4 py-2 text-sm text-center">
@@ -136,7 +168,14 @@ export default function ConsultationTable({
 
               <td className="px-4 py-2 text-sm text-gray-700">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs px-2 py-1 rounded bg-gray-100">{c.pricing_status ?? "not computed"}</span>
+                  <span className="text-xs px-2 py-1 rounded bg-gray-100">
+                    {c.pricing_status ?? "not computed"}
+                  </span>
+                  {typeof c.amount_delta === "number" && (
+                    <span className={`text-xs ${c.amount_delta === 0 ? "text-green-700" : "text-red-700"}`}>
+                      Δ {c.amount_delta.toLocaleString("fr-FR")} FCFA
+                    </span>
+                  )}
                   {onComputePricing && (
                     <button
                       className="ml-auto text-xs text-blue-600 underline hover:text-blue-800 disabled:opacity-50"
@@ -147,9 +186,22 @@ export default function ConsultationTable({
                     </button>
                   )}
                 </div>
+                {/* Affichage des montants détaillés */}
+                {(c.pricing_total != null || c.insurer_amount != null || c.patient_amount != null) && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Total: {c.pricing_total?.toLocaleString("fr-FR") || "—"} | 
+                    Ass: {c.insurer_amount?.toLocaleString("fr-FR") || "—"} | 
+                    Pat: {c.patient_amount?.toLocaleString("fr-FR") || "—"}
+                  </div>
+                )}
+                {typeof c.missing_tariffs === "number" && c.missing_tariffs > 0 && (
+                  <div className="text-xs text-orange-700 mt-1">
+                    Tarifs manquants: {c.missing_tariffs}
+                  </div>
+                )}
               </td>
 
-              {/* ✅ COLONNE DÉTAILS AVEC BADGE */}
+              {/* ✅ COLONNE DÉTAILS AVEC BADGE (Image 3.3 instructions) */}
               <td className="px-4 py-2 text-sm text-center">
                 {onOpenDetails ? (
                   <button
