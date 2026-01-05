@@ -33,9 +33,10 @@ export default function HistoriqueActesPage() {
   const [rows, setRows] = useState<ConsultationRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
-  const [coverageFilter, setCoverageFilter] = useState<string>(""); // "", "assured", "unassured"
-  const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});  
+  const [coverageFilter, setCoverageFilter] = useState<string>("");
+  const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});
 
+  // 1. Chargement initial des consultations
   useEffect(() => {
     const fetchConsultations = async () => {
       if (!doctorInfo?.doctor_id) {
@@ -45,8 +46,7 @@ export default function HistoriqueActesPage() {
 
       const { data, error } = await supabase
         .from("consultations")
-        .select(
-          `
+        .select(`
           id,
           created_at,
           amount,
@@ -54,8 +54,7 @@ export default function HistoriqueActesPage() {
           fingerprint_missing,
           insurer_id,
           patients ( name )
-        `
-        )
+        `)
         .eq("doctor_id", doctorInfo.doctor_id)
         .order("created_at", { ascending: false });
 
@@ -84,27 +83,33 @@ export default function HistoriqueActesPage() {
     fetchConsultations();
   }, [doctorInfo]);
 
+  // 2. REALTIME & INITIAL UNREAD COUNTS (Image 872171.png & Log Bonus)
   useEffect(() => {
     if (!doctorInfo?.doctor_id) return;
 
     let alive = true;
+    const doctorId = doctorInfo.doctor_id;
 
     const loadCounts = async () => {
-      const counts = await getUnreadMessageCounts(doctorInfo.doctor_id);
-      if (alive) setUnreadByConsultation(counts);
+      const counts = await getUnreadMessageCounts(doctorId);
+      if (alive) {
+        setUnreadByConsultation(counts);
+        // LOG BONUS (Image ec0e50.png)
+        console.log("[HistoriqueActesPage] counts refreshed for doctor:", doctorId);
+      }
     };
 
     loadCounts();
 
     const channel = supabase
-      .channel(`notif:message:doctor:${doctorInfo.doctor_id}`)
+      .channel(`notif-live-doctor-${doctorId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "notifications",
-          filter: `user_id=eq.${doctorInfo.doctor_id}`,
+          filter: `user_id=eq.${doctorId}`,
         },
         () => {
           loadCounts();
@@ -118,44 +123,45 @@ export default function HistoriqueActesPage() {
     };
   }, [doctorInfo?.doctor_id]);
 
+  // 3. Filtrage des données
   const filtered = useMemo(() => {
     let result = [...rows];
-
     if (search.trim()) {
       const s = search.trim().toLowerCase();
-      result = result.filter((r) =>
-        r.patientName.toLowerCase().includes(s)
-      );
+      result = result.filter((r) => r.patientName.toLowerCase().includes(s));
     }
-
     if (statusFilter) {
       result = result.filter((r) => r.status === statusFilter);
     }
-
     if (coverageFilter === "assured") {
       result = result.filter((r) => r.isAssured);
     } else if (coverageFilter === "unassured") {
       result = result.filter((r) => !r.isAssured);
     }
-
     return result;
   }, [rows, search, statusFilter, coverageFilter]);
 
+  // 4. LOGIQUE DE MARQUAGE COMME LU ET NAVIGATION (Image d2adc7.png)
   const handleOpenDetails = async (consultationId: string) => {
-    // Mark “message” notifications read for this consultation
     if (doctorInfo?.doctor_id) {
+      const doctorId = doctorInfo.doctor_id;
+
+      // Correction Fallback ID (Image 872171.png)
+      const finalCid = consultationId;
+
       const { error } = await supabase
         .from("notifications")
         .update({ read: true })
-        .eq("user_id", doctorInfo.doctor_id)
+        .eq("user_id", doctorId)
         .eq("type", "message")
         .eq("read", false)
-        .contains("metadata", { consultation_id: consultationId });
+        .contains("metadata", { consultation_id: finalCid });
 
       if (error) {
         console.error("[HistoriqueActesPage] mark read error:", error);
       } else {
-        const counts = await getUnreadMessageCounts(doctorInfo.doctor_id);
+        // Rafraîchir localement les badges
+        const counts = await getUnreadMessageCounts(doctorId);
         setUnreadByConsultation(counts);
       }
     }
@@ -199,8 +205,6 @@ export default function HistoriqueActesPage() {
           <option value="assured">Assurés</option>
           <option value="unassured">Non assurés</option>
         </select>
-
-        {/* Espaces vides pour aligner sur 5 colonnes */}
         <div />
         <div />
       </div>
@@ -220,51 +224,36 @@ export default function HistoriqueActesPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {loading ? (
               <tr>
-                <td
-                  colSpan={7}
-                  className="p-4 text-center text-gray-500 text-sm"
-                >
+                <td colSpan={7} className="p-4 text-center text-gray-500 text-sm">
                   Chargement des consultations…
                 </td>
               </tr>
-            )}
-
-            {!loading &&
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-4 text-center text-gray-500 text-sm">
+                  Aucune consultation trouvée.
+                </td>
+              </tr>
+            ) : (
               filtered.map((c) => (
                 <tr key={c.id} className="border-t text-sm">
-                  <td className="p-3">
-                    {new Date(c.created_at).toLocaleString()}
-                  </td>
+                  <td className="p-3">{new Date(c.created_at).toLocaleString()}</td>
                   <td className="p-3">{c.patientName}</td>
                   <td className="p-3 text-right">
-                    {c.amount != null
-                      ? `${c.amount.toLocaleString("fr-FR")} FCFA`
-                      : "—"}
+                    {c.amount != null ? `${c.amount.toLocaleString("fr-FR")} FCFA` : "—"}
                   </td>
                   <td className="p-3 capitalize">{c.status}</td>
                   <td className="p-3">
-                    {c.isAssured ? (
-                      <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">
-                        Assuré
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                        Non assuré
-                      </span>
-                    )}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${c.isAssured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {c.isAssured ? "Assuré" : "Non assuré"}
+                    </span>
                   </td>
                   <td className="p-3">
-                    {c.fingerprintMissing ? (
-                      <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
-                        Sans empreinte
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                        OK
-                      </span>
-                    )}
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${c.fingerprintMissing ? 'bg-orange-100 text-orange-700' : 'bg-green-50 text-green-700'}`}>
+                      {c.fingerprintMissing ? "Sans empreinte" : "OK"}
+                    </span>
                   </td>
                   <td className="p-3 text-center">
                     <button
@@ -272,25 +261,16 @@ export default function HistoriqueActesPage() {
                       className="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 inline-flex items-center gap-2"
                     >
                       Voir
-                      {((unreadByConsultation?.[c.id] ?? 0) > 0) && (
+                      {/* BADGE (Image 3.3 / Image d2adc7.png) */}
+                      {(unreadByConsultation[c.id] > 0) && (
                         <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                          {unreadByConsultation?.[c.id]} new
+                          {unreadByConsultation[c.id]} new
                         </span>
                       )}
                     </button>
                   </td>
                 </tr>
-              ))}
-
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="p-4 text-center text-gray-500 text-sm"
-                >
-                  Aucune consultation trouvée.
-                </td>
-              </tr>
+              ))
             )}
           </tbody>
         </table>

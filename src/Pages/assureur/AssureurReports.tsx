@@ -15,7 +15,7 @@ export default function AssureurReports() {
   const { getToken } = useAuth();
   const { user } = useUser();
   
-  // ✅ State pour les badges de notifications
+  // ✅ State unique pour les badges (Image d2b625.png)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
   
@@ -36,7 +36,7 @@ export default function AssureurReports() {
     getAllClinics().then(setClinics).catch(console.error);
   }, []);
 
-  // 2. Charger l'ID interne de l'agent assureur (insurer_staff)
+  // 2. Charger l'ID interne de l'agent
   useEffect(() => {
     const loadAgentId = async () => {
       if (!user?.id) return;
@@ -55,12 +55,12 @@ export default function AssureurReports() {
     loadAgentId();
   }, [user?.id]);
 
-  // 3. ✅ PATCH 3.2 : Subscription Realtime sur les notifications
+  // 3. ✅ SUBSCRIPTION REALTIME (Image d2b625.png & instructions)
   useEffect(() => {
     if (!insurerAgentId) return;
 
     const channel = supabase
-      .channel(`notif-assureur-${insurerAgentId}`)
+      .channel(`notif-live-insurer-${insurerAgentId}`)
       .on(
         "postgres_changes",
         {
@@ -70,9 +70,10 @@ export default function AssureurReports() {
           filter: `user_id=eq.${insurerAgentId}`,
         },
         async () => {
-          // Dès qu'une notification change (insert/update), on rafraîchit les compteurs
+          // ✅ Refresh dès qu'une notification arrive ou change
           const counts = await getUnreadMessageCounts(insurerAgentId);
           setUnreadCounts(counts);
+          console.log("[AssureurReports] Realtime counts updated"); // Log diagnostic
         }
       )
       .subscribe();
@@ -95,7 +96,6 @@ export default function AssureurReports() {
   // 5. Récupération des consultations
   const fetchConsultations = async () => {
     if (!ctx?.insurerId) return;
-
     const payload = { search, status, clinicId, dateStart, dateEnd, insurerId: ctx.insurerId };
     setIsLoading(true);
 
@@ -130,7 +130,7 @@ export default function AssureurReports() {
     if (ctx?.insurerId) fetchConsultations();
   }, [ctx?.insurerId]);
 
-  // 6. Actions (Pricing, Valider, Rejeter)
+  // 6. Actions
   const handleComputePricing = async (id: string) => {
     if (!ctx?.insurerId) return;
     setPricingProcessingId(id);
@@ -187,20 +187,25 @@ export default function AssureurReports() {
     }
   };
 
-  // 7. ✅ handleOpenDetails avec refresh des compteurs
+  // 7. ✅ handleOpenDetails (Image d2b625.png & image_872171.png)
   const handleOpenDetails = async (id: string) => {
     if (insurerAgentId) {
-      // Marquer comme lu
-      await supabase
+      // 1. Marquer comme lu en DB
+      const { error } = await supabase
         .from("notifications")
         .update({ read: true })
         .eq("user_id", insurerAgentId)
         .eq("type", "message")
+        .eq("read", false)
         .contains("metadata", { consultation_id: id });
 
-      // ✅ REFRESH IMMEDIAT des compteurs après le "read"
-      const counts = await getUnreadMessageCounts(insurerAgentId);
-      setUnreadCounts(counts);
+      if (error) {
+        console.error("[AssureurReports] mark read error:", error);
+      } else {
+        // 2. ✅ REFRESH IMMEDIAT des counts (Image d2b625.png)
+        const counts = await getUnreadMessageCounts(insurerAgentId);
+        setUnreadCounts(counts);
+      }
     }
     navigate(`/assureur/consultations/${id}`);
   };
@@ -220,7 +225,7 @@ export default function AssureurReports() {
         />
         <button
           onClick={fetchConsultations}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
           disabled={isLoading}
         >
           {isLoading ? "Chargement..." : "Rechercher"}
@@ -243,7 +248,7 @@ export default function AssureurReports() {
         onOpenDetails={handleOpenDetails}
         onComputePricing={handleComputePricing}
         pricingProcessingId={pricingProcessingId}
-        unreadCounts={unreadCounts} // ✅ Passe l'objet unique ici
+        unreadCounts={unreadCounts} // ✅ Passe l'état propre
       />
     </div>
   );
