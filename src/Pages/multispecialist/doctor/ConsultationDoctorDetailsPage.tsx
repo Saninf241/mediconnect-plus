@@ -17,6 +17,7 @@ interface ConsultationRecord {
   insurer_id: string | null;
   medications: string[] | null;
   doctor_id: string | null;
+  insurer_agent_id: string | null;
 
   // jointures
   patients?: {
@@ -56,6 +57,7 @@ export default function ConsultationDoctorDetailsPage() {
           insurer_decision_at,
           insurer_comment,
           insurer_id,
+          insurer_agent_id,
           medications,
           doctor_id,
           patients ( name, phone, date_of_birth ),
@@ -230,7 +232,7 @@ export default function ConsultationDoctorDetailsPage() {
               consultationId={record.id}
               senderId={record.doctor_id}     // clinic_staff.id (uuid)
               senderRole="doctor"
-              receiverId={record.insurer_id}
+              receiverId={record.insurer_agent_id}
             />
         </section>
         ) : (

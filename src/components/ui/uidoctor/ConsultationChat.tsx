@@ -63,7 +63,7 @@ export default function ConsultationChatDoctor({
       return;
     }
     if (!receiverId) {
-      alert("Impossible d'envoyer : insurer_staff.id introuvable.");
+      alert("Impossible d'envoyer : insurer_agent_id introuvable.");
       return;
     }
     if (!newMessage.trim()) return;
