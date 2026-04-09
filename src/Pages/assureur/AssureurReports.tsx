@@ -295,13 +295,18 @@ export default function AssureurReports() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <input
-          type="text"
-          placeholder="🔍 Rechercher par patient, médecin ou établissement..."
-          className="border rounded px-4 py-2 w-full"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Recherche
+          </label>
+          <input
+            type="text"
+            placeholder="Nom du patient, médecin, établissement..."
+            className="border border-gray-300 rounded-lg px-4 py-2 w-full"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
 
         <FiltersPopover
           status={status}
@@ -313,12 +318,19 @@ export default function AssureurReports() {
           dateEnd={dateEnd}
           setDateEnd={setDateEnd}
           clinics={clinics}
+          onReset={() => {
+            setSearch("");
+            setStatus("");
+            setClinicId("");
+            setDateStart("");
+            setDateEnd("");
+          }}
         />
 
         <div className="flex justify-end">
           <button
             onClick={fetchConsultations}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+            className="bg-green-600 text-white px-5 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
             disabled={isLoading}
           >
             {isLoading ? "Chargement..." : "Rechercher"}

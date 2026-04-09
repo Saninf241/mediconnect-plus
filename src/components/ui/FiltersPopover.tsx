@@ -11,6 +11,7 @@ interface Props {
   dateEnd: string;
   setDateEnd: (value: string) => void;
   clinics: { id: string; name: string }[];
+  onReset?: () => void;
 }
 
 export default function FiltersPopover({
@@ -23,11 +24,27 @@ export default function FiltersPopover({
   dateEnd,
   setDateEnd,
   clinics,
+  onReset,
 }: Props) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 space-y-4 border border-gray-200">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* Statut */}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-800">
+          Filtres de recherche
+        </h3>
+
+        {onReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-sm text-gray-500 hover:text-gray-700 underline"
+          >
+            Réinitialiser
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Statut
@@ -35,16 +52,16 @@ export default function FiltersPopover({
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
           >
             <option value="">Tous</option>
             <option value="sent">Envoyé</option>
             <option value="accepted">Accepté</option>
             <option value="rejected">Rejeté</option>
+            <option value="paid">Payé</option>
           </select>
         </div>
 
-        {/* Établissement */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Établissement
@@ -52,7 +69,7 @@ export default function FiltersPopover({
           <select
             value={clinicId}
             onChange={(e) => setClinicId(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
           >
             <option value="">Tous</option>
             {clinics.map((clinic) => (
@@ -63,7 +80,6 @@ export default function FiltersPopover({
           </select>
         </div>
 
-        {/* Date de début */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Date de début
@@ -72,11 +88,10 @@ export default function FiltersPopover({
             type="date"
             value={dateStart}
             onChange={(e) => setDateStart(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
           />
         </div>
 
-        {/* Date de fin */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Date de fin
@@ -85,14 +100,14 @@ export default function FiltersPopover({
             type="date"
             value={dateEnd}
             onChange={(e) => setDateEnd(e.target.value)}
-            className="w-full border rounded px-3 py-2"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
           />
         </div>
       </div>
 
-      <p className="text-xs text-gray-500 italic">
-        Conseil : utilisez les filtres pour trier les consultations par statut,
-        établissement ou plage de dates.
+      <p className="text-xs text-gray-500">
+        Utilisez les filtres pour retrouver rapidement une consultation par
+        statut, établissement ou période.
       </p>
     </div>
   );
