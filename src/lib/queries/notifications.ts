@@ -1,4 +1,3 @@
-// src/lib/queries/notifications.ts
 import { supabase } from "../supabase";
 
 export type UnreadByConsultation = Record<string, number>;
@@ -19,4 +18,21 @@ export async function getUnreadMessageCounts(userId: string): Promise<UnreadByCo
     counts[row.consultation_id] = row.unread_count;
   }
   return counts;
+}
+
+export async function markConsultationNotificationsAsRead(
+  userId: string,
+  consultationId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("notifications")
+    .update({ read: true })
+    .eq("user_id", userId)
+    .eq("type", "message")
+    .eq("read", false)
+    .contains("metadata", { consultation_id: consultationId });
+
+  if (error) {
+    console.error("[notifications] markConsultationNotificationsAsRead error:", error);
+  }
 }

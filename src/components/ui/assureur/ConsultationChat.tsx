@@ -1,7 +1,7 @@
 // src/components/ui/assureur/ConsultationChat.tsx
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useEffect, useState, useCallback } from "react";
 import { getMessages, sendMessage, Message } from "../../../lib/queries/messages";
+import { markConsultationNotificationsAsRead } from "../../../lib/queries/notifications";
 import { supabase } from "../../../lib/supabase";
 
 interface Props {
@@ -15,7 +15,6 @@ export default function ConsultationChatAssureur({
   doctorStaffId,
   insurerAgentId,
 }: Props) {
-  const { getToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,8 +24,14 @@ export default function ConsultationChatAssureur({
     setMessages(data);
   }, [consultationId]);
 
+  const markAsRead = useCallback(async () => {
+    if (!insurerAgentId) return;
+    await markConsultationNotificationsAsRead(insurerAgentId, consultationId);
+  }, [insurerAgentId, consultationId]);
+
   useEffect(() => {
     fetchMessages();
+    markAsRead();
 
     const channel = supabase
       .channel(`messages:consultation:${consultationId}`)
@@ -38,14 +43,17 @@ export default function ConsultationChatAssureur({
           table: "messages",
           filter: `consultation_id=eq.${consultationId}`,
         },
-        (payload) => {
+        async (payload) => {
           const row = payload.new as Message;
 
-          // ✅ append local (pas de reload / pas de refetch)
           setMessages((prev) => {
             if (prev.some((m) => m.id === row.id)) return prev;
             return [...prev, row];
           });
+
+          if (row.sender_role !== "insurer") {
+            await markAsRead();
+          }
         }
       )
       .subscribe();
@@ -53,7 +61,7 @@ export default function ConsultationChatAssureur({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [consultationId]);
+  }, [consultationId, fetchMessages, markAsRead]);
 
   const handleSend = async () => {
     if (!insurerAgentId) {
@@ -70,7 +78,6 @@ export default function ConsultationChatAssureur({
     try {
       await sendMessage(consultationId, insurerAgentId, "insurer", newMessage, doctorStaffId);
       setNewMessage("");
-      await fetchMessages();
     } catch (e) {
       console.error("[AssureurChat] erreur sendMessage :", e);
       alert("Impossible d'envoyer le message pour le moment.");

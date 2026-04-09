@@ -1,14 +1,14 @@
 // src/components/ui/uidoctor/ConsultationChat.tsx
 import { useEffect, useState, useCallback } from "react";
-import { useAuth } from "@clerk/clerk-react";
 import { getMessages, sendMessage, Message } from "../../../lib/queries/messages";
+import { markConsultationNotificationsAsRead } from "../../../lib/queries/notifications";
 import { supabase } from "../../../lib/supabase";
 
 interface ConsultationChatProps {
   consultationId: string;
-  senderId: string;                 // clinic_staff.id
+  senderId: string;                 // clinic_staff.id du médecin connecté
   senderRole: "doctor" | "insurer"; // ici : "doctor"
-  receiverId: string | null;        // pas utilisé ici pour l’insert
+  receiverId: string | null;        // insurer_staff.id
 }
 
 export default function ConsultationChatDoctor({
@@ -17,7 +17,6 @@ export default function ConsultationChatDoctor({
   senderRole,
   receiverId,
 }: ConsultationChatProps) {
-  const { getToken } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,8 +26,14 @@ export default function ConsultationChatDoctor({
     setMessages(data);
   }, [consultationId]);
 
+  const markAsRead = useCallback(async () => {
+    if (!senderId) return;
+    await markConsultationNotificationsAsRead(senderId, consultationId);
+  }, [senderId, consultationId]);
+
   useEffect(() => {
     fetchMessages();
+    markAsRead();
 
     const channel = supabase
       .channel(`messages:consultation:${consultationId}`)
@@ -40,14 +45,17 @@ export default function ConsultationChatDoctor({
           table: "messages",
           filter: `consultation_id=eq.${consultationId}`,
         },
-        (payload) => {
+        async (payload) => {
           const row = payload.new as Message;
 
-          // ✅ append local (pas de reload / pas de refetch)
           setMessages((prev) => {
             if (prev.some((m) => m.id === row.id)) return prev;
             return [...prev, row];
           });
+
+          if (row.sender_role !== senderRole) {
+            await markAsRead();
+          }
         }
       )
       .subscribe();
@@ -55,7 +63,7 @@ export default function ConsultationChatDoctor({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [consultationId]);
+  }, [consultationId, fetchMessages, markAsRead, senderRole]);
 
   const handleSend = async () => {
     if (!senderId) {
@@ -63,7 +71,7 @@ export default function ConsultationChatDoctor({
       return;
     }
     if (!receiverId) {
-      alert("Impossible d'envoyer : insurer_agent_id introuvable.");
+      alert("Impossible d'envoyer : insurer_staff.id introuvable.");
       return;
     }
     if (!newMessage.trim()) return;
@@ -72,7 +80,6 @@ export default function ConsultationChatDoctor({
     try {
       await sendMessage(consultationId, senderId, senderRole, newMessage, receiverId);
       setNewMessage("");
-      await fetchMessages();
     } catch (e) {
       console.error("[DoctorChat] erreur sendMessage :", e);
       alert("Impossible d'envoyer le message pour le moment.");
