@@ -74,11 +74,27 @@ export default function ConsultationChatDoctor({
       alert("Impossible d'envoyer : insurer_staff.id introuvable.");
       return;
     }
-    if (!newMessage.trim()) return;
+
+    const trimmed = newMessage.trim();
+    if (!trimmed) return;
 
     setLoading(true);
     try {
-      await sendMessage(consultationId, senderId, senderRole, newMessage, receiverId);
+      const createdMessage = await sendMessage(
+        consultationId,
+        senderId,
+        senderRole,
+        trimmed,
+        receiverId
+      );
+
+      if (createdMessage) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === createdMessage.id)) return prev;
+          return [...prev, createdMessage];
+        });
+      }
+
       setNewMessage("");
     } catch (e) {
       console.error("[DoctorChat] erreur sendMessage :", e);
