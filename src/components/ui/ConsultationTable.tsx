@@ -210,8 +210,8 @@ export default function ConsultationTable({
                   >
                     Ouvrir
                     {count > 0 && (
-                      <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                        {count} new
+                      <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] rounded-full bg-red-600 text-[10px] font-semibold text-white px-1">
+                        {count}
                       </span>
                     )}
                   </button>
