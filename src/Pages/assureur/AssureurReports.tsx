@@ -216,7 +216,7 @@ export default function AssureurReports() {
         .from("notifications")
         .update({ read: true })
         .eq("user_id", insurerAgentId)
-        .in("type", ["message", "decision"])
+        .eq("type", "message")
         .eq("read", false)
         .contains("metadata", { consultation_id: id });
 
@@ -234,62 +234,63 @@ export default function AssureurReports() {
   if (loading) return <p className="p-6">Chargement...</p>;
   if (!ctx) return <p className="p-6">Aucun assureur attaché.</p>;
 
-    const notifyDoctorDecision = async (
-      consultationId: string,
-      decision: "accepted" | "rejected",
-      comment?: string
-    ) => {
-      const { data: consultation, error: consultationError } = await supabase
-        .from("consultations")
-        .select("id, doctor_id")
-        .eq("id", consultationId)
-        .maybeSingle();
+  const notifyDoctorDecision = async (
+    consultationId: string,
+    decision: "accepted" | "rejected",
+    comment?: string
+  ) => {
+    const { data: consultation, error: consultationError } = await supabase
+      .from("consultations")
+      .select("id, doctor_id")
+      .eq("id", consultationId)
+      .maybeSingle();
 
-      if (consultationError) {
-        console.error("[AssureurReports] consultation lookup error:", consultationError);
-        return;
-      }
+    if (consultationError) {
+      console.error("[AssureurReports] consultation lookup error:", consultationError);
+      return;
+    }
 
-      if (!consultation?.doctor_id) {
-        console.warn(
-          "[AssureurReports] Aucun doctor_id trouvé pour la consultation",
-          consultationId
-        );
-        return;
-      }
+    if (!consultation?.doctor_id) {
+      console.warn(
+        "[AssureurReports] Aucun doctor_id trouvé pour la consultation",
+        consultationId
+      );
+      return;
+    }
 
-      const title =
-        decision === "accepted"
-          ? "Consultation acceptée"
-          : "Consultation rejetée";
+    const title =
+      decision === "accepted"
+        ? "Consultation acceptée"
+        : "Consultation rejetée";
 
-      const context =
-        decision === "accepted"
-          ? "L’assureur a validé cette consultation."
-          : `L’assureur a rejeté cette consultation${comment ? ` : ${comment}` : "."}`;
+    const content =
+      decision === "accepted"
+        ? "L’assureur a validé cette consultation."
+        : `L’assureur a rejeté cette consultation${comment ? ` : ${comment}` : "."}`;
 
-      const { error: notifError } = await supabase.from("notifications").insert({
-        user_id: consultation.doctor_id,
-        type: "decision",
-        title,
-        context,
-        read: false,
-        metadata: {
-          consultation_id: consultationId,
-          decision,
-          insurer_comment: comment ?? null,
-        },
-      });
+    const { error: notifError } = await supabase.from("notifications").insert({
+      user_id: consultation.doctor_id,
+      type: "message",
+      title,
+      content,
+      read: false,
+      metadata: {
+        consultation_id: consultationId,
+        event: "insurer_decision",
+        decision,
+        insurer_comment: comment ?? null,
+      },
+    });
 
-      if (notifError) {
-        console.error("[AssureurReports] decision notification insert error:", notifError);
-      } else {
-        console.log(
-          "[AssureurReports] decision notification inserted for doctor:",
-          consultation.doctor_id
-        );
-      }
-    };
+    if (notifError) {
+      console.error("[AssureurReports] decision notification insert error:", notifError);
+    } else {
+      console.log(
+        "[AssureurReports] decision notification inserted for doctor:",
+        consultation.doctor_id
+      );
+    }
+  };
 
   return (
     <div className="space-y-6">
