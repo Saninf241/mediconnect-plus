@@ -294,30 +294,37 @@ export default function AssureurReports() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
+      <div className="space-y-4">
         <input
           type="text"
-          placeholder="🔍 Rechercher..."
+          placeholder="🔍 Rechercher par patient, médecin ou établissement..."
           className="border rounded px-4 py-2 w-full"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <button
-          onClick={fetchConsultations}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
-          disabled={isLoading}
-        >
-          {isLoading ? "Chargement..." : "Rechercher"}
-        </button>
-      </div>
 
-      <FiltersPopover
-        status={status} setStatus={setStatus}
-        clinicId={clinicId} setClinicId={setClinicId}
-        dateStart={dateStart} setDateStart={setDateStart}
-        dateEnd={dateEnd} setDateEnd={setDateEnd}
-        clinics={clinics}
-      />
+        <FiltersPopover
+          status={status}
+          setStatus={setStatus}
+          clinicId={clinicId}
+          setClinicId={setClinicId}
+          dateStart={dateStart}
+          setDateStart={setDateStart}
+          dateEnd={dateEnd}
+          setDateEnd={setDateEnd}
+          clinics={clinics}
+        />
+
+        <div className="flex justify-end">
+          <button
+            onClick={fetchConsultations}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+            disabled={isLoading}
+          >
+            {isLoading ? "Chargement..." : "Rechercher"}
+          </button>
+        </div>
+      </div>
 
       <ConsultationTable
         consultations={consultations}

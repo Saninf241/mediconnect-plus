@@ -25,94 +25,128 @@ serve(async (req) => {
     });
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const body = await req.json().catch(() => ({}));
-  const {
-    search = "",
-    status = "",
-    clinicId = "",
-    dateStart = "",
-    dateEnd = "",
-    insurerId = "",
-  } = body as {
-    search?: string;
-    status?: string;
-    clinicId?: string;
-    dateStart?: string;
-    dateEnd?: string;
-    insurerId?: string;
-  };
+    const body = await req.json().catch(() => ({}));
+    const {
+      search = "",
+      status = "",
+      clinicId = "",
+      dateStart = "",
+      dateEnd = "",
+      insurerId = "",
+    } = body as {
+      search?: string;
+      status?: string;
+      clinicId?: string;
+      dateStart?: string;
+      dateEnd?: string;
+      insurerId?: string;
+    };
 
-  console.log("filter-consultations body:", body);
+    console.log("filter-consultations body:", body);
 
-  if (!insurerId) {
-    return new Response(
-      JSON.stringify({ data: [], error: "Missing insurerId" }),
-      { status: 400, headers: jsonHeaders }
-    );
-  }
+    if (!insurerId) {
+      return new Response(
+        JSON.stringify({ data: [], error: "Missing insurerId" }),
+        { status: 400, headers: jsonHeaders }
+      );
+    }
 
-  const selectFields = `
-    id,
-    created_at,
-    amount,
-    status,
-    pdf_url,
-    insurer_id,
-    patient_id,
-    doctor_id,
-    clinic_id,
-    pricing_status,
-    pricing_total,
-    amount_delta,
-    insurer_amount,
-    patient_amount,
-    missing_tariffs,
-    
-    biometric_verified_at,
-    biometric_operator_id,
-    biometric_clinic_id,
-    fingerprint_missing,
+    const selectFields = `
+      id,
+      created_at,
+      amount,
+      status,
+      pdf_url,
+      insurer_id,
+      patient_id,
+      doctor_id,
+      clinic_id,
+      pricing_status,
+      pricing_total,
+      amount_delta,
+      insurer_amount,
+      patient_amount,
+      missing_tariffs,
+      biometric_verified_at,
+      biometric_operator_id,
+      biometric_clinic_id,
+      fingerprint_missing,
+      insurer_comment,
+      insurer_decision_at,
+      patients(name),
+      clinic_staff(name),
+      clinics(name)
+    `;
 
-    patients(name),
-    clinic_staff(name),
-    clinics(name)
-  `;
+    let q = supabase
+      .from("consultations")
+      .select(selectFields)
+      .eq("insurer_id", insurerId);
 
-  let q = supabase
-    .from("consultations")
-    .select(selectFields)
-    .eq("insurer_id", insurerId);
+    if (status) q = q.eq("status", status);
+    if (clinicId) q = q.eq("clinic_id", clinicId);
 
-  if (status) q = q.eq("status", status);
-  if (clinicId) q = q.eq("clinic_id", clinicId);
-  if (dateStart) q = q.gte("created_at", dateStart);
-  if (dateEnd) q = q.lte("created_at", dateEnd);
+    if (dateStart) {
+      q = q.gte("created_at", `${dateStart}T00:00:00`);
+    }
 
-  if (search && search.trim()) {
-    const s = `%${search.trim()}%`;
-    q = q.or(
-      `patients.name.ilike.${s},clinic_staff.name.ilike.${s},clinics.name.ilike.${s}`
-    );
-  }
+    if (dateEnd) {
+      q = q.lte("created_at", `${dateEnd}T23:59:59.999`);
+    }
 
-  const { data, error } = await q.order("created_at", { ascending: false });
+    const { data, error } = await q.order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("filter-consultations error:", error);
-    return new Response(JSON.stringify({ data: [], error }), {
-      status: 400,
+    if (error) {
+      console.error("filter-consultations error:", error);
+      return new Response(JSON.stringify({ data: [], error }), {
+        status: 400,
+        headers: jsonHeaders,
+      });
+    }
+
+    let filteredData = data ?? [];
+
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+
+      filteredData = filteredData.filter((row: any) => {
+        const patientName = row?.patients?.name?.toLowerCase?.() ?? "";
+        const doctorName = row?.clinic_staff?.name?.toLowerCase?.() ?? "";
+        const clinicName = row?.clinics?.name?.toLowerCase?.() ?? "";
+        const statusText = row?.status?.toLowerCase?.() ?? "";
+
+        return (
+          patientName.includes(s) ||
+          doctorName.includes(s) ||
+          clinicName.includes(s) ||
+          statusText.includes(s)
+        );
+      });
+    }
+
+    console.log("filter-consultations first row:", filteredData[0] ?? null);
+
+    return new Response(JSON.stringify({ data: filteredData, error: null }), {
+      status: 200,
       headers: jsonHeaders,
     });
+  } catch (e) {
+    console.error("filter-consultations fatal error:", e);
+
+    return new Response(
+      JSON.stringify({
+        data: [],
+        error: e instanceof Error ? e.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: jsonHeaders,
+      }
+    );
   }
-
-  console.log("filter-consultations first row:", data?.[0] ?? null);
-
-  return new Response(JSON.stringify({ data, error: null }), {
-    status: 200,
-    headers: jsonHeaders,
-  });
 });
