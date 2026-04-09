@@ -263,8 +263,8 @@ export default function HistoriqueActesPage() {
                       Voir
                       {/* BADGE (Image 3.3 / Image d2adc7.png) */}
                       {(unreadByConsultation[c.id] > 0) && (
-                        <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                          {unreadByConsultation[c.id]} new
+                        <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] rounded-full bg-red-600 text-[10px] font-semibold text-white px-1">
+                          {unreadByConsultation[c.id] > 9 ? "9+" : unreadByConsultation[c.id]}
                         </span>
                       )}
                     </button>
