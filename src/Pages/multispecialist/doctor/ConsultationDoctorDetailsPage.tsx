@@ -161,42 +161,86 @@ export default function ConsultationDoctorDetailsPage() {
       </section>
 
       {/* Bloc statut assureur */}
-      <section className="bg-white rounded-xl shadow-sm p-4 space-y-1">
-        <h2 className="font-semibold mb-2">Statut auprès de l’assureur</h2>
-        <p>
-          <span className="font-medium">Statut :</span>{" "}
-          {record.status === "accepted"
-            ? "Acceptée par l’assureur"
-            : record.status === "rejected"
-            ? "Rejetée par l’assureur"
-            : record.status === "sent"
-            ? "Envoyée – en attente de décision"
-            : record.status}
-        </p>
-        <p>
-          <span className="font-medium">Décision le :</span> {decisionDate}
-        </p>
-        <p>
-          <span className="font-medium">Commentaire de l’assureur :</span>{" "}
-          {record.insurer_comment?.trim()
-            ? record.insurer_comment
-            : "— aucun commentaire —"}
-        </p>
-        <p>
-          <span className="font-medium">Rapport PDF (assureur) :</span>{" "}
-          {record.pdf_url ? (
-            <a
-              href={record.pdf_url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-blue-600 underline"
-            >
-              Ouvrir le rapport PDF
-            </a>
-          ) : (
-            <span className="text-gray-500">Non disponible</span>
-          )}
-        </p>
+      <section className="bg-white rounded-xl shadow-sm p-4 space-y-4">
+        <h2 className="font-semibold">Statut auprès de l’assureur</h2>
+
+        {record.status === "accepted" && (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+            <p className="text-sm font-semibold text-green-800">
+              ✅ Consultation acceptée par l’assureur
+            </p>
+            <p className="text-sm text-green-700 mt-1">
+              Cette consultation a été validée.
+            </p>
+            <p className="text-xs text-green-700 mt-2">
+              Décision enregistrée le : {decisionDate}
+            </p>
+          </div>
+        )}
+
+        {record.status === "rejected" && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-red-800">
+              ❌ Consultation rejetée par l’assureur
+            </p>
+            <p className="text-xs text-red-700 mt-2">
+              Décision enregistrée le : {decisionDate}
+            </p>
+
+            <div className="mt-3">
+              <p className="text-sm font-medium text-red-800">Motif du rejet</p>
+              <p className="text-sm text-red-700 mt-1">
+                {record.insurer_comment?.trim()
+                  ? record.insurer_comment
+                  : "Aucun motif n’a été renseigné par l’assureur."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {record.status === "sent" && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <p className="text-sm font-semibold text-yellow-800">
+              ⏳ Consultation envoyée à l’assureur
+            </p>
+            <p className="text-sm text-yellow-700 mt-1">
+              En attente de décision.
+            </p>
+          </div>
+        )}
+
+        {!["accepted", "rejected", "sent"].includes(record.status) && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-800">
+              Statut actuel : {record.status || "—"}
+            </p>
+            <p className="text-xs text-gray-600 mt-2">
+              Décision enregistrée le : {decisionDate}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-1 text-sm">
+          <p>
+            <span className="font-medium">Statut brut :</span> {record.status}
+          </p>
+
+          <p>
+            <span className="font-medium">Rapport PDF (assureur) :</span>{" "}
+            {record.pdf_url ? (
+              <a
+                href={record.pdf_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 underline"
+              >
+                Ouvrir le rapport PDF
+              </a>
+            ) : (
+              <span className="text-gray-500">Non disponible</span>
+            )}
+          </p>
+        </div>
       </section>
 
       {/* Bloc médicaments + ordonnance */}
