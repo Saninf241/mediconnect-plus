@@ -1,6 +1,13 @@
+// src/lib/queries/notifications.ts
 import { supabase } from "../supabase";
 
-export type UnreadByConsultation = Record<string, number>;
+export type ConsultationNotificationInfo = {
+  count: number;
+  hasDecision: boolean;
+  hasMessage: boolean;
+};
+
+export type UnreadByConsultation = Record<string, ConsultationNotificationInfo>;
 
 export async function getUnreadMessageCounts(
   userId: string
@@ -22,7 +29,24 @@ export async function getUnreadMessageCounts(
   for (const row of data ?? []) {
     const consultationId = row?.metadata?.consultation_id;
     if (!consultationId || typeof consultationId !== "string") continue;
-    counts[consultationId] = (counts[consultationId] || 0) + 1;
+
+    if (!counts[consultationId]) {
+      counts[consultationId] = {
+        count: 0,
+        hasDecision: false,
+        hasMessage: false,
+      };
+    }
+
+    counts[consultationId].count += 1;
+
+    const event = row?.metadata?.event;
+
+    if (event === "insurer_decision") {
+      counts[consultationId].hasDecision = true;
+    } else {
+      counts[consultationId].hasMessage = true;
+    }
   }
 
   return counts;

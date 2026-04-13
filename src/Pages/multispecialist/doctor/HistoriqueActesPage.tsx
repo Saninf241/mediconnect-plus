@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
-import { getUnreadMessageCounts } from "../../../lib/queries/notifications";
+import { getUnreadMessageCounts, markConsultationNotificationsAsRead, type UnreadByConsultation,} from "../../../lib/queries/notifications";
 
 type RawConsultation = {
   id: string;
@@ -34,8 +34,7 @@ export default function HistoriqueActesPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [coverageFilter, setCoverageFilter] = useState<string>("");
-  const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});
-  const [currentPage, setCurrentPage] = useState(1);
+  const [unreadByConsultation, setUnreadByConsultation] = useState<UnreadByConsultation>({});  const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
   // 1. Chargement initial des consultations
@@ -145,14 +144,12 @@ export default function HistoriqueActesPage() {
     }
 
     result.sort((a, b) => {
-      const aUnread = unreadByConsultation[a.id] || 0;
-      const bUnread = unreadByConsultation[b.id] || 0;
+      const aUnread = unreadByConsultation[a.id]?.count || 0;
+      const bUnread = unreadByConsultation[b.id]?.count || 0;
 
-      // 1. Les consultations avec notifications non lues en premier
       if (aUnread > 0 && bUnread === 0) return -1;
       if (aUnread === 0 && bUnread > 0) return 1;
 
-      // 2. Ensuite les plus récentes
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
@@ -171,24 +168,10 @@ export default function HistoriqueActesPage() {
     if (doctorInfo?.doctor_id) {
       const doctorId = doctorInfo.doctor_id;
 
-      // Correction Fallback ID (Image 872171.png)
-      const finalCid = consultationId;
+      await markConsultationNotificationsAsRead(doctorId, consultationId);
 
-      const { error } = await supabase
-        .from("notifications")
-        .update({ read: true })
-        .eq("user_id", doctorId)
-        .eq("type", "message")
-        .eq("read", false)
-        .contains("metadata", { consultation_id: finalCid });
-
-      if (error) {
-        console.error("[HistoriqueActesPage] mark read error:", error);
-      } else {
-        // Rafraîchir localement les badges
-        const counts = await getUnreadMessageCounts(doctorId);
-        setUnreadByConsultation(counts);
-      }
+      const counts = await getUnreadMessageCounts(doctorId);
+      setUnreadByConsultation(counts);
     }
 
     navigate(`/multispecialist/doctor/consultations/${consultationId}`);
@@ -291,9 +274,15 @@ export default function HistoriqueActesPage() {
                     >
                       Voir
                       {/* BADGE (Image 3.3 / Image d2adc7.png) */}
-                      {(unreadByConsultation[c.id] > 0) && (
+                      {unreadByConsultation[c.id]?.hasDecision && (
                         <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                          {unreadByConsultation[c.id]} alerte
+                          Décision
+                        </span>
+                      )}
+
+                      {unreadByConsultation[c.id]?.hasMessage && (
+                        <span className="inline-flex items-center rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          Message
                         </span>
                       )}
                     </button>

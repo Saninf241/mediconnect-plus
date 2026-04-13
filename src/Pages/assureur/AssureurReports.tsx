@@ -8,7 +8,7 @@ import FiltersPopover from "../../components/ui/FiltersPopover";
 import { getAllClinics } from "../../lib/queries/clinics";
 import { toast } from "react-toastify";
 import { useAuth, useUser } from "@clerk/clerk-react";
-import { getUnreadMessageCounts } from "../../lib/queries/notifications";
+import { getUnreadMessageCounts, type UnreadByConsultation, } from "../../lib/queries/notifications";
 
 export default function AssureurReports() {
   const { ctx, loading } = useInsurerContext();
@@ -30,6 +30,14 @@ export default function AssureurReports() {
   const [isLoading, setIsLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [pricingProcessingId, setPricingProcessingId] = useState<string | null>(null);
+  const toCountMap = (source: UnreadByConsultation): Record<string, number> => {
+  const result: Record<string, number> = {};
+
+  for (const [consultationId, info] of Object.entries(source)) {
+    result[consultationId] = info.count;
+  }
+  return result;
+  };
 
   // 1. Charger la liste des cliniques
   useEffect(() => {
@@ -72,7 +80,7 @@ export default function AssureurReports() {
         async () => {
           // ✅ Refresh dès qu'une notification arrive ou change
           const counts = await getUnreadMessageCounts(insurerAgentId);
-          setUnreadCounts(counts);
+          setUnreadCounts(toCountMap(counts));
           console.log("[AssureurReports] Realtime counts updated"); // Log diagnostic
         }
       )
@@ -88,7 +96,7 @@ export default function AssureurReports() {
     const loadCounts = async () => {
       if (!insurerAgentId) return;
       const counts = await getUnreadMessageCounts(insurerAgentId);
-      setUnreadCounts(counts);
+      setUnreadCounts(toCountMap(counts));
     };
     loadCounts();
   }, [insurerAgentId]);
@@ -225,7 +233,7 @@ export default function AssureurReports() {
       } else {
         // 2. ✅ REFRESH IMMEDIAT des counts (Image d2b625.png)
         const counts = await getUnreadMessageCounts(insurerAgentId);
-        setUnreadCounts(counts);
+        setUnreadCounts(toCountMap(counts));
       }
     }
     navigate(`/assureur/consultations/${id}`);
