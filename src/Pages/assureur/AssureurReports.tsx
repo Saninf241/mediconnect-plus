@@ -1,5 +1,5 @@
 // src/Pages/assureur/AssureurReports.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { useInsurerContext } from "../../hooks/useInsurerContext";
@@ -30,6 +30,8 @@ export default function AssureurReports() {
   const [isLoading, setIsLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [pricingProcessingId, setPricingProcessingId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
   const toCountMap = (source: UnreadByConsultation): Record<string, number> => {
   const result: Record<string, number> = {};
 
@@ -137,6 +139,31 @@ export default function AssureurReports() {
   useEffect(() => {
     if (ctx?.insurerId) fetchConsultations();
   }, [ctx?.insurerId]);
+
+    const sortedConsultations = useMemo(() => {
+    return [...consultations].sort((a, b) => {
+      const aUnread = unreadCounts[a.id] || 0;
+      const bUnread = unreadCounts[b.id] || 0;
+
+      // 1. consultations avec notifications non lues en premier
+      if (aUnread > 0 && bUnread === 0) return -1;
+      if (aUnread === 0 && bUnread > 0) return 1;
+
+      // 2. ensuite les plus récentes
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [consultations, unreadCounts]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedConsultations.length / pageSize));
+
+  const paginatedConsultations = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedConsultations.slice(start, start + pageSize);
+  }, [sortedConsultations, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, status, clinicId, dateStart, dateEnd, consultations.length]);
 
   // 6. Actions
   const handleComputePricing = async (id: string) => {
@@ -347,7 +374,7 @@ export default function AssureurReports() {
       </div>
 
       <ConsultationTable
-        consultations={consultations}
+        consultations={paginatedConsultations}
         onValidate={handleValidate}
         onReject={handleReject}
         processingId={processingId}
@@ -356,6 +383,30 @@ export default function AssureurReports() {
         pricingProcessingId={pricingProcessingId}
         unreadCounts={unreadCounts} // ✅ Passe l'état propre
       />
+
+      <div className="flex items-center justify-between pt-4">
+        <p className="text-sm text-gray-500">
+          Page {currentPage} sur {totalPages}
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 rounded border disabled:opacity-50"
+          >
+            Précédent
+          </button>
+
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 rounded border disabled:opacity-50"
+          >
+            Suivant
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
