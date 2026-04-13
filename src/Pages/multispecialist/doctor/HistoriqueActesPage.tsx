@@ -35,6 +35,8 @@ export default function HistoriqueActesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [coverageFilter, setCoverageFilter] = useState<string>("");
   const [unreadByConsultation, setUnreadByConsultation] = useState<Record<string, number>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   // 1. Chargement initial des consultations
   useEffect(() => {
@@ -126,20 +128,43 @@ export default function HistoriqueActesPage() {
   // 3. Filtrage des données
   const filtered = useMemo(() => {
     let result = [...rows];
+
     if (search.trim()) {
       const s = search.trim().toLowerCase();
       result = result.filter((r) => r.patientName.toLowerCase().includes(s));
     }
+
     if (statusFilter) {
       result = result.filter((r) => r.status === statusFilter);
     }
+
     if (coverageFilter === "assured") {
       result = result.filter((r) => r.isAssured);
     } else if (coverageFilter === "unassured") {
       result = result.filter((r) => !r.isAssured);
     }
+
+    result.sort((a, b) => {
+      const aUnread = unreadByConsultation[a.id] || 0;
+      const bUnread = unreadByConsultation[b.id] || 0;
+
+      // 1. Les consultations avec notifications non lues en premier
+      if (aUnread > 0 && bUnread === 0) return -1;
+      if (aUnread === 0 && bUnread > 0) return 1;
+
+      // 2. Ensuite les plus récentes
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+
     return result;
-  }, [rows, search, statusFilter, coverageFilter]);
+  }, [rows, search, statusFilter, coverageFilter, unreadByConsultation]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage]);
 
   // 4. LOGIQUE DE MARQUAGE COMME LU ET NAVIGATION (Image d2adc7.png)
   const handleOpenDetails = async (consultationId: string) => {
@@ -168,6 +193,10 @@ export default function HistoriqueActesPage() {
 
     navigate(`/multispecialist/doctor/consultations/${consultationId}`);
   };
+
+  useEffect(() => {
+  setCurrentPage(1);
+}, [search, statusFilter, coverageFilter]);
 
   return (
     <div className="p-6 space-y-6">
@@ -237,7 +266,7 @@ export default function HistoriqueActesPage() {
                 </td>
               </tr>
             ) : (
-              filtered.map((c) => (
+              paginatedRows.map((c) => (
                 <tr key={c.id} className="border-t text-sm">
                   <td className="p-3">{new Date(c.created_at).toLocaleString()}</td>
                   <td className="p-3">{c.patientName}</td>
@@ -263,8 +292,8 @@ export default function HistoriqueActesPage() {
                       Voir
                       {/* BADGE (Image 3.3 / Image d2adc7.png) */}
                       {(unreadByConsultation[c.id] > 0) && (
-                        <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-[16px] rounded-full bg-red-600 text-[10px] font-semibold text-white px-1">
-                          {unreadByConsultation[c.id] > 9 ? "9+" : unreadByConsultation[c.id]}
+                        <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                          {unreadByConsultation[c.id]} alerte
                         </span>
                       )}
                     </button>
@@ -275,6 +304,29 @@ export default function HistoriqueActesPage() {
           </tbody>
         </table>
       </div>
+        <div className="flex items-center justify-between pt-4">
+    <p className="text-sm text-gray-500">
+      Page {currentPage} sur {totalPages}
+    </p>
+
+    <div className="flex gap-2">
+      <button
+        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+        disabled={currentPage === 1}
+        className="px-3 py-1 rounded border disabled:opacity-50"
+      >
+        Précédent
+      </button>
+
+      <button
+        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+        disabled={currentPage === totalPages}
+        className="px-3 py-1 rounded border disabled:opacity-50"
+      >
+        Suivant
+      </button>
+    </div>
+  </div>
     </div>
   );
 }
