@@ -1,11 +1,11 @@
 // src/lib/queries/doctors.ts
 import { supabase } from "../supabase";
 
-export async function getDoctorPerformance(clerkUserId: string) {
+export async function getDoctorPerformance(clerkUserId: string, period: string) {
   try {
     const { data: staff, error: staffError } = await supabase
       .from("clinic_staff")
-      .select("id, clerk_user_id, role")
+      .select("id")
       .eq("clerk_user_id", clerkUserId)
       .maybeSingle();
 
@@ -15,15 +15,13 @@ export async function getDoctorPerformance(clerkUserId: string) {
     }
 
     if (!staff?.id) {
-      console.warn(
-        "[getDoctorPerformance] Aucun médecin trouvé dans clinic_staff pour clerk_user_id:",
-        clerkUserId
-      );
+      console.warn("[getDoctorPerformance] Aucun médecin trouvé pour :", clerkUserId);
       return null;
     }
 
     const { data, error } = await supabase.rpc("get_doctor_performance", {
       input_doctor_id: staff.id,
+      input_period: period,
     });
 
     if (error) {
