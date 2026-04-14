@@ -1,8 +1,6 @@
 // src/Pages/multispecialist/doctor/PerformanceDoctorPage.tsx
-
 import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { supabase } from "../../../lib/supabase";
 import { getDoctorPerformance } from "../../../lib/queries/doctors";
 import {
   LineChart,
@@ -38,13 +36,10 @@ type PerformanceData = {
   monthly_revenues?: ChartPoint[];
   monthly_delays?: ChartPoint[];
   monthly_acceptance_rates?: ChartPoint[];
-
-  // Nouveaux champs conseillés
   total_consultations?: number;
   current_month_consultations?: number;
   previous_month_consultations?: number;
   monthly_consultations?: ChartPoint[];
-
   rejected_rate?: number;
   current_month_rejected?: number;
   pending_consultations?: number;
@@ -130,44 +125,19 @@ function ChartCard({
 export default function PerformanceDoctorPage() {
   const { user } = useUser();
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
-  const [subscription, setSubscription] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchPerformance = async () => {
       try {
-        if (!user?.id) return;
-
-        const { data: staff, error: staffError } = await supabase
-          .from("clinic_staff")
-          .select("clinic_id")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (staffError) {
-          console.error("Erreur clinic_staff:", staffError);
+        if (!user?.id) {
+          setLoading(false);
           return;
         }
 
-        if (!staff?.clinic_id) return;
-
-        const { data: clinic, error: clinicError } = await supabase
-          .from("clinics")
-          .select("subscription_plan")
-          .eq("id", staff.clinic_id)
-          .maybeSingle();
-
-        if (clinicError) {
-          console.error("Erreur clinics:", clinicError);
-          return;
-        }
-
-        const plan = clinic?.subscription_plan || "";
-        setSubscription(plan);
-
-        // Tu pourras réactiver le bloc premium après
         const data = await getDoctorPerformance(user.id);
-        setPerformance(data?.[0] ?? null);
+        console.log("Performance récupérée :", data);
+        setPerformance(data ?? null);
       } catch (error) {
         console.error("Erreur chargement performance:", error);
       } finally {
@@ -183,14 +153,11 @@ export default function PerformanceDoctorPage() {
 
     const currentMonthRevenue = p.current_month_revenue || 0;
     const previousMonthRevenue = p.previous_month_revenue || 0;
-
     const currentMonthConsultations = p.current_month_consultations || 0;
     const previousMonthConsultations = p.previous_month_consultations || 0;
-
     const immediateAcceptanceRate = p.immediate_acceptance_rate || 0;
     const rejectedRate = p.rejected_rate || 0;
     const avgPaymentDelay = p.avg_payment_delay || 0;
-
     const totalConsultations = p.total_consultations || 0;
     const pendingConsultations = p.pending_consultations || 0;
     const paidConsultations = p.paid_consultations || 0;
@@ -257,19 +224,6 @@ export default function PerformanceDoctorPage() {
     return notes;
   }, [metrics]);
 
-  /*
-  if (!subscription.includes("premium")) {
-    return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold text-blue-700 mb-4">📊 Tableau de performance</h1>
-        <p className="text-gray-600">
-          Cette fonctionnalité est réservée aux abonnés premium.
-        </p>
-      </div>
-    );
-  }
-  */
-
   if (loading) {
     return <div className="p-6">Chargement des données de performance...</div>;
   }
@@ -294,7 +248,6 @@ export default function PerformanceDoctorPage() {
         </p>
       </div>
 
-      {/* KPIs principaux */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <KpiCard
           title="Consultations ce mois"
@@ -355,7 +308,6 @@ export default function PerformanceDoctorPage() {
         />
       </div>
 
-      {/* KPIs secondaires */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
           <p className="text-sm text-gray-500">Dossiers en attente</p>
@@ -373,34 +325,14 @@ export default function PerformanceDoctorPage() {
         </div>
       </div>
 
-      {/* Graphiques */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <ChartCard
-          title="📈 Revenus mensuels"
-          data={metrics.monthlyRevenues}
-          color="#2563eb"
-        />
-
-        <ChartCard
-          title="📊 Taux d’acceptation"
-          data={metrics.monthlyAcceptanceRates}
-          color="#10b981"
-          yDomain={[0, 100]}
-        />
-
-        <ChartCard
-          title="🩺 Consultations mensuelles"
-          data={metrics.monthlyConsultations}
-          color="#8b5cf6"
-        />
+        <ChartCard title="📈 Revenus mensuels" data={metrics.monthlyRevenues} color="#2563eb" />
+        <ChartCard title="📊 Taux d’acceptation" data={metrics.monthlyAcceptanceRates} color="#10b981" yDomain={[0, 100]} />
+        <ChartCard title="🩺 Consultations mensuelles" data={metrics.monthlyConsultations} color="#8b5cf6" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <ChartCard
-          title="⏱️ Délai moyen de paiement"
-          data={metrics.monthlyDelays}
-          color="#f97316"
-        />
+        <ChartCard title="⏱️ Délai moyen de paiement" data={metrics.monthlyDelays} color="#f97316" />
 
         <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
