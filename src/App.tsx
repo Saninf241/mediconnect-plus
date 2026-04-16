@@ -1,10 +1,8 @@
 // src/App.tsx
-import { Routes, Route, Navigate, useNavigate, Link, Outlet } from 'react-router-dom';
-import { RedirectToSignIn } from "@clerk/clerk-react";
-import { useState, useEffect, FormEvent } from 'react';
+import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { SignIn, SignUp } from '@clerk/clerk-react';
 import { SignedIn, SignedOut, UserButton, useUser, useClerk } from "@clerk/clerk-react";
-import ClerkGuard from "./components/auth/ClerkGuard";
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
 import DashboardPage from './Pages/doctor/DashboardPage';
@@ -13,7 +11,7 @@ import NewActPage from './Pages/doctor/NewActPage';
 import NewPatientPage from './Pages/doctor/NewPatientPage';
 import ConsultationFollowUpPage from './Pages/doctor/ConsultationFollowUpPage';
 import SettingsPage from './Pages/doctor/SettingsPage';
-import { Building, Code, AlertCircle, User } from 'lucide-react';
+import { Building, Code, User } from 'lucide-react';
 import PerformancePage from './Pages/doctor/PerformancePage';
 import MultispecialistDoctorLayout from './components/layouts/MultispecialistDoctorLayout';
 import MultispecialistAdminLayout from './components/layouts/MultispecialistAdminLayout';
@@ -25,7 +23,7 @@ import HistoriqueActesPage from "./Pages/multispecialist/doctor/HistoriqueActesP
 import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage'; 
 import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
-import PrivateRouteByRole from "./components/auth/PrivateRouteByRole";
+import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
 import NewPatientDoctorPage from './Pages/multispecialist/doctor/NewPatientDoctorPage';
 import ConsultationDoctorFollowUpPage from './Pages/multispecialist/doctor/ConsultationDoctorFollowUpPage';
@@ -71,7 +69,6 @@ import SupportInboxPage from "./Pages/multispecialist/admin/SupportInboxPage";
 import { useAuth } from "@clerk/clerk-react";
 import { attachClerkToken } from "./lib/supabase";
 import FingerprintCallback from "./Pages/FingerprintCallback";
-import { normalizeRole } from "./components/auth/role-utils";
 import RoleRedirect from "./components/auth/RoleRedirect";
 import React from 'react';
 import SignInPage from "./components/auth/SignInPage";
@@ -226,15 +223,6 @@ export default function App() {
         Chargement...
       </div>
     );
-  }
-
-  function SignOutPage() {
-    const { signOut } = useClerk();
-    const navigate = useNavigate();
-    React.useEffect(() => {
-      signOut().then(() => navigate("/"));
-    }, [signOut, navigate]);
-    return <div className="p-4">Déconnexion…</div>;
   }
 
   const renderLandingPage = () => {
@@ -431,7 +419,6 @@ export default function App() {
   );
 };
 
-
   return (
     <>
     <GlobalHeader />
@@ -439,7 +426,6 @@ export default function App() {
     {/* PUBLIC */}
     <Route path="/" element={renderLandingPage()} />
     <Route path="/unauthorized" element={<Unauthorized />} />
-    <Route path="/sign-out" element={<SignOutPage />} />
     <Route path="/debug/reset" element={<DebugReset />} />
 
     {/* Clerk auth */}
@@ -453,9 +439,9 @@ export default function App() {
     <Route
       path="/doctor/*"
       element={
-        <PrivateRouteByRole allowedRole="doctor">
+        <PrivateRouteByArea allowedArea="specialist_doctor">
           <DoctorLayout/>
-        </PrivateRouteByRole>
+        </PrivateRouteByArea>
       }
     >
       <Route index element={<DashboardPage />} />
@@ -471,9 +457,9 @@ export default function App() {
     <Route
       path="/assureur/*"
       element={
-        <PrivateRouteByRole allowedRole="assurer">
+        <PrivateRouteByArea allowedArea="assureur">
           <AssureurLayout />
-        </PrivateRouteByRole>
+        </PrivateRouteByArea>
       }
     >
       <Route path="reports" element={<AssureurReports />} />
@@ -489,9 +475,9 @@ export default function App() {
     <Route
       path="/multispecialist/doctor/*"
       element={
-        <PrivateRouteByRole allowedRole="doctor">
+        <PrivateRouteByArea allowedArea="multispecialist_doctor">
           <MultispecialistDoctorLayout />
-        </PrivateRouteByRole>
+        </PrivateRouteByArea>
       }
     >
       <Route index element={<DoctorDashboardPage />} />
@@ -508,9 +494,9 @@ export default function App() {
     <Route
       path="/multispecialist/admin/*"
       element={
-        <PrivateRouteByRole allowedRole="admin">
+        <PrivateRouteByArea allowedArea="multispecialist_admin">
           <MultispecialistAdminLayout />
-        </PrivateRouteByRole>
+        </PrivateRouteByArea>
       }
     >
       <Route path="dashboard" element={<AdminDashboardPage />} />
@@ -525,15 +511,13 @@ export default function App() {
       <Route path="support-inbox" element={<SupportInboxPage />} />
     </Route>
 
-    {/* SECRETARY (avec ClerkGuard si tu veux conserver) */}
+    {/* SECRETARY */}
     <Route
       path="/multispecialist/secretary/*"
       element={
-        <ClerkGuard>
-          <PrivateRouteByRole allowedRole="secretary">
+          <PrivateRouteByArea allowedArea="multispecialist_secretary">
             <MultispecialistSecretaryLayout />
-          </PrivateRouteByRole>
-        </ClerkGuard>
+          </PrivateRouteByArea>
       }
     >
       <Route index element={<SecretaryPatientsPage />} />
@@ -546,9 +530,9 @@ export default function App() {
     <Route
       path="/pharmacy/*"
       element={
-        <PrivateRouteByRole allowedRole="pharmacist">
+        <PrivateRouteByArea allowedArea="pharmacy">
           <PharmacyLayout />
-        </PrivateRouteByRole>
+        </PrivateRouteByArea>
       }
     >
       <Route index element={<PharmacyDashboard />} />

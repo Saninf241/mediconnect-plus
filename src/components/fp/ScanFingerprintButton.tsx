@@ -1,3 +1,4 @@
+// src/components/fp/ScanFingerprintButton.tsx
 import React from "react";
 import { buildZKDeeplink } from "../../lib/deeplink";
 

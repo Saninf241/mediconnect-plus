@@ -1,1 +1,0 @@
-// Full content of ClaimDetailsPage.tsx as shown above

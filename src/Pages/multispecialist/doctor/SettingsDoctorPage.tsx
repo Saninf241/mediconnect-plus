@@ -1,3 +1,4 @@
+// src/Pages/multispecialist/doctor/SettingsDoctorPage.tsx
 import { useEffect, useState } from "react";
 import { supabase } from '../../../lib/supabase';
 import { useUser } from "@clerk/clerk-react";
