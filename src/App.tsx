@@ -31,7 +31,6 @@ import ConsultationDoctorDetailsPage from './Pages/multispecialist/doctor/Consul
 import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
 import DoctorPatientDetailsPage from "./Pages/multispecialist/doctor/DoctorPatientDetailsPage";
-import { BrowserRouter as Router } from "react-router-dom";
 import PatientLayout from "./components/layouts/PatientLayout";
 import Dashboard from "./Pages/patient/Dashboard";
 import Consultations from "./Pages/patient/Consultations";
@@ -73,9 +72,8 @@ import RoleRedirect from "./components/auth/RoleRedirect";
 import React from 'react';
 import SignInPage from "./components/auth/SignInPage";
 import { useLocation } from "react-router-dom";
-import { Facebook, Linkedin, Twitter, Mail, MessageCircle } from "lucide-react";
+import { Facebook, Linkedin, Mail, MessageCircle } from "lucide-react";
 import DebugReset from './Pages/DebugReset';
-
 
 function GlobalHeader() {
   const { pathname } = useLocation();
