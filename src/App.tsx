@@ -1,8 +1,8 @@
 // src/App.tsx
 import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { SignIn, SignUp } from '@clerk/clerk-react';
-import { SignedIn, SignedOut, UserButton, useUser, useClerk } from "@clerk/clerk-react";
+import { useEffect } from 'react';
+import { SignUp } from '@clerk/clerk-react';
+import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
 import DashboardPage from './Pages/doctor/DashboardPage';
@@ -25,29 +25,15 @@ import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
 import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
-import NewPatientDoctorPage from './Pages/multispecialist/doctor/NewPatientDoctorPage';
-import ConsultationDoctorFollowUpPage from './Pages/multispecialist/doctor/ConsultationDoctorFollowUpPage';
 import ConsultationDoctorDetailsPage from './Pages/multispecialist/doctor/ConsultationDoctorDetailsPage';
 import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
 import DoctorPatientDetailsPage from "./Pages/multispecialist/doctor/DoctorPatientDetailsPage";
-import PatientLayout from "./components/layouts/PatientLayout";
-import Dashboard from "./Pages/patient/Dashboard";
-import Consultations from "./Pages/patient/Consultations";
-import Ordonnances from "./Pages/patient/Ordonnances";
-import Traitements from "./Pages/patient/Traitements";
-import Antecedents from "./Pages/patient/Antecedents";
-import Pharmacie from "./Pages/patient/Pharmacie";
-import Rendezvous from "./Pages/patient/Rendezvous";
-import Identite from "./Pages/patient/Identite";
-import Settings from "./Pages/patient/Settings";
-import PatientLogin from './Pages/PatientLogin';
 import PharmacyLayout from "./components/layouts/PharmacyLayout";
 import PharmacyDashboard from "./Pages/pharmacy/PharmacyDashboard";
 import PharmacyOrders from "./Pages/pharmacy/Orders";
 import PharmacyHistory from "./Pages/pharmacy/History";
 import PharmacySettings from "./Pages/pharmacy/Settings";
-import { supabase } from './lib/supabase';
 import AssureurReports from './Pages/assureur/AssureurReports';
 import AssureurAnomalies from './Pages/assureur/AssureurAnomalies';
 import FingerprintAlertsPage from './Pages/assureur/FingerprintAlertsPage';
@@ -69,7 +55,6 @@ import { useAuth } from "@clerk/clerk-react";
 import { attachClerkToken } from "./lib/supabase";
 import FingerprintCallback from "./Pages/FingerprintCallback";
 import RoleRedirect from "./components/auth/RoleRedirect";
-import React from 'react';
 import SignInPage from "./components/auth/SignInPage";
 import { useLocation } from "react-router-dom";
 import { Facebook, Linkedin, Mail, MessageCircle } from "lucide-react";
@@ -176,11 +161,6 @@ export default function App() {
   const { isLoaded, isSignedIn } = useUser();
   const { getToken } = useAuth();
   const navigate = useNavigate();
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState("doctor");
-  const [error, setError] = useState<string | null>(null);
 
   // ✅ Sync Clerk JWT -> Supabase headers
   useEffect(() => {

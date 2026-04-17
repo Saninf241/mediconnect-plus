@@ -43,6 +43,7 @@ export default function FingerprintCallback() {
     const found       = url.searchParams.get("found");
     const patientId   = url.searchParams.get("patient_id");
     const userId      = url.searchParams.get("user_id");
+    // Compat legacy: certains anciens flows renvoyaient le template brut sous "template_hash"
     const templateB64 = url.searchParams.get("template_b64") ||
                         url.searchParams.get("template_hash");
     const error       = url.searchParams.get("error");
@@ -114,8 +115,9 @@ export default function FingerprintCallback() {
         return;
       }
 
-      if (mode === "identify") {
-        const ok = found === "true" && !!userId;
+       if (mode === "identify") {
+        const identifiedPatientId = patientId || userId;
+        const ok = found === "true" && !!identifiedPatientId;
 
         try {
           sessionStorage.setItem(
@@ -123,7 +125,7 @@ export default function FingerprintCallback() {
             JSON.stringify({
               type: "identify",
               ok,
-              patient_id: ok ? userId : null,
+              patient_id: ok ? identifiedPatientId : null,
               consultationId: ok ? consultationId || null : null,
               error: error || null,
             })
@@ -137,7 +139,7 @@ export default function FingerprintCallback() {
         if (ok) {
           setMessage("Patient reconnu ✅");
 
-          dest.searchParams.set("patient_id", userId!);
+          dest.searchParams.set("patient_id", identifiedPatientId!);
 
         } else {
           setMessage("Aucun patient reconnu correspondant.");
@@ -162,8 +164,8 @@ export default function FingerprintCallback() {
           setMessage("Patient reconnu ✅");
           sessionStorage.removeItem("fp:return");
           setTimeout(
-            () => navigate(`${back}${sep}id_found=$ {encodeURIComponent(userId!)}`, 
-              { replace: true }),      
+            () => navigate(`${back}${sep}id_found=${encodeURIComponent(identifiedPatientId!)}`,
+              { replace: true }),   
             600
           );
         } else {
