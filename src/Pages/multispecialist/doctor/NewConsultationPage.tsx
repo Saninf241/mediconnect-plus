@@ -381,13 +381,14 @@ const createConsultation = async () => {
     // 3) Récupérer l'assureur du patient (s'il existe)
     let insurerId: string | null = null;
     if (patientId) {
-      const { data: membership, error: memErr } = await supabase
-        .from("insurer_memberships")
-        .select("insurer_id")
-        .eq("patient_id", patientId)
-        .order("last_verified_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        const { data: membership, error: memErr } = await supabase
+          .from("insurer_memberships")
+          .select("insurer_id, coverage_start, coverage_end, is_active, last_verified_at")
+          .eq("patient_id", patientId)
+          .eq("is_active", true)
+          .order("last_verified_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
       if (memErr) {
         console.warn("[createConsultation] insurer_memberships error:", memErr);

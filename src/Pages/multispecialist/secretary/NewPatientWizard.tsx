@@ -1,4 +1,4 @@
-// src/pages/multispecialist/secretary/NewPatientWizard.tsx
+// src/Pages/multispecialist/secretary/NewPatientWizard.tsx
 import React, { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
@@ -392,6 +392,7 @@ export default function NewPatientWizard() {
             verification_level: level,
             confidence: resp?.confidence || "medium",
             source: resp || {},
+            is_active: true,
           });
         if (memErr) throw memErr;
       }
