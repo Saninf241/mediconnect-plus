@@ -1,4 +1,4 @@
-// src/pages/multispecialist/admin/AdminPerformancePage.tsx
+// src/Pages/multispecialist/admin/AdminPerformancePage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useClinicId } from "../../../hooks/useClinicId";

@@ -1,311 +1,483 @@
-// src/pages/multispecialist/admin/ManageTeamPage.tsx
-import { useEffect, useMemo, useState } from "react";
+// src/pages/multispecialist/admin/AdminTeamPage.tsx
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
-import { Button } from "../../../components/ui/button";
 import { useClinicId } from "../../../hooks/useClinicId";
+import { Card, CardContent } from "../../../components/ui/card";
+import { useUser } from "@clerk/clerk-react";
 
-type ConsultStatus = "draft" | "sent" | "rejected" | "accepted" | "paid";
+type StaffRoleFilter = "all" | "doctor" | "secretary" | "admin";
+type StaffRole = "doctor" | "secretary" | "admin";
 
-interface Doctor {
+interface StaffRow {
   id: string;
+  clinic_id: string | null;
   name: string | null;
+  email?: string | null;
+  role: string | null;
+  clerk_user_id?: string | null;
+  created_at?: string | null;
+}
+
+interface NewMemberForm {
+  name: string;
   email: string;
+  role: StaffRole;
 }
 
-interface DoctorStats {
-  draft: number;
-  sent: number;
-  rejected: number;
-  accepted: number;
-  paid: number;
-  revenuePaid: number; // somme des amounts sur paid
-  lastActivity?: string | null; // ISO
+function roleLabel(role: string | null) {
+  const r = (role ?? "").toLowerCase();
+  if (r === "doctor") return "Médecin";
+  if (r === "secretary") return "Secrétaire";
+  if (r === "admin") return "Admin";
+  return role || "-";
 }
 
-export default function ManageTeamPage() {
+function rolePillClass(role: string | null) {
+  const r = (role ?? "").toLowerCase();
+
+  if (r === "doctor") return "bg-blue-100 text-blue-700";
+  if (r === "secretary") return "bg-amber-100 text-amber-700";
+  if (r === "admin") return "bg-green-100 text-green-700";
+
+  return "bg-gray-100 text-gray-700";
+}
+
+export default function AdminTeamPage() {
   const { clinicId, loadingClinic } = useClinicId();
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [statsByDoctor, setStatsByDoctor] = useState<Record<string, DoctorStats>>({});
-  const [period, setPeriod] = useState("30");
+  const { user } = useUser();
 
-  const [newDoctorEmail, setNewDoctorEmail] = useState("");
   const [loading, setLoading] = useState(true);
-  const [loadingStats, setLoadingStats] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-    // ✅ force une string UUID (évite eq("clinic_id", [object Object]))
-  const clinicIdStr = useMemo(() => {
-    const c: any = clinicId;
-    return typeof c === "string" ? c : c?.id || c?.clinic_id || c?.clinic?.id || null;
-  }, [clinicId]);
+  const [note, setNote] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Validation e-mail
-  const emailIsValid = useMemo(
-    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newDoctorEmail.trim()),
-    [newDoctorEmail]
-  );
+  const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
+  const [roleFilter, setRoleFilter] = useState<StaffRoleFilter>("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // 1) Charger la liste des médecins du cabinet
-  const fetchDoctors = async () => {
-    if (!clinicId) return;
-    setLoading(true);
+  const [form, setForm] = useState<NewMemberForm>({
+    name: "",
+    email: "",
+    role: "doctor",
+  });
+
+  const currentUserEmail = user?.emailAddresses?.[0]?.emailAddress?.toLowerCase() ?? null;
+
+  const fetchStaff = async () => {
+    if (!clinicId) {
+      setStaffRows([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("clinic_staff")
-      .select("id, name, email, role, clinic_id")
+      .select("id, clinic_id, name, email, role, clerk_user_id, created_at")
       .eq("clinic_id", clinicId)
-      .eq("role", "doctor")
-      .order("name", { ascending: true });
-
-    if (error) {
-      console.error("Erreur fetchDoctors:", error);
-      setErrorMsg("Impossible de charger l'équipe.");
-      setDoctors([]);
-    } else {
-      setDoctors((data || []) as Doctor[]);
-      setErrorMsg(null);
-    }
-    setLoading(false);
-  };
-
-  // 2) Charger les stats de consultations par médecin (période roulante)
-  const fetchStats = async () => {
-    if (!clinicId) return;
-    setLoadingStats(true);
-
-    // borne temporelle
-    const n = parseInt(period, 10);
-    const since = new Date();
-    since.setDate(since.getDate() - (isNaN(n) ? 30 : n));
-    const sinceISO = since.toISOString();
-
-    // On récupère uniquement ce cabinet et cette période
-    const { data, error } = await supabase
-      .from("consultations")
-      .select("id, doctor_id, status, amount, created_at, clinic_id")
-      .eq("clinic_id", clinicId)
-      .gte("created_at", sinceISO)
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Erreur fetchStats consultations:", error);
-      setStatsByDoctor({});
-      setLoadingStats(false);
+      console.error("[AdminTeamPage] clinic_staff fetch error:", error);
+      setNote("Erreur lors du chargement de l’équipe.");
+      setStaffRows([]);
       return;
     }
 
-    const map: Record<string, DoctorStats> = {};
-    (data || []).forEach((c: any) => {
-      const docId = c.doctor_id as string | null;
-      if (!docId) return;
-
-      const st = (c.status || "") as ConsultStatus;
-      const amt = Number(c.amount) || 0;
-
-      if (!map[docId]) {
-        map[docId] = { draft: 0, sent: 0, rejected: 0, accepted: 0, paid: 0, revenuePaid: 0, lastActivity: null };
-      }
-
-      if (st === "draft" || st === "sent" || st === "rejected" || st === "accepted" || st === "paid") {
-        map[docId][st] += 1;
-      }
-      if (st === "paid") {
-        map[docId].revenuePaid += amt;
-      }
-
-      // dernière activité (ISO la plus récente)
-      if (!map[docId].lastActivity || new Date(c.created_at) > new Date(map[docId].lastActivity)) {
-        map[docId].lastActivity = c.created_at;
-      }
-    });
-
-    setStatsByDoctor(map);
-    setLoadingStats(false);
+    setStaffRows((data ?? []) as StaffRow[]);
   };
 
-  // 3) Ajout d'un médecin
-  const addDoctor = async () => {
-    if (!clinicId || !emailIsValid) return;
-    setSaving(true);
-    setErrorMsg(null);
+  useEffect(() => {
+    if (loadingClinic) return;
 
-    // anti-duplication (même email dans le même cabinet)
-    const { data: existing, error: existErr } = await supabase
-      .from("clinic_staff")
-      .select("id")
-      .eq("clinic_id", clinicId)
-      .eq("email", newDoctorEmail.trim());
+    const init = async () => {
+      setLoading(true);
+      setNote(null);
+      setSuccessMessage(null);
 
-    if (existErr) {
-      console.error("Erreur vérif doublon:", existErr);
-      setErrorMsg("Erreur lors de la vérification.");
-      setSaving(false);
-      return;
-    }
-    if (existing && existing.length > 0) {
-      setErrorMsg("Ce médecin existe déjà dans ce cabinet.");
-      setSaving(false);
-      return;
-    }
+      try {
+        if (!clinicId) {
+          setNote("Impossible de charger l’équipe pour cet établissement.");
+          setLoading(false);
+          return;
+        }
 
-    const { error } = await supabase.from("clinic_staff").insert({
-      clinic_id: clinicId,
-      email: newDoctorEmail.trim(),
-      role: "doctor",
+        await fetchStaff();
+      } catch (error) {
+        console.error("[AdminTeamPage] unexpected init error:", error);
+        setNote("Une erreur inattendue est survenue.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    init();
+  }, [clinicId, loadingClinic]);
+
+  const filteredStaff = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+
+    return staffRows.filter((row) => {
+      const role = (row.role ?? "").toLowerCase();
+
+      if (roleFilter !== "all" && role !== roleFilter) return false;
+
+      if (!q) return true;
+
+      return (
+        (row.name ?? "").toLowerCase().includes(q) ||
+        (row.email ?? "").toLowerCase().includes(q) ||
+        role.includes(q)
+      );
     });
+  }, [staffRows, roleFilter, searchTerm]);
 
-    if (error) {
-      console.error("Erreur addDoctor:", error);
-      setErrorMsg("Impossible d'ajouter ce médecin.");
-    } else {
-      setNewDoctorEmail("");
-      await fetchDoctors();
-      await fetchStats(); // refresh des stats (ligne apparaîtra avec 0 partout)
+  const summary = useMemo(() => {
+    const doctors = staffRows.filter((r) => (r.role ?? "").toLowerCase() === "doctor").length;
+    const secretaries = staffRows.filter((r) => (r.role ?? "").toLowerCase() === "secretary").length;
+    const admins = staffRows.filter((r) => (r.role ?? "").toLowerCase() === "admin").length;
+
+    return {
+      total: staffRows.length,
+      doctors,
+      secretaries,
+      admins,
+    };
+  }, [staffRows]);
+
+  const handleCreateMember = async (e: FormEvent) => {
+    e.preventDefault();
+
+    setNote(null);
+    setSuccessMessage(null);
+
+    if (!clinicId) {
+      setNote("Aucun établissement détecté.");
+      return;
     }
-    setSaving(false);
-  };
 
-  // 4) Suppression (scopée)
-  const removeDoctor = async (id: string) => {
-    if (!clinicId) return;
+    if (!form.name.trim()) {
+      setNote("Le nom est obligatoire.");
+      return;
+    }
+
+    if (!form.email.trim()) {
+      setNote("L’email est obligatoire.");
+      return;
+    }
+
     setSaving(true);
-    setErrorMsg(null);
-    const { error } = await supabase
-      .from("clinic_staff")
-      .delete()
-      .eq("id", id)
-      .eq("clinic_id", clinicId);
 
-    if (error) {
-      console.error("Erreur removeDoctor:", error);
-      setErrorMsg("Suppression impossible.");
-    } else {
-      await fetchDoctors();
-      // Nettoie les stats locales
-      setStatsByDoctor((prev) => {
-        const clone = { ...prev };
-        delete clone[id];
-        return clone;
+    try {
+      const normalizedEmail = form.email.trim().toLowerCase();
+
+      const existing = staffRows.find(
+        (row) => (row.email ?? "").trim().toLowerCase() === normalizedEmail
+      );
+
+      if (existing) {
+        setNote("Cet email existe déjà dans l’équipe.");
+        setSaving(false);
+        return;
+      }
+
+      const { error } = await supabase
+        .from("clinic_staff")
+        .insert({
+          clinic_id: clinicId,
+          name: form.name.trim(),
+          email: normalizedEmail,
+          role: form.role,
+        });
+
+      if (error) {
+        console.error("[AdminTeamPage] create member error:", error);
+        setNote("Impossible d’ajouter ce membre.");
+        setSaving(false);
+        return;
+      }
+
+      setForm({
+        name: "",
+        email: "",
+        role: "doctor",
       });
+
+      setSuccessMessage("Membre ajouté avec succès.");
+      await fetchStaff();
+    } catch (error) {
+      console.error("[AdminTeamPage] unexpected create error:", error);
+      setNote("Une erreur inattendue est survenue lors de l’ajout.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
-  // Effets
-  useEffect(() => {
-    if (clinicId) fetchDoctors();
-  }, [clinicId]);
+  const handleDeleteMember = async (member: StaffRow) => {
+    setNote(null);
+    setSuccessMessage(null);
 
-  useEffect(() => {
-    if (clinicId) fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clinicId, period]);
+    const memberEmail = (member.email ?? "").toLowerCase();
 
-  // Helpers
-  const fmtFCFA = (n: number) => (Number(n) || 0).toLocaleString() + " FCFA";
-  const acceptanceRate = (s?: DoctorStats) => {
-    if (!s) return "0%";
-    const denom = s.sent + s.accepted + s.rejected;
-    if (!denom) return "0%";
-    return Math.round((s.accepted / denom) * 100) + "%";
+    if (currentUserEmail && memberEmail && currentUserEmail === memberEmail) {
+      setNote("Vous ne pouvez pas supprimer votre propre compte depuis cette page.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Supprimer ${member.name || member.email || "ce membre"} de l’équipe ?`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(member.id);
+
+    try {
+      const { error } = await supabase
+        .from("clinic_staff")
+        .delete()
+        .eq("id", member.id);
+
+      if (error) {
+        console.error("[AdminTeamPage] delete member error:", error);
+        setNote("Impossible de supprimer ce membre.");
+        setDeletingId(null);
+        return;
+      }
+
+      setSuccessMessage("Membre supprimé avec succès.");
+      await fetchStaff();
+    } catch (error) {
+      console.error("[AdminTeamPage] unexpected delete error:", error);
+      setNote("Une erreur inattendue est survenue lors de la suppression.");
+    } finally {
+      setDeletingId(null);
+    }
   };
+
+  if (loadingClinic || loading) {
+    return <div className="p-6">Chargement de l’équipe…</div>;
+  }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Gérer l’équipe médicale</h1>
-        <div className="ml-auto flex items-center gap-2">
-          <label className="text-sm text-gray-600">Période stats :</label>
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="border rounded px-2 py-1"
-          >
-            <option value="7">7 jours</option>
-            <option value="30">30 jours</option>
-            <option value="90">90 jours</option>
-          </select>
+    <div className="space-y-6">
+      {note && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {note}
         </div>
+      )}
+
+      {successMessage && (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {successMessage}
+        </div>
+      )}
+
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Équipe</h1>
+        <p className="text-sm text-gray-500">
+          Gestion des médecins, secrétaires et administrateurs du cabinet.
+        </p>
       </div>
 
-      {/* Ajout */}
-      <div className="mb-2 flex flex-col gap-2 md:flex-row md:items-center">
-        <input
-          type="email"
-          placeholder="Email du médecin"
-          value={newDoctorEmail}
-          onChange={(e) => setNewDoctorEmail(e.target.value)}
-          className="border p-2 rounded w-72"
-        />
-        <Button onClick={addDoctor} disabled={!emailIsValid || saving || !clinicId}>
-          {saving ? "Ajout..." : "Ajouter"}
-        </Button>
-        {!emailIsValid && newDoctorEmail.length > 0 && (
-          <span className="text-xs text-red-600">Email invalide</span>
-        )}
-        {errorMsg && <span className="text-xs text-red-600">{errorMsg}</span>}
+      {/* Résumé */}
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-500">Membres</p>
+            <p className="mt-1 text-2xl font-bold">{summary.total}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-500">Médecins</p>
+            <p className="mt-1 text-2xl font-bold text-blue-600">{summary.doctors}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-500">Secrétaires</p>
+            <p className="mt-1 text-2xl font-bold text-amber-600">{summary.secretaries}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm text-gray-500">Admins</p>
+            <p className="mt-1 text-2xl font-bold text-green-600">{summary.admins}</p>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Tableau équipe + stats */}
-      <div className="bg-white border rounded overflow-x-auto">
-        <table className="min-w-full">
-          <thead>
-            <tr className="bg-gray-100 text-left text-xs font-semibold text-gray-700">
-              <th className="p-3">Nom</th>
-              <th className="p-3">Email</th>
-              <th className="p-3 text-center">draft</th>
-              <th className="p-3 text-center">sent</th>
-              <th className="p-3 text-center">rejected</th>
-              <th className="p-3 text-center">accepted</th>
-              <th className="p-3 text-center">paid</th>
-              <th className="p-3 text-right">Revenu payé</th>
-              <th className="p-3 text-right">Taux accept.</th>
-              <th className="p-3">Dernière activité</th>
-              <th className="p-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td className="p-3" colSpan={11}>Chargement…</td></tr>
-            ) : doctors.length === 0 ? (
-              <tr><td className="p-3 text-sm text-gray-500" colSpan={11}>Aucun médecin pour ce cabinet.</td></tr>
-            ) : (
-              doctors.map((d) => {
-                const s = statsByDoctor[d.id];
-                return (
-                  <tr key={d.id} className="border-t text-sm">
-                    <td className="p-3">{d.name || "—"}</td>
-                    <td className="p-3">{d.email}</td>
-                    <td className="p-3 text-center">{loadingStats ? "…" : s?.draft ?? 0}</td>
-                    <td className="p-3 text-center">{loadingStats ? "…" : s?.sent ?? 0}</td>
-                    <td className="p-3 text-center">{loadingStats ? "…" : s?.rejected ?? 0}</td>
-                    <td className="p-3 text-center">{loadingStats ? "…" : s?.accepted ?? 0}</td>
-                    <td className="p-3 text-center">{loadingStats ? "…" : s?.paid ?? 0}</td>
-                    <td className="p-3 text-right">{loadingStats ? "…" : fmtFCFA(s?.revenuePaid || 0)}</td>
-                    <td className="p-3 text-right">{loadingStats ? "…" : acceptanceRate(s)}</td>
-                    <td className="p-3">
-                      {loadingStats
-                        ? "…"
-                        : s?.lastActivity
-                        ? new Date(s.lastActivity).toLocaleString("fr-FR")
-                        : "—"}
-                    </td>
-                    <td className="p-3">
-                      <Button
-                        onClick={() => removeDoctor(d.id)}
-                        disabled={saving}
-                        className="bg-red-600 hover:bg-red-700 text-white"
-                      >
-                        Supprimer
-                      </Button>
-                    </td>
-                  </tr>
+      {/* Ajout membre */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Ajouter un membre</h2>
+            <p className="text-sm text-gray-500">
+              Crée une ligne d’accès pour un médecin, une secrétaire ou un admin.
+            </p>
+          </div>
+
+          <form onSubmit={handleCreateMember} className="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Nom</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Ex. Dr Mbadinga"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="email@cabinet.com"
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">Rôle</label>
+              <select
+                value={form.role}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, role: e.target.value as StaffRole }))
+                }
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="doctor">Médecin</option>
+                <option value="secretary">Secrétaire</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {saving ? "Ajout..." : "Ajouter"}
+              </button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Filtres */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Filtrer par rôle</label>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as StaffRoleFilter)}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="all">Tous les rôles</option>
+                <option value="doctor">Médecins</option>
+                <option value="secretary">Secrétaires</option>
+                <option value="admin">Admins</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700">Recherche</label>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Nom, email, rôle..."
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Liste équipe */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Membres de l’équipe</h2>
+              <p className="text-sm text-gray-500">
+                Vue centralisée des accès liés à l’établissement.
+              </p>
+            </div>
+            <span className="text-sm text-gray-400">
+              {filteredStaff.length} membre(s)
+            </span>
+          </div>
+
+          {filteredStaff.length === 0 ? (
+            <p className="text-sm text-gray-500">Aucun membre trouvé.</p>
+          ) : (
+            <div className="space-y-3">
+              {filteredStaff.map((member) => {
+                const isSelf = !!(
+                  currentUserEmail &&
+                  member.email &&
+                  currentUserEmail === member.email.toLowerCase()
                 );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+
+                return (
+                  <div
+                    key={member.id}
+                    className="flex flex-col gap-3 rounded-xl border bg-white px-4 py-4 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-gray-900">
+                          {member.name || "Sans nom"}
+                        </p>
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${rolePillClass(
+                            member.role
+                          )}`}
+                        >
+                          {roleLabel(member.role)}
+                        </span>
+                        {isSelf && (
+                          <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+                            Vous
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-sm text-gray-600">{member.email || "-"}</p>
+
+                      <p className="mt-1 text-xs text-gray-400">
+                        ID : {member.id}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMember(member)}
+                        disabled={deletingId === member.id || isSelf}
+                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 disabled:opacity-50"
+                      >
+                        {deletingId === member.id ? "Suppression..." : "Supprimer"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
