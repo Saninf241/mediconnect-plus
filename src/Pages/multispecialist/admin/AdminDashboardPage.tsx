@@ -1,4 +1,4 @@
-// src/pages/multispecialist/admin/AdminDashboardPage.tsx
+// src/Pages/multispecialist/admin/AdminDashboardPage.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { Card, CardContent } from "../../../components/ui/card";
@@ -22,7 +22,7 @@ interface ConsultationRow {
 }
 
 export default function AdminDashboardPage() {
-  const { clinicId, loadingClinic } = useClinicId();
+  const { clinicId, loadingClinic, source, debugMessage } = useClinicId();
 
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState<string | null>(null);
@@ -131,6 +131,12 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
+      {debugMessage && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+          {debugMessage}
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-bold">Dashboard admin - Diagnostic</h1>
         <p className="text-sm text-gray-500">
@@ -141,6 +147,7 @@ export default function AdminDashboardPage() {
       <Card>
         <CardContent className="p-4 space-y-2">
           <p><span className="font-semibold">clinicId détecté :</span> {clinicId || "Aucun"}</p>
+          <p><span className="font-semibold">Source du clinicId :</span> {source}</p>
           <p><span className="font-semibold">Lignes clinic_staff visibles :</span> {staffRows.length}</p>
           <p><span className="font-semibold">Médecins détectés :</span> {doctors.length}</p>
           <p><span className="font-semibold">Consultations visibles :</span> {consultations.length}</p>
