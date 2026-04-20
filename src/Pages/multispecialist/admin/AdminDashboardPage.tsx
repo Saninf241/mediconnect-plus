@@ -67,8 +67,7 @@ export default function AdminDashboardPage() {
           .from("consultations")
           .select("id, clinic_id, doctor_id, patient_id, amount, status, created_at")
           .eq("clinic_id", clinicId)
-          .order("created_at", { ascending: false })
-          .limit(20);
+          .order("created_at", { ascending: false });
 
         if (consultationsRes.error) {
           console.error("[DEBUG] consultations error:", consultationsRes.error);
