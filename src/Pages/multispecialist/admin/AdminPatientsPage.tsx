@@ -16,7 +16,6 @@ interface ConsultationRow {
 
 interface PatientRow {
   id: string;
-  full_name?: string | null;
   name?: string | null;
   email?: string | null;
   phone?: string | null;
@@ -60,7 +59,7 @@ function getStartDate(period: PeriodFilter): string | null {
 }
 
 function getPatientName(patient: PatientRow) {
-  return patient.full_name || patient.name || "Patient sans nom";
+  return patient.name || patient.name || "Patient sans nom";
 }
 
 export default function AdminPatientsPage() {
@@ -98,7 +97,7 @@ export default function AdminPatientsPage() {
 
         const patientsRes = await supabase
           .from("patients")
-          .select("id, full_name, name, email, phone, is_assured, fingerprint_missing, created_at")
+          .select("id, name, email, phone, is_assured, fingerprint_missing, created_at")
           .order("created_at", { ascending: false });
 
         if (patientsRes.error) {

@@ -8,14 +8,12 @@ interface ClinicRow {
   id: string;
   name?: string | null;
   type?: string | null;
-  email?: string | null;
   phone?: string | null;
   address?: string | null;
 }
 
 interface SettingsForm {
   name: string;
-  email: string;
   phone: string;
   address: string;
 }
@@ -41,7 +39,6 @@ export default function AdminSettingsPage() {
   const [clinic, setClinic] = useState<ClinicRow | null>(null);
   const [form, setForm] = useState<SettingsForm>({
     name: "",
-    email: "",
     phone: "",
     address: "",
   });
@@ -63,7 +60,7 @@ export default function AdminSettingsPage() {
 
         const { data, error } = await supabase
           .from("clinics")
-          .select("id, name, type, email, phone, address")
+          .select("id, name, type, phone, address")
           .eq("id", clinicId)
           .maybeSingle();
 
@@ -87,7 +84,6 @@ export default function AdminSettingsPage() {
 
         setForm({
           name: clinicData.name ?? "",
-          email: clinicData.email ?? "",
           phone: clinicData.phone ?? "",
           address: clinicData.address ?? "",
         });
@@ -123,7 +119,6 @@ export default function AdminSettingsPage() {
     try {
       const payload = {
         name: form.name.trim(),
-        email: form.email.trim() || null,
         phone: form.phone.trim() || null,
         address: form.address.trim() || null,
       };
@@ -245,10 +240,10 @@ export default function AdminSettingsPage() {
               </label>
               <input
                 type="email"
-                value={form.email}
-                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-                placeholder="contact@cabinet.com"
-                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+                value=""
+                disabled
+                placeholder="Champ non disponible dans la table clinics"
+                className="mt-1 w-full rounded-lg border bg-gray-100 px-3 py-2 text-sm text-gray-500"
               />
             </div>
 
