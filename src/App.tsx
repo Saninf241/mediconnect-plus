@@ -42,15 +42,14 @@ import StatistiquesPage from './Pages/assureur/StatistiquesPage';
 import CliniquesPage from './Pages/assureur/CliniquesPage';
 import ConsultationDetailsPage from './Pages/assureur/ConsultationDetailsPage';
 import AdminDashboardPage from "./Pages/multispecialist/admin/AdminDashboardPage";
-import PerformanceAdminPage from "./Pages/multispecialist/admin/PerformanceAdminPage";
-import StatisticsPage from "./Pages/multispecialist/admin/StatisticsPage";
-import ManageTeamPage from "./Pages/multispecialist/admin/ManageTeamPage";
-import PermissionsPage from "./Pages/multispecialist/admin/PermissionsPage";
-import PatientsAdminPage from "./Pages/multispecialist/admin/PatientsAdminPage";
-import AlertsPage from "./Pages/multispecialist/admin/AlertsPage";
-import PaymentsPage from "./Pages/multispecialist/admin/PaymentsPage";
-import PaymentLogsPage from "./Pages/multispecialist/admin/PaymentLogsPage";
-import SupportInboxPage from "./Pages/multispecialist/admin/SupportInboxPage";
+import AdminConsultationsPage from "./Pages/multispecialist/admin/AdminConsultationsPage";
+import AdminPerformancePage from "./Pages/multispecialist/admin/AdminPerformancePage";
+import AdminPaymentsPage from './Pages/multispecialist/admin/AdminPaymentsPage';
+import AdminAlertsPage from './Pages/multispecialist/admin/AdminAlertsPage';
+import AdminPatientsPage from './Pages/multispecialist/admin/AdminPatientsPage';
+import AdminTeamPage from './Pages/multispecialist/admin/AdminTeamPage';
+import AdminSupportInboxPage from './Pages/multispecialist/admin/AdminSupportInboxPage';
+import AdminSettingsPage from './Pages/multispecialist/admin/AdminSettingsPage';
 import { useAuth } from "@clerk/clerk-react";
 import { attachClerkToken } from "./lib/supabase";
 import FingerprintCallback from "./Pages/FingerprintCallback";
@@ -478,15 +477,14 @@ export default function App() {
       }
     >
       <Route path="dashboard" element={<AdminDashboardPage />} />
-      <Route path="performance" element={<PerformanceAdminPage />} />
-      <Route path="team" element={<ManageTeamPage />} />
-      <Route path="statistics" element={<StatisticsPage />} />
-      <Route path="permissions" element={<PermissionsPage />} />
-      <Route path="patients" element={<PatientsAdminPage />} />
-      <Route path="alerts" element={<AlertsPage />} />
-      <Route path="payments" element={<PaymentsPage />} />
-      <Route path="payment-logs" element={<PaymentLogsPage />} />
-      <Route path="support-inbox" element={<SupportInboxPage />} />
+      <Route path="consultations" element={<AdminConsultationsPage />} />
+      <Route path="performance" element={<AdminPerformancePage />} />
+      <Route path="payments" element={<AdminPaymentsPage />} />
+      <Route path="alerts" element={<AdminAlertsPage />} />
+      <Route path="patients" element={<AdminPatientsPage />} />
+      <Route path="team" element={<AdminTeamPage />} />
+      <Route path="support-inbox" element={<AdminSupportInboxPage />} />
+      <Route path="settings" element={<AdminSettingsPage />} />
     </Route>
 
     {/* SECRETARY */}
