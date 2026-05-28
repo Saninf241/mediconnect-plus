@@ -1,411 +1,845 @@
 // src/Pages/doctor/NewActPage.tsx
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useUser } from '@clerk/clerk-react';
+import { Input } from '../../components/ui/input';
+import { Button } from '../../components/ui/button';
+import { Textarea } from '../../components/ui/textarea';
+import SignatureCanvas from 'react-signature-canvas';
+import { toast } from 'react-toastify';
+import suggestions_base from '../../lib/suggestions_base.json';
+import medicationSuggestions from '../../lib/medication_suggestions.json';
+import { fetchGptSuggestions } from '../../lib/openai';
 import { useSearchParams } from "react-router-dom";
-import SignatureCanvas from "react-signature-canvas";
-import { toast } from "react-toastify";
-
-import { supabase } from "../../lib/supabase";
-import { buildZKDeeplink } from "../../lib/deeplink";
 import { useDoctorContext } from "../../hooks/useDoctorContext";
-import { fetchGptSuggestions } from "../../lib/openai";
+import { buildZKDeeplink } from "../../lib/deeplink";
+import { generateConsultationPdf } from "../../lib/api/generateConsultationPdf";
+import DiagnosisSelector, { type DiagnosisCodeRow, type SelectedItem,} from "../../components/ui/uidoctor/DiagnosisSelector";
+import ActSelector, { SelectedAct } from "../../components/ui/uidoctor/ActSelector";
 
-import { Input } from "../../components/ui/input";
-import { Button } from "../../components/ui/button";
-import { Textarea } from "../../components/ui/textarea";
-
-import suggestions_base from "../../lib/suggestions_base.json";
-import medicationSuggestions from "../../lib/medication_suggestions.json";
-
-type Step = "biometry" | "consultation" | "done";
-
-export default function NewActPage() {
+export default function NewConsultationPage() {
   const { user } = useUser();
-  const doctorInfo = useDoctorContext();
 
-  const [step, setStep] = useState<Step>("biometry");
+  // ✅ types explicites (corrige erreurs 4 et 5)
+  const [step, setStep] = useState<"biometry" | "consultation" | "done">("biometry");
   const [consultationId, setConsultationId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
 
   const [acts, setActs] = useState<string[]>([]);
-  const [currentAct, setCurrentAct] = useState("");
-  const [amount, setAmount] = useState("");
+  const [currentAct, setCurrentAct] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
 
-  const [fingerprintMissing, setFingerprintMissing] = useState(false);
+  const [medications, setMedications] = useState<string[]>([]);
+  const [currentMedication, setCurrentMedication] = useState<string>("");
+
+  const [fingerprintMissing, setFingerprintMissing] = useState<boolean>(false);
+
+  const [provisional, setProvisional] = useState<boolean>(false);
+  const [isCheckingRights, setIsCheckingRights] = useState<boolean>(false);
 
   const [symptomsType, setSymptomsType] = useState<"text" | "drawn">("text");
   const [diagnosisType, setDiagnosisType] = useState<"text" | "drawn">("text");
+  const [symptoms, setSymptoms] = useState<string>("");
+  const [diagnosis, setDiagnosis] = useState<string>("");
 
-  const [symptoms, setSymptoms] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
-  const [medications, setMedications] = useState<string[]>([]);
-  const [currentMedication, setCurrentMedication] = useState("");
-  const [gptSuggestions, setGptSuggestions] = useState<string[]>([]);
+  // ✅ types explicites sur refs
+  const symptomsCanvasRef = useRef<SignatureCanvas | null>(null);
+  const diagnosisCanvasRef = useRef<SignatureCanvas | null>(null);
+  const [diagnosisCodeId, setDiagnosisCodeId] = useState<string | null>(null);
+  const [diagnosisCodeText, setDiagnosisCodeText] = useState<string>(""); // snapshot
+  const [diagnosisItems, setDiagnosisItems] = useState<{ id: string; label: string; row: any }[]>([]);
+  const [diagnosisSelected, setDiagnosisSelected] = useState<SelectedItem[]>([]);
+  const [primaryDiagnosis, setPrimaryDiagnosis] = useState<SelectedItem | null>(null);
+  const [selectedActs, setSelectedActs] = useState<SelectedAct[]>([]);
 
-  const symptomsCanvasRef = useRef<SignatureCanvas>(null);
-  const diagnosisCanvasRef = useRef<SignatureCanvas>(null);
+  const doctorInfo = useDoctorContext();
 
-  // -------- Helpers --------
-  function getOriginForPhone() {
+  function getOriginForPhone(): string {
     const host = window.location.hostname;
     const isLocal =
       host === "localhost" ||
       /^127\./.test(host) ||
       /^192\.168\./.test(host) ||
       /^10\./.test(host);
+
     if (isLocal) return import.meta.env.VITE_LAN_ORIGIN?.trim() || window.location.origin;
-    return "https://mediconnect-plus.com"; // domaine public
+    return window.location.origin;
   }
 
-const ensureDraftConsultation = useCallback(async () => {
-  if (consultationId) return consultationId;
+  type DoctorCtx = { clinicId: string; doctorId: string };
 
-  if (!doctorInfo?.clinic_id || !doctorInfo?.doctor_id) {
-    toast.error("Contexte médecin/clinique manquant");
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("consultations")
-    .insert([
-      {
-        doctor_id: doctorInfo.doctor_id,
-        clinic_id: doctorInfo.clinic_id,
-        status: "draft",
-      },
-    ])
-    .select("id")
-    .single();
-
-  if (error || !data) {
-    console.error(error);
-    toast.error("Impossible de créer la consultation brouillon");
-    return null;
-  }
-  setConsultationId(data.id);
-  return data.id as string;
-}, [consultationId, doctorInfo?.clinic_id, doctorInfo?.doctor_id]);
-
-  // -------- Déclenchement biométrie (deeplink identify) --------
-    const handleBiometrySuccess = async () => {
-    const id = await ensureDraftConsultation();
-    if (!id) return;
-
-    if (!doctorInfo?.clinic_id || !doctorInfo?.doctor_id) {
-      toast.error("Contexte médecin incomplet (clinic_id / doctor_id).");
-      return;
+  async function resolveDoctorContext(): Promise<DoctorCtx | null> {
+    if (doctorInfo?.clinic_id && doctorInfo?.doctor_id) {
+      return {
+        clinicId: String(doctorInfo.clinic_id),
+        doctorId: String(doctorInfo.doctor_id),
+      };
     }
-    
-    const returnPath = `/doctor/new-act?consultation_id=${encodeURIComponent(id)}`;
-    sessionStorage.setItem("fp:return", returnPath);
 
-    const { deeplink, intentUri } = buildZKDeeplink({
-      mode: "identify",
-      clinicId: String(doctorInfo.clinic_id),
-      operatorId: String(doctorInfo.doctor_id),
-      consultationId: id,                  // ← on le passe aussi ici
-      redirectOriginForPhone: getOriginForPhone(),
-      redirectPath: "/fp-callback?scope=doctor_specalist",
-    });
+    const clerkId = user?.id || null;
+    const email = user?.primaryEmailAddress?.emailAddress || null;
 
-    try {
-      window.location.href = deeplink;
-      setTimeout(() => { window.location.href = intentUri; }, 900);
-    } catch {
-      window.location.href = intentUri;
+    let q = supabase
+      .from("clinic_staff")
+      .select("id, clinic_id, role, email, clerk_user_id")
+      .eq("role", "doctor")
+      .limit(1);
+
+    if (clerkId) q = q.eq("clerk_user_id", clerkId);
+    else if (email) q = q.eq("email", email);
+
+    const { data, error } = await q.maybeSingle();
+    if (!data || error) {
+      toast.error("Impossible d'identifier votre clinique.");
+      return null;
     }
-  };
+    return { clinicId: String(data.clinic_id), doctorId: String(data.id) };
+  }
 
-  const handleBiometryFailure = async () => {
-    const id = await ensureDraftConsultation();
-    if (!id) return;
-    setPatientId(null);
-    setFingerprintMissing(true);
-    setStep("consultation");
-  };
+  // ✅ ctx typé (corrige erreur 2)
+  const ensureDraftConsultation = useCallback(
+    async (ctx: DoctorCtx | null): Promise<string | null> => {
+      if (consultationId) return consultationId;
+      if (!ctx) return null;
 
-  // -------- Retour du scanner (query) --------
-  const [searchParams] = useSearchParams();
-  useEffect(() => {
-    (async () => {
-      const cid = searchParams.get("consultation_id");
-      if (cid) setConsultationId(cid);
+      const { data, error } = await supabase
+        .from("consultations")
+        .insert([
+          {
+            doctor_id: ctx.doctorId,
+            clinic_id: ctx.clinicId,
+            status: "draft",
+            is_urgent: false,
+          },
+        ])
+        .select("id")
+        .single();
 
-      const mode = searchParams.get("mode");
-      const found = searchParams.get("found");
-      const userId = searchParams.get("user_id");
-      const error = searchParams.get("error");
-
-      if (mode === "identify") {
-        if (found === "true" && userId) {
-          setPatientId(userId);
-          setFingerprintMissing(false);
-          setStep("consultation");
-          toast.success("Patient reconnu ✅");
-
-          if (cid) {
-            try {
-              await supabase
-                .from("consultations")
-                .update({
-                  status: "pending_rights",
-                  patient_id: userId,
-                  biometric_verified_at: new Date().toISOString(), // trace l’identité
-                })
-                .eq("id", cid);
-            } catch (e) {
-              console.error("Erreur update pending_rights:", e);
-            }
-          }
-        } else {
-          setPatientId(null);
-          setFingerprintMissing(true);
-          setStep("consultation");
-          toast.warn("Empreinte inconnue, poursuivre sans empreinte.");
-          if (error) console.warn("identify error:", error);
-        }
+      if (error || !data) {
+        console.error("[consultation draft] insert failed:", error);
+        toast.error("Erreur création brouillon.");
+        return null;
       }
 
-      // ✅ nettoie l'URL (empêche un retraitement au refresh)
-      const clean = window.location.pathname + (cid ? `?consultation_id=${encodeURIComponent(cid)}` : "");
-      window.history.replaceState(null, "", clean);
+      setConsultationId(data.id);
+      return data.id;
+    },
+    [consultationId]
+  );
 
-      // compat ancienne URL ?notfound=true
-      const notFound = searchParams.get("notfound");
-      if (notFound === "true") {
-        toast.warn("Empreinte inconnue, veuillez créer un nouveau patient");
-        setFingerprintMissing(true);
-        setStep("consultation");
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // -------- Suggestions GPT (inchangé) --------
-  useEffect(() => {
-    const loadGptSuggestions = async () => {
-      if (diagnosis.trim().length < 3) return;
-      const prompt = `Liste les médicaments ou actes médicaux fréquemment utilisés pour le diagnostic suivant : "${diagnosis.trim()}". Réponds uniquement par une liste.`;
-      const suggestions = await fetchGptSuggestions(prompt);
-      setGptSuggestions(suggestions);
-    };
-    loadGptSuggestions();
-  }, [diagnosis]);
-
-  // -------- Ajouts listes --------
-  const addAct = () => {
-    if (currentAct.trim()) {
-      setActs((prev) => [...prev, currentAct.trim()]);
-      setCurrentAct("");
-    }
-  };
-  const addMedication = () => {
-    if (currentMedication.trim()) {
-      setMedications((prev) => [...prev, currentMedication.trim()]);
-      setCurrentMedication("");
-    }
-  };
-
-  // -------- Enregistrer la consultation (UPDATE le brouillon) --------
-  const createConsultation = async () => {
-    if (!user?.id) return toast.error("Utilisateur médecin introuvable");
-    if (!consultationId) return toast.error("Consultation brouillon manquante");
-
-    const parsedAmount = parseInt(amount);
-    if (acts.length === 0) return toast.error("Ajoutez au moins un acte.");
-    if (isNaN(parsedAmount) || parsedAmount <= 0) return toast.error("Montant invalide.");
-
-    const symptomsDrawn =
-      symptomsType === "drawn" ? symptomsCanvasRef.current?.getTrimmedCanvas().toDataURL() : null;
-    const diagnosisDrawn =
-      diagnosisType === "drawn" ? diagnosisCanvasRef.current?.getTrimmedCanvas().toDataURL() : null;
-
-    const hasSymptoms = (symptomsType === "text" && symptoms.trim()) || symptomsDrawn;
-    const hasDiagnosis = (diagnosisType === "text" && diagnosis.trim()) || diagnosisDrawn;
-
-    if (!hasSymptoms) return toast.error("Renseignez les symptômes");
-    if (!hasDiagnosis) return toast.error("Renseignez le diagnostic");
-    if (!patientId && !fingerprintMissing) return toast.error("Aucun patient sélectionné");
-
-    const targetStatus = "validated"; // ou 'pending_rights' si tu veux forcer validation plus tard
+    async function markBiometryVerified(params: {
+    consultationId: string;
+    patientId: string;
+  }) {
+    const ctx =
+      doctorInfo?.clinic_id && doctorInfo?.doctor_id
+        ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+        : await resolveDoctorContext();
 
     const { error } = await supabase
       .from("consultations")
       .update({
-        patient_id: patientId,
-        symptoms: symptomsType === "text" ? symptoms.trim() : null,
-        symptoms_drawn: symptomsDrawn,
-        diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
-        diagnosis_drawn: diagnosisDrawn,
-        actes: acts.map((type) => ({ type })),
-        medications,
-        amount: parsedAmount,
-        status: targetStatus,
-        fingerprint_missing: fingerprintMissing,
+        patient_id: params.patientId,
+        fingerprint_missing: false,
+        biometric_verified_at: new Date().toISOString(),
+        biometric_operator_id: ctx?.doctorId ?? null,
+        biometric_clinic_id: ctx?.clinicId ?? null,
+        status: "draft",
       })
-      .eq("id", consultationId);
+      .eq("id", params.consultationId);
 
     if (error) {
-      toast.error("Erreur lors de la mise à jour");
+      console.error("[markBiometryVerified] DB update error:", error);
     } else {
-      toast.success("Consultation enregistrée");
-      // reset UI
-      setActs([]);
-      setCurrentAct("");
-      setMedications([]);
-      setCurrentMedication("");
-      setSymptoms("");
-      setDiagnosis("");
-      setAmount("");
-      setPatientId(null);
-      setStep("done");
+      console.log("[markBiometryVerified] wrote biometrics on", params.consultationId);
+      console.log("[markBiometryVerified] OK", params.consultationId);
+    }
+  }
+
+  // 🔹 Déclencheur biométrie
+  const handleBiometrySuccess = async () => {
+    try {
+      let ctx =
+        doctorInfo?.clinic_id && doctorInfo?.doctor_id
+          ? { clinicId: String(doctorInfo.clinic_id), doctorId: String(doctorInfo.doctor_id) }
+          : await resolveDoctorContext();
+
+      if (!ctx) return;
+
+      let cid = consultationId;
+      if (!cid) cid = await ensureDraftConsultation(ctx);
+      if (!cid) return; // sécurité
+
+      const returnPath = `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(cid)}`;
+      sessionStorage.setItem("fp:return", returnPath);
+
+      // ✅ consultationId optional string => on passe jamais null (corrige erreur 1)
+      const { deeplink, intentUri } = buildZKDeeplink({
+        mode: "identify",
+        clinicId: ctx.clinicId,
+        operatorId: ctx.doctorId,
+        consultationId: cid || undefined,
+        redirectOriginForPhone: getOriginForPhone(),
+        redirectPath: "/fp-callback?scope=doctor_multi",
+      });
+
+      window.location.href = deeplink;
+      setTimeout(() => {
+        window.location.href = intentUri;
+      }, 800);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erreur lancement biométrie");
     }
   };
 
-  // -------- Suggestions locales médocs --------
-  const diagnosisKeywords = diagnosis.trim().toLowerCase().split(/\s+/);
-  const filteredMeds = Object.entries(medicationSuggestions)
-    .filter(([key]) => diagnosisKeywords.some((keyword) => key.includes(keyword)))
-    .flatMap(([, suggestions]) => suggestions);
+  const handleBiometryFailure = async () => {
+  const ctx = await resolveDoctorContext();
+  const cid = await ensureDraftConsultation(ctx);
 
-  // -------- UI --------
+  setFingerprintMissing(true);
+  setStep("consultation");
+
+  // ✅ IMPORTANT : écrire aussi en base (sinon l'assureur/PDF voient "non vérifié" sans logique)
+  if (cid) {
+    const { error } = await supabase
+      .from("consultations")
+      .update({
+        fingerprint_missing: true,
+        biometric_verified_at: null,
+        biometric_operator_id: null,
+        biometric_clinic_id: null,
+      })
+      .eq("id", cid);
+
+    if (error) console.error("[handleBiometryFailure] DB update error:", error);
+     }
+  };
+
+  // 🔹 Callback biométrie + nettoyage
+const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    (async () => {
+      const urlCid     = searchParams.get("consultation_id");
+      const urlIdFound = searchParams.get("id_found");
+      const urlIdNot   = searchParams.get("id_not_found");
+
+      // 🔹 Lecture de fp:last (set par FingerprintCallback)
+      let last: any = null;
+      try {
+        const raw = sessionStorage.getItem("fp:last");
+        if (raw) last = JSON.parse(raw);
+      } catch {}
+
+      const lastIsIdentify =
+        last &&
+        last.type === "identify" &&
+        last.ok === true &&
+        !!last.patient_id;
+
+      // 🔹 Choix final des IDs (URL prioritaire, sinon backup fp:last)
+      const finalPatientId =
+        urlIdFound || (lastIsIdentify ? last.patient_id : null);
+
+      const finalConsultationId =
+        urlCid || (lastIsIdentify ? last.consultation_id || null : null);
+
+        let finalCid = finalConsultationId;
+
+        if (finalCid) setConsultationId(finalCid);
+
+        if (finalPatientId) {
+          // ✅ Patient reconnu → on passe en étape consultation
+          setPatientId(finalPatientId);
+          setFingerprintMissing(false);
+          setStep("consultation");
+
+          if (finalCid) { // Changé ici
+            try {
+              await markBiometryVerified({
+                consultationId: finalCid, // Changé ici
+                patientId: finalPatientId,
+              });
+            } catch (e) {
+              console.error("[NewConsultation] markBiometryVerified failed:", e);
+            }
+          }
+
+      } else if (urlIdNot === "1") {
+        // ❌ Empreinte non trouvée
+        setFingerprintMissing(true);
+        setStep("consultation");
+        toast.warn("Aucun patient correspondant.");
+      }
+
+      // 🔹 Nettoyage de l’URL (on garde au pire consultation_id)
+      if (urlCid) {
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname +
+            `?consultation_id=${encodeURIComponent(urlCid)}`
+        );
+      } else {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+
+      // 🔹 Si on a consommé fp:last pour un identify, on peut le nettoyer
+      if (lastIsIdentify) {
+        try {
+          sessionStorage.removeItem("fp:last");
+        } catch {}
+      }
+    })();
+  }, [searchParams]);
+
+  function buildMedsFinal(meds: string[], current: string) {
+  return [
+    ...(meds ?? []),
+    ...(current?.trim() ? [current.trim()] : []),
+  ]
+    .map((m) => String(m).trim())
+    .filter(Boolean);
+}
+
+
+// ---------- Enregistrement consultation ----------
+const createConsultation = async () => {
+  try {
+    // 1) Contexte médecin
+    const ctx =
+      doctorInfo?.clinic_id && doctorInfo?.doctor_id
+        ? {
+            clinicId: String(doctorInfo.clinic_id),
+            doctorId: String(doctorInfo.doctor_id),
+          }
+        : await resolveDoctorContext();
+
+    if (!ctx) {
+      toast.error("Impossible d'identifier votre clinique (doctor).");
+      return;
+    }
+
+    // ✅ Toujours travailler sur UN SEUL brouillon (évite de créer une consultation "B")
+    let cid = consultationId;
+    if (!cid) {
+      cid = await ensureDraftConsultation(ctx);
+      if (!cid) {
+        toast.error("Impossible de créer/charger la consultation brouillon.");
+        return;
+      }
+      setConsultationId(cid);
+    }
+
+    console.log("[createConsultation] using cid=", cid, "state consultationId=", consultationId);
+
+    // 2) Validations minimum
+    const parsedAmount = parseInt(amount, 10);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Montant invalide.");
+      return;
+    }
+
+    const symptomsDrawn =
+      symptomsType === "drawn"
+        ? symptomsCanvasRef.current?.getTrimmedCanvas().toDataURL()
+        : null;
+
+    const diagnosisDrawn =
+      diagnosisType === "drawn"
+        ? diagnosisCanvasRef.current?.getTrimmedCanvas().toDataURL()
+        : null;
+
+    const hasSymptoms =
+      (symptomsType === "text" && symptoms.trim().length > 0) ||
+      !!symptomsDrawn;
+    const hasDiagnosis =
+    (diagnosisType === "text" && diagnosis.trim().length > 0) ||
+    !!diagnosisDrawn ||
+    !!diagnosisCodeId ||
+    !!diagnosisCodeText.trim();
+
+    // Symptômes / diagnostic requis
+    if (!hasSymptoms) {
+      toast.error("Symptômes requis (texte ou écriture).");
+      return;
+    }
+    if (!hasDiagnosis) {
+      toast.error("Diagnostic requis (texte / écriture / code affection).");
+      return;
+    }
+
+    // Au moins un acte (nomenclature OU manuel)
+    const hasActs = selectedActs.length > 0 || acts.length > 0;
+    if (!hasActs) {
+      toast.error("Ajoute au moins un acte médical.");
+      return;
+    }
+
+    // 3) Récupérer l'assureur du patient (s'il existe)
+    let insurerId: string | null = null;
+    if (patientId) {
+        const { data: membership, error: memErr } = await supabase
+          .from("insurer_memberships")
+          .select("insurer_id, coverage_start, coverage_end, is_active, last_verified_at")
+          .eq("patient_id", patientId)
+          .eq("is_active", true)
+          .order("last_verified_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+      if (memErr) {
+        console.warn("[createConsultation] insurer_memberships error:", memErr);
+      } else if (membership?.insurer_id) {
+        insurerId = membership.insurer_id as string;
+      }
+    }
+
+    // 4) Statut : 'sent' uniquement si patient assuré + assureur trouvé
+    const targetStatus = patientId && insurerId ? "sent" : "draft";
+
+    const medsFinal = buildMedsFinal(medications, currentMedication);
+
+    console.log("[createConsultation] meds state=", medications);
+    console.log("[createConsultation] currentMedication=", currentMedication);
+    console.log("[createConsultation] medsFinal=", medsFinal);
+
+    // 5) Payload commun INSERT / UPDATE
+    const payload: any = {
+      doctor_id: ctx.doctorId,
+      clinic_id: ctx.clinicId,
+      patient_id: patientId, // peut être null si pas d'empreinte / pas identifié
+      ...(patientId && !fingerprintMissing
+  ? {
+      biometric_verified_at: new Date().toISOString(),
+      biometric_operator_id: ctx.doctorId,
+      biometric_clinic_id: ctx.clinicId,
+    }
+  : {
+      biometric_verified_at: null,
+      biometric_operator_id: null,
+      biometric_clinic_id: null,
+    }),
+      symptoms: symptomsType === "text" ? symptoms.trim() : null,
+      symptoms_drawn: symptomsDrawn,
+      diagnosis: diagnosisType === "text" ? diagnosis.trim() : null,
+      diagnosis_drawn: diagnosisDrawn,
+      amount: parsedAmount,
+      acts: [
+        ...selectedActs.map((a) => ({
+          act_id: a.act_id,
+          code: a.code,
+          title: a.title,
+          key_letter: a.key_letter,
+          coefficient: a.coefficient,
+          profession_scope: a.profession_scope ?? null,
+          source: a.source ?? null,
+          origin: "catalog",
+        })),
+        ...acts.map((label) => ({
+          act_id: null,
+          code: null,
+          title: label,
+          key_letter: null,
+          coefficient: null,
+          profession_scope: null,
+          source: null,
+          origin: "manual",
+        })),
+      ],
+      medications: medsFinal,
+      fingerprint_missing: fingerprintMissing,
+      insurer_id: insurerId, // relie bien la consultation à l’assureur
+      status: targetStatus, // 'sent' ou 'draft'
+      diagnosis_code_id: diagnosisCodeId,
+      diagnosis_code_text: diagnosisCodeText.trim() || null,
+    };
+
+    console.log("[createConsultation] payload=", payload);
+
+    // ✅ UPDATE ONLY : on met à jour le brouillon existant (pas de 2e consultation)
+    const { error } = await supabase
+      .from("consultations")
+      .update(payload)
+      .eq("id", cid);
+
+    if (error) {
+      console.error("[createConsultation] update error:", error);
+      toast.error("Erreur lors de l'enregistrement de la consultation.");
+      return;
+    }
+
+    const { data: check, error: checkErr } = await supabase
+    .from("consultations")
+    .select("id, medications")
+    .eq("id", cid)
+    .single();
+    console.log("[createConsultation] DB medications after update=", check?.medications, checkErr);
+
+    const finalId = cid;
+
+    // 9) Si la consultation est envoyée à l’assureur → génération du PDF
+    if (targetStatus === "sent" && finalId) {
+      try {
+        console.log(
+          "[createConsultation] appel generateConsultationPdf pour",
+          finalId
+        );
+        const res = await generateConsultationPdf(finalId);
+        console.log("[createConsultation] PDF généré pour", finalId, res);
+      } catch (e) {
+        console.error("[createConsultation] erreur génération PDF :", e);
+        toast.warn(
+          "Consultation envoyée à l’assureur, mais la fiche PDF n'a pas pu être générée."
+        );
+      }
+    } else {
+      console.log(
+        "[createConsultation] pas de génération PDF (targetStatus=",
+        targetStatus,
+        ", finalId=",
+        finalId,
+        ")"
+      );
+    }
+
+    // 10) Feedback UI + reset
+    toast.success(
+      targetStatus === "sent"
+        ? "Consultation envoyée à l’assureur."
+        : "Consultation enregistrée en brouillon."
+    );
+    setStep("done");
+
+    // Reset minimum pour la prochaine consultation
+    setActs([]);
+    setCurrentAct("");
+    setSelectedActs([]);
+    setMedications([]);
+    setCurrentMedication("");
+    setSymptoms("");
+    setDiagnosis("");
+    setAmount("");
+    setPatientId(null);
+    setFingerprintMissing(false);
+    setDiagnosisCodeId(null);
+    setDiagnosisCodeText("");
+  } catch (e) {
+    console.error("[createConsultation] unexpected error:", e);
+    toast.error("Erreur inattendue lors de l'enregistrement.");
+  }
+};
+
+  // ------------- Vérification droits assureur -------------
+  const checkRights = async () => {
+    if (!patientId) return toast.error("Aucun patient");
+    if (!consultationId) return toast.error("Consultation brouillon manquante");
+
+    try {
+      setIsCheckingRights(true);
+
+      const resp = await fetch("/.netlify/functions/insurer-rights-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          patient_id: patientId,
+          consultation_id: consultationId,
+          clinic_id: doctorInfo?.clinic_id,
+        }),
+      });
+
+      if (!resp.ok) throw new Error();
+
+      const data = await resp.json();
+
+      await supabase
+        .from("consultations")
+        .update({
+          status: "sent",
+          insurer_amount: data.insurer_amount ?? null,
+          patient_amount: data.patient_amount ?? null,
+          insurer_id: data.insurer_id ?? null,
+          rights_checked_at: new Date().toISOString(),
+        })
+        .eq("id", consultationId);
+
+      // 🔹 Génération du PDF après passage en "sent"
+      try {
+        await generateConsultationPdf(consultationId);
+        console.log("[checkRights] PDF généré pour", consultationId);
+      } catch (e) {
+        console.error("[checkRights] erreur génération PDF :", e);
+      }
+
+      setAmount(String((data.insurer_amount || 0) + (data.patient_amount || 0)));
+      setProvisional(false);
+      toast.success("Droits confirmés");
+    } catch (e) {
+      console.error("[checkRights]", e);
+      toast.error("Échec de la vérification des droits");
+    } finally {
+      setIsCheckingRights(false);
+    }
+  };
+
+
+  // ---------------- Rendu UI ----------------
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Démarrer une consultation</h1>
 
       {step === "biometry" && (
         <div className="space-y-4">
-          <p>Veuillez scanner l’empreinte du patient :</p>
-          <div className="flex gap-4">
-            <Button onClick={handleBiometrySuccess}>Empreinte capturée</Button>
-            <Button onClick={handleBiometryFailure} className="bg-orange-600">
-              Continuer sans empreinte
-            </Button>
-          </div>
+          <Button onClick={handleBiometrySuccess}>Empreinte capturée</Button>
+          <Button onClick={handleBiometryFailure} className="bg-orange-600">
+            Continuer sans empreinte
+          </Button>
         </div>
       )}
 
       {step === "consultation" && (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            Patient : {patientId ? "✅ patient identifié" : "❌ patient non identifié (sans empreinte)"}
-          </p>
 
-          <div>
-            <label className="font-semibold">Symptômes :</label>
-            <div className="flex gap-2 my-1">
-              <Button onClick={() => setSymptomsType("text")}>Clavier</Button>
-              <Button onClick={() => setSymptomsType("drawn")}>Écriture</Button>
-            </div>
-            {symptomsType === "text" ? (
-              <Textarea
-                placeholder="Symptômes"
-                value={symptoms}
-                onChange={(e) => setSymptoms(e.target.value)}
-              />
-            ) : (
-              <SignatureCanvas
-                ref={symptomsCanvasRef}
-                penColor="black"
-                canvasProps={{ className: "border w-full h-40 rounded" }}
-              />
-            )}
-          </div>
-
-          <div>
-            <label className="font-semibold">Diagnostic :</label>
-            <div className="flex gap-2 my-1">
-              <Button onClick={() => setDiagnosisType("text")}>Clavier</Button>
-              <Button onClick={() => setDiagnosisType("drawn")}>Écriture</Button>
-            </div>
-            {diagnosisType === "text" ? (
-              <Textarea
-                placeholder="Diagnostic"
-                value={diagnosis}
-                onChange={(e) => setDiagnosis(e.target.value)}
-              />
-            ) : (
-              <SignatureCanvas
-                ref={diagnosisCanvasRef}
-                penColor="black"
-                canvasProps={{ className: "border w-full h-40 rounded" }}
-              />
-            )}
-          </div>
-
-          {gptSuggestions.length > 0 && (
-            <div className="text-sm text-gray-600">
-              <p className="font-semibold">Suggestions GPT :</p>
-              <ul className="list-disc pl-5">
-                {gptSuggestions.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
+          {patientId && (
+            <div>
+              <Button
+                onClick={() => {
+                  const url = `/multispecialist/doctor/patients/${encodeURIComponent(patientId)}`;
+                  window.open(url, "_blank", "noreferrer");
+                }}
+              >
+                Voir dossier patient
+              </Button>
             </div>
           )}
 
           <div>
-            <label className="font-semibold">Actes médicaux :</label>
-            <div className="flex gap-2">
-              <Input
-                placeholder="Acte médical"
-                value={currentAct}
-                onChange={(e) => setCurrentAct(e.target.value)}
-                list="act-suggestions"
-              />
-              <Button onClick={addAct}>Ajouter acte</Button>
+            <label>Symptômes :</label>
+            <div className="flex gap-2 my-1">
+              <Button onClick={() => setSymptomsType("text")}>Clavier</Button>
+              <Button onClick={() => setSymptomsType("drawn")}>Écriture</Button>
             </div>
-            <datalist id="act-suggestions">
-              {Object.values(suggestions_base)
-                .flatMap((v) => (Array.isArray(v) ? v : Object.values(v).flat()))
-                .map((a, i) => (typeof a === "string" ? <option key={i} value={a} /> : null))}
-            </datalist>
-            <ul className="list-disc pl-5">
-              {acts.map((a, i) => (
-                <li key={i}>{a}</li>
-              ))}
-            </ul>
+
+            {symptomsType === "text" ? (
+              <Textarea value={symptoms} onChange={(e) => setSymptoms(e.target.value)} />
+            ) : (
+              <SignatureCanvas ref={symptomsCanvasRef} canvasProps={{ className: "border h-40 w-full" }} />
+            )}
           </div>
 
           <div>
-            <label className="font-semibold">Médicaments :</label>
+            <label>Diagnostic :</label>
+            <div className="flex gap-2 my-1">
+              <Button onClick={() => setDiagnosisType("text")}>Clavier</Button>
+              <Button onClick={() => setDiagnosisType("drawn")}>Écriture</Button>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+              <label className="font-medium">Code affection (assureur)</label>
+
+            <DiagnosisSelector
+              mode="multi"
+              maxItems={5}
+              valueIds={primaryDiagnosis?.id ? [primaryDiagnosis.id] : []}
+              valueTexts={primaryDiagnosis?.label ? [primaryDiagnosis.label] : []}
+              onChange={(items) => {
+                setDiagnosisSelected(items);
+              }}
+              onPrimaryChange={(item) => {
+                setPrimaryDiagnosis(item);
+
+                // ✅ pour ton MVP actuel (1 seul champ en DB)
+                setDiagnosisCodeId(item?.id ?? null);
+                setDiagnosisCodeText(item?.label ?? "");
+
+                // option: auto-remplir le champ diagnosis si vide
+                if (!diagnosis.trim() && diagnosisType === "text" && item?.label) {
+                  setDiagnosis(item.label);
+                }
+              }}
+            />
+
+              <p className="text-xs text-gray-500">
+                Astuce : tape “pal”, “septi”, “tub”, ou directement le code (A01, C02.a).
+                Sinon utilise “Chapitres”.
+              </p>
+            </div>
+
+            {diagnosisType === "text" ? (
+              <Textarea value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+            ) : (
+              <SignatureCanvas ref={diagnosisCanvasRef} canvasProps={{ className: "border h-40 w-full" }} />
+            )}
+          </div>
+
+          <div>
+            <label>Actes médicaux :</label>
+
+            <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+              <label className="font-medium">Actes (nomenclature)</label>
+
+              <ActSelector
+                value={selectedActs}
+                onChange={setSelectedActs}
+                source="ACTES-CNAMGS-2012"
+                maxItems={10}
+                // professionScope="physician" // si tu veux filtrer, sinon laisse sans
+              />
+
+              {/* ✅ Affichage immédiat des actes choisis */}
+              {selectedActs.length > 0 && (
+                <div className="pt-2 space-y-2">
+                  <div className="text-sm font-semibold">Actes sélectionnés</div>
+
+                  <div className="space-y-2">
+                    {selectedActs.map((a) => (
+                      <div
+                        key={a.act_id}
+                        className="flex items-center justify-between gap-2 border rounded p-2 bg-white"
+                      >
+                        <div className="text-sm">
+                          <div className="font-medium">
+                            {a.code} — {a.title}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {a.key_letter ? `${a.key_letter} ` : ""}
+                            {a.coefficient ?? ""}
+                            {a.profession_scope ? ` • ${a.profession_scope}` : ""}
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          className="bg-white text-red-700 border border-red-200 hover:bg-red-50"
+                          onClick={() =>
+                            setSelectedActs((prev) => prev.filter((x) => x.act_id !== a.act_id))
+                          }
+                        >
+                          Retirer
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Optionnel : bouton clear */}
+                  <Button
+                    type="button"
+                    className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+                    onClick={() => setSelectedActs([])}
+                  >
+                    Tout effacer (nomenclature)
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* ✅ Actes manuels (si non trouvés) */}
+            <div className="mt-3 bg-white rounded-xl shadow-sm p-4 space-y-2">
+              <label className="font-medium">Actes libres (si non trouvés)</label>
+
+              <div className="flex gap-2">
+                <Input
+                  value={currentAct}
+                  onChange={(e) => setCurrentAct(e.target.value)}
+                  placeholder="Ex: Pansement simple..."
+                />
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (currentAct.trim()) {
+                      setActs((prev) => [...prev, currentAct.trim()]);
+                      setCurrentAct("");
+                    }
+                  }}
+                >
+                  Ajouter acte
+                </Button>
+              </div>
+
+              {acts.length > 0 && (
+                <ul className="list-disc pl-5">
+                  {acts.map((a, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2">
+                      <span>{a}</span>
+                      <Button
+                        type="button"
+                        className="bg-white text-red-700 border border-red-200 hover:bg-red-50"
+                        onClick={() => setActs((prev) => prev.filter((_, idx) => idx !== i))}
+                      >
+                        Retirer
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {acts.length > 0 && (
+                <Button
+                  type="button"
+                  className="bg-white text-gray-900 border border-gray-300 hover:bg-gray-50"
+                  onClick={() => setActs([])}
+                >
+                  Tout effacer (libres)
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label>Médicaments :</label>
             <div className="flex gap-2">
               <Input
-                placeholder="Médicament"
                 value={currentMedication}
                 onChange={(e) => setCurrentMedication(e.target.value)}
-                list="med-suggestions"
+                placeholder="Médicament"
               />
-              <Button onClick={addMedication}>Ajouter médicament</Button>
+             <Button
+                type="button"
+                onClick={() => {
+                  const v = currentMedication.trim();
+                  if (!v) return;
+
+                  setMedications((prev) => {
+                    // évite doublons exacts
+                    if (prev.includes(v)) return prev;
+                    return [...prev, v];
+                  });
+
+                  setCurrentMedication("");
+                }}
+              >
+                Ajouter médicament
+              </Button>
             </div>
-            <datalist id="med-suggestions">
-              {filteredMeds.map((s, i) => (
-                <option key={i} value={s.toString()} />
-              ))}
-            </datalist>
             <ul className="list-disc pl-5">
-              {medications.map((m, i) => (
-                <li key={i}>{m}</li>
-              ))}
+              {medications.map((m, i) => <li key={i}>{m}</li>)}
             </ul>
           </div>
 
           <Input
             type="number"
-            placeholder="Montant total (FCFA)"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+            placeholder="Montant total FCFA"
           />
-          <Button onClick={createConsultation} className="w-full bg-blue-600">
+
+          {provisional && (
+            <Button onClick={checkRights} disabled={isCheckingRights}>
+              {isCheckingRights ? "Vérification..." : "Vérifier droits assureur"}
+            </Button>
+          )}
+
+          <Button onClick={createConsultation} className="bg-blue-600 w-full">
             Enregistrer la consultation
           </Button>
         </div>
       )}
 
       {step === "done" && (
-        <div className="space-y-4 text-center">
-          <p className="text-green-700 text-lg">✅ Consultation enregistrée.</p>
-          <Button onClick={() => setStep("biometry")}>Démarrer une nouvelle</Button>
+        <div className="text-center space-y-4">
+          <p>Consultation enregistrée</p>
+          <Button onClick={() => setStep("biometry")}>Nouvelle consultation</Button>
         </div>
       )}
     </div>
