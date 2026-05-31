@@ -157,6 +157,25 @@ export default function FingerprintCallback() {
           return;
         }
 
+        if (scope === "doctor_specialist") {
+        const dest = new URL("/doctor/new-act", window.location.origin);
+
+        if (ok) {
+          setMessage("Patient reconnu ✅");
+          dest.searchParams.set("patient_id", identifiedPatientId!);
+        } else {
+          setMessage("Aucun patient reconnu correspondant.");
+          dest.searchParams.set("id_not_found", "1");
+        }
+
+        sessionStorage.removeItem("fp:return");
+        setTimeout(
+          () => navigate(dest.pathname + dest.search, { replace: true }),
+          ok ? 600 : 900
+        );
+        return;
+      }
+
         const back = computeBack(scope!, storedReturn);
         const sep = back.includes("?") ? "&" : "?";
 
