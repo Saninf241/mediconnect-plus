@@ -26,9 +26,11 @@ import SupportPage from './Pages/multispecialist/secretary/SupportPage';
 import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
 import ConsultationDoctorDetailsPage from './Pages/multispecialist/doctor/ConsultationDoctorDetailsPage';
+import ConsultationDoctorDetailsPageSpecialist from './Pages/doctor/ConsultationDoctorDetailsPageSpecialist';
 import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
 import DoctorPatientDetailsPage from "./Pages/multispecialist/doctor/DoctorPatientDetailsPage";
+import DoctorPatientDetailsPageSpecialist from "./Pages/doctor/DoctorPatientDetailsPageSpecialist";
 import PharmacyLayout from "./components/layouts/PharmacyLayout";
 import PharmacyDashboard from "./Pages/pharmacy/PharmacyDashboard";
 import PharmacyOrders from "./Pages/pharmacy/Orders";
@@ -428,6 +430,8 @@ export default function App() {
       <Route path="consultation-follow-up" element={<ConsultationFollowUpPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="performance" element={<PerformancePage />} />
+      <Route path="patients/:id" element={<DoctorPatientDetailsPageSpecialist />} />
+      <Route path="consultations/:id" element={<ConsultationDoctorDetailsPageSpecialist />} />
     </Route>
 
     {/* ASSUREUR */}

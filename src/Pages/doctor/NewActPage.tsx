@@ -605,7 +605,7 @@ const createConsultation = async () => {
             <div>
               <Button
                 onClick={() => {
-                  const url = `/multispecialist/doctor/patients/${encodeURIComponent(patientId)}`;
+                  const url = `/doctor/patients/${encodeURIComponent(patientId)}`;
                   window.open(url, "_blank", "noreferrer");
                 }}
               >
