@@ -1,4 +1,3 @@
-// src/Pages/doctor/NewActPage.tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useUser } from '@clerk/clerk-react';
@@ -16,6 +15,7 @@ import { buildZKDeeplink } from "../../lib/deeplink";
 import { generateConsultationPdf } from "../../lib/api/generateConsultationPdf";
 import DiagnosisSelector, { type DiagnosisCodeRow, type SelectedItem,} from "../../components/ui/uidoctor/DiagnosisSelector";
 import ActSelector, { SelectedAct } from "../../components/ui/uidoctor/ActSelector";
+
 
 export default function NewConsultationPage() {
   const { user } = useUser();
@@ -170,7 +170,7 @@ export default function NewConsultationPage() {
       if (!cid) cid = await ensureDraftConsultation(ctx);
       if (!cid) return; // sécurité
 
-      const returnPath = `/multispecialist/doctor/new-consultation?consultation_id=${encodeURIComponent(cid)}`;
+      const returnPath = `/doctor/new-act?consultation_id=${encodeURIComponent(cid)}`;
       sessionStorage.setItem("fp:return", returnPath);
 
       // ✅ consultationId optional string => on passe jamais null (corrige erreur 1)

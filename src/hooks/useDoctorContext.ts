@@ -1,57 +1,80 @@
-//src/hooks/useDoctorContext.ts
-import { useEffect, useState } from "react";
+// src/hooks/useDoctorContext.ts
+import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { supabase } from "../lib/supabase";
+import { resolveAccessContext } from "../components/auth/access-context";
 
 type DoctorContext = {
   clinic_id: string;
   doctor_id: string;
+  area: "specialist_doctor" | "multispecialist_doctor";
 } | null;
 
 export function useDoctorContext(): DoctorContext {
-  const { user } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
   const [ctx, setCtx] = useState<DoctorContext>(null);
 
-  useEffect(() => {
-    if (!user) return;
+  const email = useMemo(
+    () =>
+      user?.primaryEmailAddress?.emailAddress ||
+      user?.emailAddresses?.[0]?.emailAddress ||
+      null,
+    [user]
+  );
 
-    const clerkId = user.id;
-    const email = user.primaryEmailAddress?.emailAddress ?? null;
+  const roleFromClerk = useMemo(
+    () => (user?.publicMetadata?.role as string | undefined) ?? null,
+    [user]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
 
     async function load() {
+      if (!isLoaded) return;
+
+      if (!isSignedIn || !user) {
+        if (!cancelled) setCtx(null);
+        return;
+      }
+
       try {
-        let q = supabase
-          .from("clinic_staff")
-          .select("id, clinic_id, role, email, clerk_user_id")
-          .eq("role", "doctor")
-          .limit(1);
+        const access = await resolveAccessContext({
+          clerkUserId: user.id,
+          email,
+          roleFromClerk,
+        });
 
-        if (clerkId) {
-          q = q.eq("clerk_user_id", clerkId);      //  clé principale
-        } else if (email) {
-          q = q.eq("email", email);
-        }
-
-        const { data, error } = await q.maybeSingle();
-
-        if (error || !data?.clinic_id) {
-          console.warn("useDoctorContext: aucun staff trouvé", error);
-          setCtx(null);
+        if (
+          access &&
+          (access.area === "specialist_doctor" ||
+            access.area === "multispecialist_doctor") &&
+          access.clinicId &&
+          access.staffId
+        ) {
+          if (!cancelled) {
+            setCtx({
+              clinic_id: String(access.clinicId),
+              doctor_id: String(access.staffId),
+              area: access.area,
+            });
+          }
           return;
         }
 
-        setCtx({
-          clinic_id: String(data.clinic_id),
-          doctor_id: String(data.id),             //  id de la ligne clinic_staff
-        });
+        console.warn("useDoctorContext: aucun contexte médecin valide", access);
+        if (!cancelled) setCtx(null);
       } catch (e) {
         console.error("useDoctorContext error", e);
-        setCtx(null);
+        if (!cancelled) setCtx(null);
       }
     }
 
     load();
-  }, [user?.id]); // relance si l'utilisateur change
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn, user, email, roleFromClerk]);
 
   return ctx;
 }
