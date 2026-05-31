@@ -28,6 +28,20 @@ type Consultation = {
   ccam_codes?: any; // souvent array/json
 };
 
+type ActiveMembership = {
+  id: string;
+  insurer_id: string | null;
+  member_no: string | null;
+  plan_code: string | null;
+  coverage_start: string | null;
+  coverage_end: string | null;
+  is_active: boolean | null;
+  status: string | null;
+  insurers?: {
+    name?: string | null;
+  } | null;
+};
+
 function calcAge(dateOfBirth?: string | null) {
   if (!dateOfBirth) return null;
   const dob = new Date(dateOfBirth);
@@ -43,6 +57,7 @@ export default function DoctorPatientDetailsPage() {
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [activeMembership, setActiveMembership] = useState<ActiveMembership | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState<string | null>(null);
 
@@ -94,8 +109,41 @@ export default function DoctorPatientDetailsPage() {
         );
       }
 
+      // 3) Adhésion assureur active
+      const { data: membership, error: membershipError } = await supabase
+        .from("insurer_memberships")
+        .select(`
+          id,
+          insurer_id,
+          member_no,
+          plan_code,
+          coverage_start,
+          coverage_end,
+          is_active,
+          status,
+          insurers(name)
+        `)
+        .eq("patient_id", id)
+        .eq("is_active", true)
+        .eq("status", "active")
+        .order("last_verified_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("[DoctorPatientDetailsPage] membershipError", membershipError);
+        setErrorText((prev) =>
+          prev
+            ? prev + " | " + membershipError.message
+            : `Erreur chargement assurance : ${membershipError.message}`
+        );
+      }
+
+      setActiveMembership((membership as ActiveMembership) || null);
+
       setPatient((p as Patient) || null);
       setConsultations((c as Consultation[]) || []);
+      setActiveMembership((membership as ActiveMembership) || null);
       setLoading(false);
     })();
   }, [id]);
@@ -104,6 +152,11 @@ export default function DoctorPatientDetailsPage() {
     patient?.full_name || patient?.name || "Patient sans nom";
 
   const age = useMemo(() => calcAge(patient?.date_of_birth), [patient]);
+
+  const isAssured = !!activeMembership || patient?.is_assured === true;
+  const insurerName = activeMembership?.insurers?.name || "—";
+  const memberNo = activeMembership?.member_no || patient?.insurance_number || "—";
+  const planCode = activeMembership?.plan_code || "—";
 
   const lastConsult = consultations?.[0];
 
@@ -150,7 +203,7 @@ export default function DoctorPatientDetailsPage() {
           <div className="flex gap-6 mt-2 text-sm text-gray-700">
             <div>Âge : {age !== null ? `${age} ans` : "—"}</div>
             <div>
-              {patient.is_assured ? "Assuré" : "Non assuré"}
+              {isAssured ? "Assuré" : "Non assuré"}
             </div>
             <div>
               Consultations : {consultations.length}
@@ -187,16 +240,13 @@ export default function DoctorPatientDetailsPage() {
         <div className="p-4 bg-white rounded shadow space-y-2">
           <h2 className="font-semibold mb-2">Identité & assurance</h2>
 
-          <p>
-            Assuré :{" "}
-            {patient.is_assured === true
-              ? "Oui"
-              : patient.is_assured === false
-              ? "Non"
-              : "Inconnu"}
-          </p>
+          <p>Assuré : {isAssured ? "Oui" : "Non"}</p>
 
-          <p>N° assuré : {patient.insurance_number || "—"}</p>
+          <p>Assureur : {insurerName}</p>
+
+          <p>N° assuré : {memberNo}</p>
+
+          <p>Plan : {planCode}</p>
 
           <p>
             Date de naissance :{" "}
