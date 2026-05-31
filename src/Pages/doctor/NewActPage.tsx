@@ -180,7 +180,7 @@ export default function NewConsultationPage() {
         operatorId: ctx.doctorId,
         consultationId: cid || undefined,
         redirectOriginForPhone: getOriginForPhone(),
-        redirectPath: "/fp-callback?scope=doctor_multi",
+        redirectPath: "/fp-callback?scope=doctor_specialist",
       });
 
       window.location.href = deeplink;
