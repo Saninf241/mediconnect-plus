@@ -94,6 +94,23 @@ export async function finalizeUninsured(patientId: string, fingerprintMissing: b
   if (error) throw new Error(error.message);
 }
 
+export async function resolveExistingPatient(
+  args: { insurer_id?: string | null; member_no?: string | null; national_id?: string | null },
+  token: string
+): Promise<{ patient_id: string | null; matched_on?: "member_no" | "national_id" }> {
+  const r = await fetch(`${FUNCTIONS_BASE}/resolve-existing-patient`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(args),
+  });
+  const json = await r.json();
+  if (!r.ok) throw new Error(json.error || "Échec de la vérification anti-doublon");
+  return json;
+}
+
 export async function generatePatientAccessCode(
   patientId: string,
   token: string

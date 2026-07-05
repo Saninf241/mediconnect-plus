@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
-import { checkEligibility, createPatientDraft, finalizeUninsured, generatePatientAccessCode } from "../../../lib/api/secretary";
+import { checkEligibility, createPatientDraft, finalizeUninsured, generatePatientAccessCode, resolveExistingPatient } from "../../../lib/api/secretary";
 import { v4 as uuidv4 } from "uuid";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
@@ -262,18 +262,31 @@ export default function NewPatientWizard() {
       return cached;
     }
 
-    // dédup NIN
-    if (form.national_id) {
-      const { data: dup } = await supabase
-        .from("patients")
-        .select("id")
-        .eq("national_id", form.national_id)
-        .limit(1)
-        .maybeSingle();
-      if (dup?.id) {
-        setPatientId(dup.id);
-        sessionStorage.setItem(sessionKey, dup.id);
-        return dup.id;
+    // dédup : n° d'adhérent actif chez l'assureur sélectionné en priorité
+    // (identifiant le plus fiable pour un assuré, cible prioritaire du
+    // produit), puis NIN en repli. Passe par une edge function (service
+    // role) plutôt que par une requête client directe, car
+    // insurer_memberships a RLS activé et on ne veut pas dépendre d'une
+    // policy pour ce contrôle anti-doublon.
+    if (form.insurer_id || form.national_id) {
+      const preToken = await getSupabaseToken();
+      const existing = await resolveExistingPatient(
+        {
+          insurer_id: form.insurer_id || null,
+          member_no: form.member_no || null,
+          national_id: form.national_id || null,
+        },
+        preToken
+      );
+      if (existing.patient_id) {
+        setPatientId(existing.patient_id);
+        sessionStorage.setItem(sessionKey, existing.patient_id);
+        setMessage(
+          existing.matched_on === "member_no"
+            ? "Dossier existant retrouvé via le n° d'adhérent — pas de nouvelle fiche créée."
+            : "Dossier existant retrouvé via le NIN — pas de nouvelle fiche créée."
+        );
+        return existing.patient_id;
       }
     }
 
