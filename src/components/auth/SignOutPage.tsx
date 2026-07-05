@@ -16,9 +16,6 @@ export default function SignOutPage() {
         sessionStorage.removeItem("fp:return");
         sessionStorage.removeItem("wizard:returnStep");
 
-        localStorage.removeItem("establishmentUserSession");
-        localStorage.removeItem("pharmacyUserSession");
-
         // Nettoyage complet pour plus de sécurité
         sessionStorage.clear();
       } catch (e) {

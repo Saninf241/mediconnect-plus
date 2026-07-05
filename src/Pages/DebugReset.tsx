@@ -2,7 +2,6 @@
 export default function DebugReset() {
   (async () => {
     try {
-      localStorage.removeItem("establishmentUserSession");
       Object.keys(localStorage)
         .filter(k => k.startsWith("wizardDraft:") || k.startsWith("fp:"))
         .forEach(k => localStorage.removeItem(k));

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { usePharmacyContext } from "../../hooks/usePharmacyContext";
 
 export default function PharmacyDashboard() {
   const [consultations, setConsultations] = useState<any[]>([]);
+  const { ctx } = usePharmacyContext();
 
   useEffect(() => {
     const fetchConsultations = async () => {
@@ -46,15 +48,13 @@ export default function PharmacyDashboard() {
   }, []);
 
   const handleDeliver = async (consultationId: string) => {
-    const sessionRaw = localStorage.getItem("pharmacyUserSession");
-    if (!sessionRaw) {
+    if (!ctx) {
       alert("Session pharmacien introuvable.");
       return;
     }
 
-    const session = JSON.parse(sessionRaw);
-    const pharmacyId = session.clinicId || session.pharmacy_id;
-    const pharmacistId = session.id || session.user_id;
+    const pharmacyId = ctx.pharmacyId;
+    const pharmacistId = ctx.staffId;
 
     const deliveredAt = new Date().toISOString();
 

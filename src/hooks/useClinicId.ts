@@ -6,7 +6,7 @@ import { supabase } from "../lib/supabase";
 interface UseClinicIdResult {
   clinicId: string | null;
   loadingClinic: boolean;
-  source: "session" | "clerk_user_id" | "email" | "none";
+  source: "clerk_user_id" | "email" | "none";
   debugMessage: string | null;
 }
 
@@ -26,29 +26,6 @@ export function useClinicId(): UseClinicIdResult {
       setDebugMessage(null);
 
       try {
-        // 1) Tentative via session locale
-        const rawSession = localStorage.getItem("establishmentUserSession");
-
-        if (rawSession) {
-          try {
-            const parsed = JSON.parse(rawSession);
-            const sessionClinicId =
-              parsed?.clinic_id ??
-              parsed?.clinicId ??
-              parsed?.establishment_id ??
-              null;
-
-            if (sessionClinicId) {
-              setClinicId(sessionClinicId);
-              setSource("session");
-              setLoadingClinic(false);
-              return;
-            }
-          } catch (e) {
-            console.error("[useClinicId] Impossible de parser establishmentUserSession", e);
-          }
-        }
-
         if (!user) {
           setClinicId(null);
           setSource("none");
@@ -60,7 +37,7 @@ export function useClinicId(): UseClinicIdResult {
         const clerkUserId = user.id;
         const email = user.emailAddresses?.[0]?.emailAddress ?? null;
 
-        // 2) Tentative via clerk_user_id
+        // 1) Tentative via clerk_user_id
         if (clerkUserId) {
           const { data, error } = await supabase
             .from("clinic_staff")
@@ -80,7 +57,7 @@ export function useClinicId(): UseClinicIdResult {
           }
         }
 
-        // 3) Tentative via email
+        // 2) Tentative via email
         if (email) {
           const { data, error } = await supabase
             .from("clinic_staff")
