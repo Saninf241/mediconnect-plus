@@ -30,14 +30,25 @@ export default function RoleRedirect() {
     }
 
     (async () => {
+      const intendedTo = sessionStorage.getItem("auth:intended_to");
+      sessionStorage.removeItem("auth:intended_to");
+
+      // Le rôle "developer" est un rôle plateforme (Clerk uniquement), il ne
+      // passe pas par resolveAccessContext (qui ne connaît que les tables
+      // clinic_staff / insurer_staff / pharmacy_staff).
+      if (roleFromClerk === "developer") {
+        navigate(
+          intendedTo && intendedTo.startsWith("/developer") ? intendedTo : "/developer",
+          { replace: true }
+        );
+        return;
+      }
+
       const ctx = await resolveAccessContext({
         clerkUserId: user.id,
         email,
         roleFromClerk,
       });
-
-      const intendedTo = sessionStorage.getItem("auth:intended_to");
-      sessionStorage.removeItem("auth:intended_to");
 
       if (!ctx) {
         navigate("/unauthorized", { replace: true });

@@ -60,6 +60,11 @@ import SignInPage from "./components/auth/SignInPage";
 import { useLocation } from "react-router-dom";
 import { Facebook, Linkedin, Mail, MessageCircle } from "lucide-react";
 import DebugReset from './Pages/DebugReset';
+import RequireDeveloper from "./components/auth/RequireDeveloper";
+import DeveloperLayout from "./components/layouts/DeveloperLayout";
+import DeveloperHome from "./Pages/developer/DeveloperHome";
+import NewClinicPage from "./Pages/developer/NewClinicPage";
+import NewInsurerPage from "./Pages/developer/NewInsurerPage";
 
 function GlobalHeader() {
   const { pathname } = useLocation();
@@ -266,13 +271,13 @@ export default function App() {
                 <Code className="h-10 w-10 mr-3" />
                 <div>
                   <h2 className="text-2xl font-bold">Espace Développeur</h2>
-                  <p className="text-indigo-100">Sandbox de démonstration</p>
+                  <p className="text-indigo-100">Création de cabinets, cliniques et assureurs</p>
                 </div>
               </div>
-              <button onClick={() => go("/assureur/reports")} className="w-full px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 transition">
-                Ouvrir la démo (Assureur)
+              <button onClick={() => go("/developer")} className="w-full px-4 py-2 bg-white text-indigo-700 rounded-lg hover:bg-indigo-100 transition">
+                Accéder à l’espace développeur
               </button>
-              <p className="text-xs text-indigo-100 mt-3 opacity-90">Utilise Clerk en mode dev — aucun risque pour vos données.</p>
+              <p className="text-xs text-indigo-100 mt-3 opacity-90">Réservé aux comptes avec le rôle développeur.</p>
             </div>
           </div>
         </div>
@@ -522,6 +527,21 @@ export default function App() {
     </Route>
 
     <Route path="/fp-callback" element={<FingerprintCallback />} />
+
+    {/* DÉVELOPPEUR */}
+    <Route
+      path="/developer/*"
+      element={
+        <RequireDeveloper>
+          <DeveloperLayout />
+        </RequireDeveloper>
+      }
+    >
+      <Route index element={<DeveloperHome />} />
+      <Route path="clinics/new" element={<NewClinicPage clinicType="specialist_office" />} />
+      <Route path="multispecialist/new" element={<NewClinicPage clinicType="multi_specialist" />} />
+      <Route path="insurers/new" element={<NewInsurerPage />} />
+    </Route>
 
     <Route path="*" element={<Navigate to="/" />} />
   </Routes>
