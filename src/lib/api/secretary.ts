@@ -93,3 +93,20 @@ export async function finalizeUninsured(patientId: string, fingerprintMissing: b
   });
   if (error) throw new Error(error.message);
 }
+
+export async function generatePatientAccessCode(
+  patientId: string,
+  token: string
+): Promise<{ code: string; phone: string; expires_at: string }> {
+  const r = await fetch(`${FUNCTIONS_BASE}/generate-patient-access-code`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ patient_id: patientId }),
+  });
+  const json = await r.json();
+  if (!r.ok) throw new Error(json.error || "Échec de génération du code");
+  return json;
+}

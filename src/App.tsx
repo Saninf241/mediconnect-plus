@@ -57,6 +57,17 @@ import { attachClerkToken } from "./lib/supabase";
 import FingerprintCallback from "./Pages/FingerprintCallback";
 import RoleRedirect from "./components/auth/RoleRedirect";
 import SignInPage from "./components/auth/SignInPage";
+import PatientPrivateRoute from "./components/auth/PatientPrivateRoute";
+import PatientLayout from "./components/layouts/PatientLayout";
+import PatientLoginPage from "./Pages/patient/Login";
+import PatientDashboard from "./Pages/patient/Dashboard";
+import PatientIdentite from "./Pages/patient/Identite";
+import PatientConsultations from "./Pages/patient/Consultations";
+import PatientOrdonnances from "./Pages/patient/Ordonnances";
+import PatientTraitements from "./Pages/patient/Traitements";
+import PatientPharmacie from "./Pages/patient/Pharmacie";
+import PatientRemboursements from "./Pages/patient/Remboursements";
+import PatientSettings from "./Pages/patient/Settings";
 import { useLocation } from "react-router-dom";
 import { Facebook, Linkedin, Mail, MessageCircle } from "lucide-react";
 import DebugReset from './Pages/DebugReset';
@@ -167,6 +178,11 @@ export default function App() {
   const { isLoaded, isSignedIn } = useUser();
   const { getToken } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // L'espace patient s'authentifie via Supabase Auth (téléphone/OTP), pas
+  // Clerk : il ne doit pas rester bloqué sur cet écran si Clerk est lent
+  // ou indisponible.
+  const isPatientArea = location.pathname.startsWith("/patient");
 
   // ✅ Sync Clerk JWT -> Supabase headers
   useEffect(() => {
@@ -201,7 +217,7 @@ export default function App() {
     };
   }, [isLoaded, isSignedIn, getToken]);
 
-  if (!isLoaded) {
+  if (!isLoaded && !isPatientArea) {
     return (
       <div className="flex items-center justify-center h-screen">
         Chargement...
@@ -524,6 +540,26 @@ export default function App() {
       <Route path="orders" element={<PharmacyOrders />} />
       <Route path="history" element={<PharmacyHistory />} />
       <Route path="settings" element={<PharmacySettings />} />
+    </Route>
+
+    {/* PATIENT */}
+    <Route path="/patient/login" element={<PatientLoginPage />} />
+    <Route
+      path="/patient/*"
+      element={
+        <PatientPrivateRoute>
+          <PatientLayout />
+        </PatientPrivateRoute>
+      }
+    >
+      <Route index element={<PatientDashboard />} />
+      <Route path="Identite" element={<PatientIdentite />} />
+      <Route path="Consultations" element={<PatientConsultations />} />
+      <Route path="Ordonnances" element={<PatientOrdonnances />} />
+      <Route path="Traitements" element={<PatientTraitements />} />
+      <Route path="Pharmacie" element={<PatientPharmacie />} />
+      <Route path="Remboursements" element={<PatientRemboursements />} />
+      <Route path="Settings" element={<PatientSettings />} />
     </Route>
 
     <Route path="/fp-callback" element={<FingerprintCallback />} />

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
-import { checkEligibility, createPatientDraft, finalizeUninsured } from "../../../lib/api/secretary";
+import { checkEligibility, createPatientDraft, finalizeUninsured, generatePatientAccessCode } from "../../../lib/api/secretary";
 import { v4 as uuidv4 } from "uuid";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
@@ -83,6 +83,7 @@ export default function NewPatientWizard() {
   const [form, setForm] = useState<PatientForm>({ ...defaultForm });
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
+  const [accessCode, setAccessCode] = useState<string | null>(null);
 
   // Restaurer l’étape si on revient du scanner
   useEffect(() => {
@@ -334,6 +335,12 @@ export default function NewPatientWizard() {
           fingerprint_captured: form.biometrics?.status === "captured",
         });
         setMessage("Patient non assuré enregistré ✅");
+        try {
+          const access = await generatePatientAccessCode(pid, token);
+          setAccessCode(access.code);
+        } catch {
+          // Non bloquant : le code pourra être régénéré plus tard depuis la fiche patient.
+        }
         return;
       }
 
@@ -412,6 +419,14 @@ export default function NewPatientWizard() {
       if (updErr) throw updErr;
 
       setMessage("Patient enregistré avec succès ✅");
+
+      try {
+        const token = await getSupabaseToken();
+        const access = await generatePatientAccessCode(pid, token);
+        setAccessCode(access.code);
+      } catch {
+        // Non bloquant : le code pourra être régénéré plus tard depuis la fiche patient.
+      }
     } catch (e: any) {
       setMessage(e.message || "Échec de l’enregistrement.");
     } finally {
@@ -770,6 +785,16 @@ export default function NewPatientWizard() {
       {!!message && (
         <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 text-sm text-yellow-800">
           {message}
+        </div>
+      )}
+
+      {accessCode && (
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-900 space-y-1">
+          <p className="font-semibold">Code d'accès à l'espace patient : {accessCode}</p>
+          <p>
+            À remettre au patient (valable 72h). Il l'utilisera avec son numéro de téléphone
+            sur mediconnect.app/patient/login pour activer son espace santé.
+          </p>
         </div>
       )}
     </div>
