@@ -20,7 +20,7 @@ export default function NewInsurerPage() {
 
   const [insurer, setInsurer] = useState({
     name: "",
-    verification_level: "standard",
+    verification_level: "N1",
     slug: "",
   });
 
@@ -103,9 +103,9 @@ export default function NewInsurerPage() {
               setInsurer({ ...insurer, verification_level: e.target.value })
             }
           >
-            <option value="basic">Basique</option>
-            <option value="standard">Standard</option>
-            <option value="premium">Premium</option>
+            <option value="N1">N1</option>
+            <option value="N2">N2</option>
+            <option value="N3">N3</option>
           </select>
         </Card>
 

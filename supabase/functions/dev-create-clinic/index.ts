@@ -94,6 +94,8 @@ serve(async (req) => {
         siret: clinic.siret,
         code: clinic.code,
         speciality: clinic.speciality ?? null,
+        active: true,
+        theme: { primary: "#4F46E5", secondary: "#818CF8" },
       })
       .select("id")
       .single();

@@ -79,7 +79,7 @@ serve(async (req) => {
       .from("insurers")
       .insert({
         name: insurer.name,
-        verification_level: insurer.verification_level ?? "standard",
+        verification_level: insurer.verification_level ?? "N1",
         slug: insurer.slug,
       })
       .select("id")
