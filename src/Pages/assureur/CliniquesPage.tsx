@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "../../components/ui/card";
 import { Database } from "../../types/supabase";
-import { supabase } from "../../lib/supabaseClient.ts";
+import { supabase } from "../../lib/supabase";
 
 type Clinic = Database["public"]["Tables"]["clinics"]["Row"];
 

@@ -1,7 +1,7 @@
 // src/pages/assureur/PaiementsPage.tsx
 import { useEffect, useState } from "react";
 import { Card } from "../../components/ui/card";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from "../../lib/supabase";
 
 type PaymentBatch = {
   id: string;
