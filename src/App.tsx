@@ -197,10 +197,8 @@ export default function App() {
           return;
         }
 
-        // Token de session Clerk natif : Supabase le valide directement via
-        // l'intégration Third-Party Auth (domaine Clerk configuré côté
-        // Supabase). Le JWT Template "supabase" est déprécié pour cet usage.
-        const token = await getToken();
+        // JWT template "supabase" côté Clerk
+        const token = await getToken({ template: "supabase" });
         if (mounted) attachClerkToken(token || null);
       } catch (e) {
         console.warn("[Clerk→Supabase] token sync failed", e);

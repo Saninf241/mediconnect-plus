@@ -110,7 +110,7 @@ export default function AssureurReports() {
     setIsLoading(true);
 
     try {
-      const token = await getToken();
+      const token = await getToken({ template: "supabase" });
       if (!token) throw new Error("Clerk token introuvable.");
 
       const res = await fetch(
