@@ -149,12 +149,18 @@ export default function NewPatientWizard() {
     sessionStorage.removeItem("fp:last");
   }, []);
 
-  // token Clerk (template supabase si possible)
+  // token de session Clerk natif : requis par les edge functions de ce
+  // wizard (resolve-existing-patient, generate-patient-access-code), qui
+  // vérifient via @clerk/backend `verifyToken()` côté serveur — cette
+  // fonction attend un vrai token de session Clerk, pas un JWT Template
+  // personnalisé (qui échoue avec "kid=undefined", le template n'étant
+  // pas ce que verifyToken sait valider). N'affecte pas les appels
+  // supabase.rpc() du wizard, qui utilisent le token global (App.tsx) via
+  // le client Supabase partagé, indépendamment de cette fonction.
   async function getSupabaseToken(): Promise<string> {
     if (!isLoaded) throw new Error("Session en cours de chargement.");
     if (!isSignedIn) throw new Error("Veuillez vous reconnecter.");
-    const t1 = await getToken({ template: "supabase" }).catch(() => null);
-    const t2 = t1 || (await getToken().catch(() => null));
+    const t2 = await getToken().catch(() => null);
     if (!t2) throw new Error("Auth requise (Clerk).");
     return t2;
   }
