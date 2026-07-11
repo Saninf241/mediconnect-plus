@@ -149,12 +149,12 @@ export default function NewPatientWizard() {
     sessionStorage.removeItem("fp:last");
   }, []);
 
-  // token Clerk (template supabase si possible)
+  // token de session Clerk natif (le JWT Template "supabase" est déprécié
+  // au profit de l'intégration Third-Party Auth native de Supabase)
   async function getSupabaseToken(): Promise<string> {
     if (!isLoaded) throw new Error("Session en cours de chargement.");
     if (!isSignedIn) throw new Error("Veuillez vous reconnecter.");
-    const t1 = await getToken({ template: "supabase" }).catch(() => null);
-    const t2 = t1 || (await getToken().catch(() => null));
+    const t2 = await getToken().catch(() => null);
     if (!t2) throw new Error("Auth requise (Clerk).");
     return t2;
   }
