@@ -2035,38 +2035,6 @@ export type Database = {
           },
         ]
       }
-      patients_fingerprint: {
-        Row: {
-          created_at: string | null
-          device_type: string | null
-          fingerprint_template: string | null
-          id: string
-          patient_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          device_type?: string | null
-          fingerprint_template?: string | null
-          id?: string
-          patient_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          device_type?: string | null
-          fingerprint_template?: string | null
-          id?: string
-          patient_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "patients_fingerprint_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       payment_batches: {
         Row: {
           amount: number | null
