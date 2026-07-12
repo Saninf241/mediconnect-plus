@@ -1,17 +1,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { usePharmacyContext } from "../../hooks/usePharmacyContext";
 
 export default function PharmacyHistory() {
   const [deliveries, setDeliveries] = useState<any[]>([]);
-  const [pharmacyId, setPharmacyId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const sessionRaw = localStorage.getItem("pharmacyUserSession");
-    if (sessionRaw) {
-      const session = JSON.parse(sessionRaw);
-      setPharmacyId(session.pharmacy_id);
-    }
-  }, []);
+  const { ctx } = usePharmacyContext();
+  const pharmacyId = ctx?.pharmacyId ?? null;
 
   useEffect(() => {
     if (!pharmacyId) return;
