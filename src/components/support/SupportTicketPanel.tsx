@@ -118,7 +118,7 @@ export default function SupportTicketPanel({
     const { error } = await supabase.from("support_tickets").insert({
       created_by_clerk_user_id: user.id,
       created_by_role: role,
-      created_by_name: user.fullName || user.firstName || null,
+      created_by_name: user.fullName || user.firstName || user.primaryEmailAddress?.emailAddress || null,
       created_by_email: user.primaryEmailAddress?.emailAddress ?? null,
       callback_phone: callbackPhone.trim() || null,
       clinic_id: clinicId ?? null,
@@ -148,7 +148,7 @@ export default function SupportTicketPanel({
       ticket_id: selected.id,
       author_clerk_user_id: user.id,
       author_role: role,
-      author_name: user.fullName || user.firstName || null,
+      author_name: user.fullName || user.firstName || user.primaryEmailAddress?.emailAddress || null,
       body: reply.trim(),
     });
     setSendingReply(false);

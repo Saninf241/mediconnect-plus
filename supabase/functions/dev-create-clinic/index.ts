@@ -112,6 +112,7 @@ serve(async (req) => {
 
     for (const member of staff ?? []) {
       try {
+        const [firstName, ...rest] = (member.name || "").trim().split(/\s+/);
         const newUser = await clerkFetch(
           "/users",
           {
@@ -121,6 +122,8 @@ serve(async (req) => {
               password: randomPassword(),
               skip_password_checks: true,
               public_metadata: { role: member.role },
+              ...(firstName ? { first_name: firstName } : {}),
+              ...(rest.length ? { last_name: rest.join(" ") } : {}),
             }),
           },
           clerkSecret

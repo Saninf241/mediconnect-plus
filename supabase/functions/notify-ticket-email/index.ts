@@ -61,6 +61,7 @@ serve(async (req) => {
         message: string;
         created_by_role: string;
         created_by_name: string | null;
+        created_by_email: string | null;
         callback_phone: string | null;
         priority: string;
       };
@@ -69,7 +70,8 @@ serve(async (req) => {
         `[MediConnect+] Nouveau ticket (${t.priority}) : ${t.subject}`,
         [
           `Rôle : ${t.created_by_role}`,
-          `De : ${t.created_by_name ?? "inconnu"}`,
+          `De : ${t.created_by_name ?? t.created_by_email ?? "inconnu"}`,
+          t.created_by_email ? `Email : ${t.created_by_email}` : null,
           t.callback_phone ? `Téléphone de rappel : ${t.callback_phone}` : null,
           "",
           t.message,
