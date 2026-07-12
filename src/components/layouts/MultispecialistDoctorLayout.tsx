@@ -1,6 +1,6 @@
 // src/components/layouts/MultispecialistDoctorLayout.tsx
 import { Outlet, NavLink, useLocation } from "react-router-dom";
-import { Stethoscope, Users, PlusSquare, History, Gauge, Settings } from "lucide-react";
+import { Stethoscope, Users, PlusSquare, History, Gauge, Settings, LifeBuoy } from "lucide-react";
 
 const Item = ({
   to,
@@ -47,6 +47,7 @@ export default function MultispecialistDoctorLayout() {
           <Item to="consultations" icon={Stethoscope} label="Consultations" />
           <Item to="consultation-follow-up" icon={History} label="Suivi des consultations" />
           <Item to="performance" icon={Stethoscope} label="Performance" />
+          <Item to="support" icon={LifeBuoy} label="Support" />
           <Item to="settings" icon={Settings} label="Paramètres" />
         </nav>
         <div className="text-xs text-white/70 mt-6">

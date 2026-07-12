@@ -10,6 +10,7 @@ const navItems = [
   { name: "Paiements", path: "/assureur/paiements" },
   { name: "Cliniques", path: "/assureur/cliniques" },
   { name: "Statistiques", path: "/assureur/statistiques" },
+  { name: "Support", path: "/assureur/support" },
 ];
 
 export default function AssureurLayout() {

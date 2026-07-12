@@ -149,7 +149,7 @@ export default function AdminAlertsPage() {
         }
 
         const supportRes = await supabase
-          .from("support_messages")
+          .from("support_tickets")
           .select("id")
           .eq("clinic_id", clinicId)
           .eq("status", "open");

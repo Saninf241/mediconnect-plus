@@ -4,11 +4,12 @@ import React from "react";
 interface Props {
   children: React.ReactNode;
   className?: string;
+  onClick?: () => void;
 }
 
-export function Card({ children, className = "" }: Props) {
+export function Card({ children, className = "", onClick }: Props) {
   return (
-    <div className={`bg-white shadow p-4 rounded ${className}`}>
+    <div className={`bg-white shadow p-4 rounded ${className}`} onClick={onClick}>
       {children}
     </div>
   );

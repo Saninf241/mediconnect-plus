@@ -1,6 +1,6 @@
-// src/Pages/multispecialist/secretary/SupportPage.tsx
-import { useClinicId } from "../../../hooks/useClinicId";
-import SupportTicketPanel from "../../../components/support/SupportTicketPanel";
+// src/Pages/doctor/SupportPage.tsx
+import { useClinicId } from "../../hooks/useClinicId";
+import SupportTicketPanel from "../../components/support/SupportTicketPanel";
 
 export default function SupportPage() {
   const { clinicId, loadingClinic } = useClinicId();
@@ -17,7 +17,7 @@ export default function SupportPage() {
           Une question, un blocage, une suggestion ? Écris au support MediConnect+.
         </p>
       </div>
-      <SupportTicketPanel role="secretary" clinicId={clinicId} />
+      <SupportTicketPanel role="doctor" clinicId={clinicId} />
     </div>
   );
 }

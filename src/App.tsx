@@ -23,6 +23,9 @@ import HistoriqueActesPage from "./Pages/multispecialist/doctor/HistoriqueActesP
 import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage'; 
 import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
+import DoctorSupportPage from './Pages/doctor/SupportPage';
+import MultiDoctorSupportPage from './Pages/multispecialist/doctor/SupportPage';
+import AssureurSupportPage from './Pages/assureur/SupportPage';
 import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
 import ConsultationDoctorDetailsPage from './Pages/multispecialist/doctor/ConsultationDoctorDetailsPage';
@@ -76,6 +79,7 @@ import DeveloperLayout from "./components/layouts/DeveloperLayout";
 import DeveloperHome from "./Pages/developer/DeveloperHome";
 import NewClinicPage from "./Pages/developer/NewClinicPage";
 import NewInsurerPage from "./Pages/developer/NewInsurerPage";
+import TicketsPage from "./Pages/developer/TicketsPage";
 
 function GlobalHeader() {
   const { pathname } = useLocation();
@@ -453,6 +457,7 @@ export default function App() {
       <Route path="performance" element={<PerformancePage />} />
       <Route path="patients/:id" element={<DoctorPatientDetailsPageSpecialist />} />
       <Route path="consultations/:id" element={<ConsultationDoctorDetailsPageSpecialist />} />
+      <Route path="support" element={<DoctorSupportPage />} />
     </Route>
 
     {/* ASSUREUR */}
@@ -471,6 +476,7 @@ export default function App() {
       <Route path="cliniques" element={<CliniquesPage />} />
       <Route path="statistiques" element={<StatistiquesPage />} />
       <Route path="consultations/:id" element={<ConsultationDetailsPage />} />
+      <Route path="support" element={<AssureurSupportPage />} />
     </Route>
 
     {/* MULTISPECIALIST DOCTOR */}
@@ -490,6 +496,7 @@ export default function App() {
       <Route path="settings" element={<SettingsDoctorPage />} />
       <Route path="patients/:id" element={<DoctorPatientDetailsPage />} />
       <Route path="consultations/:id" element={<ConsultationDoctorDetailsPage />} />
+      <Route path="support" element={<MultiDoctorSupportPage />} />
     </Route>
 
     {/* MULTISPECIALIST ADMIN */}
@@ -577,6 +584,7 @@ export default function App() {
       <Route path="clinics/new" element={<NewClinicPage clinicType="specialist_office" />} />
       <Route path="multispecialist/new" element={<NewClinicPage clinicType="multi_specialist" />} />
       <Route path="insurers/new" element={<NewInsurerPage />} />
+      <Route path="tickets" element={<TicketsPage />} />
     </Route>
 
     <Route path="*" element={<Navigate to="/" />} />

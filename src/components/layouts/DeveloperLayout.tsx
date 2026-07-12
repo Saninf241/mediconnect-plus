@@ -7,6 +7,7 @@ const navItems = [
   { name: "Nouveau cabinet spécialiste", path: "/developer/clinics/new" },
   { name: "Nouveau cabinet multi-spécialiste", path: "/developer/multispecialist/new" },
   { name: "Nouvel assureur", path: "/developer/insurers/new" },
+  { name: "Tickets support", path: "/developer/tickets" },
 ];
 
 export default function DeveloperLayout() {

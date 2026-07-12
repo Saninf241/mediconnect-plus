@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, NavLink, Outlet } from 'react-router-dom';
-import { UserRound, Users, Stethoscope, FileText, Settings, LineChart } from 'lucide-react';
+import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 export default function DoctorLayout() {
@@ -97,6 +97,7 @@ export default function DoctorLayout() {
             {Item('/doctor/new-act', Stethoscope, 'Démarrer consultation')}
             {Item('/doctor/consultation-follow-up', FileText, 'Suivi des consultations')}
             {Item('/doctor/performance', LineChart, 'Performance')}
+            {Item('/doctor/support', LifeBuoy, 'Support')}
             {Item('/doctor/settings', Settings, 'Paramètres')}
           </nav>
           <div className="text-xs text-violet-200/80 pt-6">
