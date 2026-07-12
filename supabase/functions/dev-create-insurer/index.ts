@@ -45,7 +45,10 @@ serve(async (req) => {
     const auth = req.headers.get("Authorization") || "";
     const token = auth.replace("Bearer ", "");
 
-    const { payload } = await verifyToken(token, { secretKey: clerkSecret });
+    const verifyResult = await verifyToken(token, { secretKey: clerkSecret });
+    // verifyToken renvoie soit { payload }, soit le payload directement,
+    // selon la version exacte que esm.sh resout pour "@clerk/backend@1".
+    const payload = (verifyResult as any)?.payload ?? verifyResult;
     const callerId = payload.sub as string;
 
     // Seul garde-fou tant qu'il n'y a pas de RLS : vérifier le rôle developer.
