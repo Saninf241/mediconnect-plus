@@ -1,17 +1,14 @@
--- Verrouille l'accès à patient_biometrics (gabarits d'empreinte bruts,
--- colonne template_b64) au seul service role.
+-- Vérifié le 2026-07-12 (audit gabarits d'empreinte) : patient_biometrics
+-- avait déjà RLS activé, avec 3 policies existantes correctement scopées
+-- par clinique (pb_select_same_clinic, pb_insert_same_clinic,
+-- pb_update_same_clinic — toutes basées sur
+-- clinic_staff.id = auth.uid() AND clinic_staff.clinic_id = patient_biometrics.clinic_id).
+-- Cette instruction est donc un no-op sur l'état actuel ; elle reste ici en
+-- garde-fou pour que ce fichier documente et réaffirme l'exigence si RLS
+-- était un jour désactivé par erreur sur cette table.
 --
--- Les deux seuls points d'accès légitimes à cette table sont
--- netlify/functions/biometrics-candidates.ts et biometrics-enroll.ts, qui
--- utilisent tous les deux SUPABASE_SERVICE_ROLE_KEY (donc déjà indifférents
--- à RLS) et sont protégés par un secret partagé (APP_INGEST_SECRET). Aucun
--- code client (navigateur) ne requête cette table directement.
---
--- Sans RLS, n'importe qui muni de la clé anon (publique par construction,
--- embarquée dans le bundle JS) pourrait lire directement
--- GET /rest/v1/patient_biometrics via l'API REST Supabase, en contournant
--- entièrement l'app et le secret APP_INGEST_SECRET. Cette migration active
--- RLS sans aucune policy (même pattern que patient_activation_codes dans
--- 20260705120000_patient_portal.sql) : ni anon ni authenticated n'ont accès,
--- seul le service role (qui bypass RLS) continue de fonctionner.
+-- Les deux seuls points d'accès applicatifs (service role, donc indifférents
+-- à RLS) sont netlify/functions/biometrics-candidates.ts et
+-- biometrics-enroll.ts, protégés par APP_INGEST_SECRET. L'accès navigateur
+-- (clé anon publique) passe par ces policies clinic-scoped.
 alter table patient_biometrics enable row level security;
