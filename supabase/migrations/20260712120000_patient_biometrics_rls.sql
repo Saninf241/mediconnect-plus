@@ -1,0 +1,17 @@
+-- Verrouille l'accès à patient_biometrics (gabarits d'empreinte bruts,
+-- colonne template_b64) au seul service role.
+--
+-- Les deux seuls points d'accès légitimes à cette table sont
+-- netlify/functions/biometrics-candidates.ts et biometrics-enroll.ts, qui
+-- utilisent tous les deux SUPABASE_SERVICE_ROLE_KEY (donc déjà indifférents
+-- à RLS) et sont protégés par un secret partagé (APP_INGEST_SECRET). Aucun
+-- code client (navigateur) ne requête cette table directement.
+--
+-- Sans RLS, n'importe qui muni de la clé anon (publique par construction,
+-- embarquée dans le bundle JS) pourrait lire directement
+-- GET /rest/v1/patient_biometrics via l'API REST Supabase, en contournant
+-- entièrement l'app et le secret APP_INGEST_SECRET. Cette migration active
+-- RLS sans aucune policy (même pattern que patient_activation_codes dans
+-- 20260705120000_patient_portal.sql) : ni anon ni authenticated n'ont accès,
+-- seul le service role (qui bypass RLS) continue de fonctionner.
+alter table patient_biometrics enable row level security;
