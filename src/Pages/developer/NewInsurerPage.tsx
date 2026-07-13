@@ -60,8 +60,10 @@ export default function NewInsurerPage() {
 
       const failed = (data.staff || []).filter((s: any) => s.status === "error");
       if (failed.length > 0) {
-        toast.warning(
-          `Assureur créé, mais ${failed.length} compte(s) ont échoué (voir console)`
+        const detail = failed.map((s: any) => `${s.email} : ${s.error}`).join("\n");
+        toast.error(
+          `Assureur créé, mais ${failed.length} compte(s) ont échoué :\n${detail}`,
+          { autoClose: false }
         );
         console.warn("Échecs création staff:", failed);
       } else {

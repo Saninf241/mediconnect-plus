@@ -38,6 +38,38 @@ type Action =
   | { action: "delete_clinic"; clinic_id: string }
   | { action: "delete_insurer"; insurer_id: string };
 
+// Supprimer une ligne clinic_staff/insurer_staff cote Supabase ne libere
+// pas l'email cote Clerk : le compte (si l'invitation a ete acceptee) ou
+// l'invitation (si encore en attente) existe toujours, et Clerk refuse
+// de recreer une invitation pour un email deja pris ("That email address
+// is taken"). On nettoie donc Clerk avant de supprimer en base.
+async function cleanupClerkStaff(
+  rows: { clerk_user_id: string | null; email: string }[],
+  clerkSecret: string
+) {
+  for (const row of rows) {
+    try {
+      if (row.clerk_user_id) {
+        await clerkFetch(`/users/${row.clerk_user_id}`, { method: "DELETE" }, clerkSecret);
+        continue;
+      }
+
+      // Pas encore accepte : chercher l'invitation en attente pour cet
+      // email et la revoquer.
+      const list = await clerkFetch(`/invitations?status=pending&limit=100`, { method: "GET" }, clerkSecret);
+      const invitations = Array.isArray(list) ? list : list?.data ?? [];
+      const match = invitations.find((inv: any) => inv.email_address === row.email);
+      if (match) {
+        await clerkFetch(`/invitations/${match.id}/revoke`, { method: "POST" }, clerkSecret);
+      }
+    } catch (e) {
+      // Ne bloque pas la suppression pour un souci de nettoyage Clerk ;
+      // juste visible dans les logs de la fonction.
+      console.error("[dev-manage-orgs] clerk cleanup failed for", row.email, e);
+    }
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -84,12 +116,26 @@ serve(async (req) => {
     }
 
     if (input.action === "delete_clinic") {
+      const { data: staffRows } = await supabase
+        .from("clinic_staff")
+        .select("clerk_user_id, email")
+        .eq("clinic_id", input.clinic_id);
+
+      await cleanupClerkStaff(staffRows ?? [], clerkSecret);
+
       const { error } = await supabase.rpc("dev_delete_clinic", { p_clinic_id: input.clinic_id });
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }
 
     if (input.action === "delete_insurer") {
+      const { data: staffRows } = await supabase
+        .from("insurer_staff")
+        .select("clerk_user_id, email")
+        .eq("insurer_id", input.insurer_id);
+
+      await cleanupClerkStaff(staffRows ?? [], clerkSecret);
+
       const { error } = await supabase.rpc("dev_delete_insurer", { p_insurer_id: input.insurer_id });
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
