@@ -1,5 +1,5 @@
 // src/lib/api/generateConsultationPdf.ts
-export async function generateConsultationPdf(consultationId: string) {
+export async function generateConsultationPdf(consultationId: string, token: string | null) {
   const url = `${
     import.meta.env.VITE_SUPABASE_URL
   }/functions/v1/generate-consultation-pdf`;
@@ -8,6 +8,7 @@ export async function generateConsultationPdf(consultationId: string) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ consultationId }),
   });

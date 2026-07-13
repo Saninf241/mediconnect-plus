@@ -1,6 +1,7 @@
 // supabase/functions/filter-consultations/index.ts
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyToken } from "https://esm.sh/@clerk/backend@1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,6 +31,40 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Authentification : on n'accepte plus insurerId depuis le corps de la
+    // requete (n'importe qui pouvait se faire passer pour n'importe quel
+    // assureur). On verifie le token Clerk et on derive l'insurerId depuis
+    // la ligne insurer_staff de l'appelant, cote serveur.
+    const clerkSecret = Deno.env.get("CLERK_SECRET_KEY")!;
+    const auth = req.headers.get("Authorization") || "";
+    const token = auth.replace("Bearer ", "");
+
+    if (!token) {
+      return new Response(JSON.stringify({ data: [], error: "Non authentifié" }), {
+        status: 401,
+        headers: jsonHeaders,
+      });
+    }
+
+    const verifyResult = await verifyToken(token, { secretKey: clerkSecret });
+    const payload = (verifyResult as any)?.payload ?? verifyResult;
+    const callerId = payload.sub as string;
+
+    const { data: staffRow, error: staffErr } = await supabase
+      .from("insurer_staff")
+      .select("insurer_id")
+      .eq("clerk_user_id", callerId)
+      .maybeSingle();
+
+    if (staffErr || !staffRow?.insurer_id) {
+      return new Response(
+        JSON.stringify({ data: [], error: "Accès refusé : compte non lié à un assureur" }),
+        { status: 403, headers: jsonHeaders }
+      );
+    }
+
+    const insurerId = staffRow.insurer_id as string;
+
     const body = await req.json().catch(() => ({}));
     const {
       search = "",
@@ -37,24 +72,13 @@ serve(async (req) => {
       clinicId = "",
       dateStart = "",
       dateEnd = "",
-      insurerId = "",
     } = body as {
       search?: string;
       status?: string;
       clinicId?: string;
       dateStart?: string;
       dateEnd?: string;
-      insurerId?: string;
     };
-
-    console.log("filter-consultations body:", body);
-
-    if (!insurerId) {
-      return new Response(
-        JSON.stringify({ data: [], error: "Missing insurerId" }),
-        { status: 400, headers: jsonHeaders }
-      );
-    }
 
     const selectFields = `
       id,

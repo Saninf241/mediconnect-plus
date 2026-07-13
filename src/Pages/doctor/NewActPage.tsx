@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useUser } from '@clerk/clerk-react';
+import { useUser, useAuth } from '@clerk/clerk-react';
 import { Input } from '../../components/ui/input';
 import { Button } from '../../components/ui/button';
 import { Textarea } from '../../components/ui/textarea';
@@ -19,6 +19,7 @@ import ActSelector, { SelectedAct } from "../../components/ui/uidoctor/ActSelect
 
 export default function NewConsultationPage() {
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   // ✅ types explicites (corrige erreurs 4 et 5)
   const [step, setStep] = useState<"biometry" | "consultation" | "done">("biometry");
@@ -486,7 +487,7 @@ const createConsultation = async () => {
           "[createConsultation] appel generateConsultationPdf pour",
           finalId
         );
-        const res = await generateConsultationPdf(finalId);
+        const res = await generateConsultationPdf(finalId, await getToken());
         console.log("[createConsultation] PDF généré pour", finalId, res);
       } catch (e) {
         console.error("[createConsultation] erreur génération PDF :", e);
@@ -566,7 +567,7 @@ const createConsultation = async () => {
 
       // 🔹 Génération du PDF après passage en "sent"
       try {
-        await generateConsultationPdf(consultationId);
+        await generateConsultationPdf(consultationId, await getToken());
         console.log("[checkRights] PDF généré pour", consultationId);
       } catch (e) {
         console.error("[checkRights] erreur génération PDF :", e);

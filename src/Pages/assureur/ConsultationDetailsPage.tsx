@@ -2,9 +2,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
 import ConsultationChat from "../../components/ui/assureur/ConsultationChat";
-import { generateConsultationPdf } from "../../lib/generateConsultationPdf";
+import { generateConsultationPdf } from "../../lib/api/generateConsultationPdf";
 
 interface ConsultationRow {
   id: string;
@@ -58,6 +58,7 @@ export default function AssureurConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   const [consultation, setConsultation] = useState<ConsultationRow | null>(null);
   const [patient, setPatient] = useState<PatientRow | null>(null);
@@ -202,11 +203,15 @@ export default function AssureurConsultationDetailsPage() {
       console.log("[Pricing RPC] result:", pricingRes);
 
       // 2) Régénérer PDF (qui va lire les colonnes pricing_* en DB)
+      const token = await getToken();
       const res = await fetch(
         "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1/generate-consultation-pdf",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({
             consultationId: consultation.id,
             pricing_context: tariffContext,

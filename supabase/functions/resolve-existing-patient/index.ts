@@ -24,14 +24,34 @@ serve(async (req) => {
   try {
     const auth = req.headers.get("Authorization") || "";
     const token = auth.replace("Bearer ", "");
-    await verifyToken(token, { secretKey: Deno.env.get("CLERK_SECRET_KEY")! });
-
-    const { insurer_id, member_no, national_id } = await req.json();
+    const verifyResult = await verifyToken(token, { secretKey: Deno.env.get("CLERK_SECRET_KEY")! });
+    const payload = (verifyResult as any)?.payload ?? verifyResult;
+    const callerId = payload.sub as string;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
+
+    // La recherche est volontairement transversale a tous les cabinets
+    // (anti-doublon), mais l'appelant doit au moins etre un membre reel
+    // du personnel d'un cabinet -- avant ce correctif, n'importe quel
+    // compte Clerk authentifie (meme sans aucun lien avec un cabinet)
+    // pouvait sonder l'existence d'un patient par NIN/n° d'adherent.
+    const { data: staffRow } = await supabase
+      .from("clinic_staff")
+      .select("id")
+      .eq("clerk_user_id", callerId)
+      .maybeSingle();
+
+    if (!staffRow) {
+      return new Response(
+        JSON.stringify({ error: "Accès refusé : réservé au personnel d'un cabinet" }),
+        { status: 403, headers: cors }
+      );
+    }
+
+    const { insurer_id, member_no, national_id } = await req.json();
 
     if (insurer_id && member_no) {
       const { data: membership } = await supabase

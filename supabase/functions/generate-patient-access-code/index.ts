@@ -23,7 +23,9 @@ serve(async (req) => {
   try {
     const auth = req.headers.get("Authorization") || "";
     const token = auth.replace("Bearer ", "");
-    await verifyToken(token, { secretKey: Deno.env.get("CLERK_SECRET_KEY")! });
+    const verifyResult = await verifyToken(token, { secretKey: Deno.env.get("CLERK_SECRET_KEY")! });
+    const payload = (verifyResult as any)?.payload ?? verifyResult;
+    const callerId = payload.sub as string;
 
     const { patient_id } = await req.json();
     if (!patient_id) {
@@ -40,7 +42,7 @@ serve(async (req) => {
 
     const { data: patient, error: patientError } = await supabase
       .from("patients")
-      .select("id, phone")
+      .select("id, phone, clinic_id")
       .eq("id", patient_id)
       .single();
 
@@ -49,6 +51,24 @@ serve(async (req) => {
         status: 404,
         headers: cors,
       });
+    }
+
+    // Le patient doit appartenir au cabinet de l'appelant -- avant ce
+    // correctif, n'importe quel compte Clerk authentifie pouvait generer
+    // un code d'activation (et recuperer le telephone + le code en clair
+    // dans la reponse) pour n'importe quel patient de la plateforme.
+    const { data: staffRow } = await supabase
+      .from("clinic_staff")
+      .select("id")
+      .eq("clerk_user_id", callerId)
+      .eq("clinic_id", patient.clinic_id)
+      .maybeSingle();
+
+    if (!staffRow) {
+      return new Response(
+        JSON.stringify({ error: "Accès refusé : ce patient n'appartient pas à votre cabinet" }),
+        { status: 403, headers: cors }
+      );
     }
     if (!patient.phone) {
       return new Response(

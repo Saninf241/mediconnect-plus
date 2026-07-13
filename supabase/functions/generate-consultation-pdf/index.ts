@@ -1,6 +1,7 @@
 // supabase/functions/generate-consultation-pdf/index.ts
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { verifyToken } from "https://esm.sh/@clerk/backend@1";
 import jsPDF from "https://esm.sh/jspdf@2.5.1";
 
 const corsHeaders = {
@@ -91,10 +92,69 @@ serve(async (req) => {
     });
   }
 
+  // Authentification : cette fonction utilise la service role key (contourne
+  // RLS) et generait/retournait le PDF pour n'importe quel consultationId
+  // sans verifier qui appelle. On verifie le token Clerk puis on s'assure
+  // que l'appelant est bien le staff du cabinet ou l'assureur lie a CETTE
+  // consultation avant de faire quoi que ce soit.
+  const clerkSecret = Deno.env.get("CLERK_SECRET_KEY")!;
+  const auth = req.headers.get("Authorization") || "";
+  const token = auth.replace("Bearer ", "");
+
+  if (!token) {
+    return new Response(JSON.stringify({ error: "Non authentifié" }), {
+      status: 401,
+      headers: jsonHeaders,
+    });
+  }
+
+  const verifyResult = await verifyToken(token, { secretKey: clerkSecret });
+  const payload = (verifyResult as any)?.payload ?? verifyResult;
+  const callerId = payload.sub as string;
+
   // Supabase service role
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const { data: owner, error: ownerErr } = await supabase
+    .from("consultations")
+    .select("clinic_id, insurer_id")
+    .eq("id", consultationId)
+    .maybeSingle();
+
+  if (ownerErr || !owner) {
+    return new Response(JSON.stringify({ error: "Consultation introuvable" }), {
+      status: 404,
+      headers: jsonHeaders,
+    });
+  }
+
+  const [{ data: staffMatch }, { data: insurerMatch }] = await Promise.all([
+    owner.clinic_id
+      ? supabase
+          .from("clinic_staff")
+          .select("id")
+          .eq("clinic_id", owner.clinic_id)
+          .eq("clerk_user_id", callerId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    owner.insurer_id
+      ? supabase
+          .from("insurer_staff")
+          .select("id")
+          .eq("insurer_id", owner.insurer_id)
+          .eq("clerk_user_id", callerId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  if (!staffMatch && !insurerMatch) {
+    return new Response(
+      JSON.stringify({ error: "Accès refusé à cette consultation" }),
+      { status: 403, headers: jsonHeaders }
+    );
+  }
 
   // ✅ IMPORTANT: virgules OK + pas de doublons
   const selectFields = `
