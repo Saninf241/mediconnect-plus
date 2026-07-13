@@ -47,7 +47,7 @@ export async function resolveAccessContext(params: {
   let clinicStaff: ClinicJoined | null = null;
 
   if (clerkUserId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("clinic_staff")
       .select(`
         id,
@@ -58,11 +58,12 @@ export async function resolveAccessContext(params: {
       .eq("clerk_user_id", clerkUserId)
       .maybeSingle<ClinicJoined>();
 
+    if (error) console.error("[resolveAccessContext] clinic_staff by clerk_user_id:", error);
     clinicStaff = data ?? null;
   }
 
   if (!clinicStaff && email) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("clinic_staff")
       .select(`
         id,
@@ -73,6 +74,7 @@ export async function resolveAccessContext(params: {
       .eq("email", email)
       .maybeSingle<ClinicJoined>();
 
+    if (error) console.error("[resolveAccessContext] clinic_staff by email:", error);
     clinicStaff = data ?? null;
   }
 
@@ -114,22 +116,24 @@ export async function resolveAccessContext(params: {
   let insurerStaff: { id: string; insurer_id?: string | null } | null = null;
 
   if (clerkUserId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("insurer_staff")
       .select("id, insurer_id")
       .eq("clerk_user_id", clerkUserId)
       .maybeSingle();
 
+    if (error) console.error("[resolveAccessContext] insurer_staff by clerk_user_id:", error);
     insurerStaff = data ?? null;
   }
 
   if (!insurerStaff && email) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("insurer_staff")
       .select("id, insurer_id")
       .eq("email", email)
       .maybeSingle();
 
+    if (error) console.error("[resolveAccessContext] insurer_staff by email:", error);
     insurerStaff = data ?? null;
   }
 
@@ -146,22 +150,24 @@ export async function resolveAccessContext(params: {
   let pharmacyStaff: { id: string; pharmacy_id?: string | null } | null = null;
 
   if (clerkUserId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pharmacy_staff")
       .select("id, pharmacy_id")
       .eq("clerk_user_id", clerkUserId)
       .maybeSingle();
 
+    if (error) console.error("[resolveAccessContext] pharmacy_staff by clerk_user_id:", error);
     pharmacyStaff = data ?? null;
   }
 
   if (!pharmacyStaff && email) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pharmacy_staff")
       .select("id, pharmacy_id")
       .eq("email", email)
       .maybeSingle();
 
+    if (error) console.error("[resolveAccessContext] pharmacy_staff by email:", error);
     pharmacyStaff = data ?? null;
   }
 
