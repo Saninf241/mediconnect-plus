@@ -36,7 +36,10 @@ type Action =
   | { action: "list_clinics" }
   | { action: "list_insurers" }
   | { action: "delete_clinic"; clinic_id: string }
-  | { action: "delete_insurer"; insurer_id: string };
+  | { action: "delete_insurer"; insurer_id: string }
+  | { action: "list_conventions" }
+  | { action: "add_convention"; clinic_id: string; insurer_id: string }
+  | { action: "remove_convention"; id: string };
 
 // Supprimer une ligne clinic_staff/insurer_staff cote Supabase ne libere
 // pas l'email cote Clerk : le compte (si l'invitation a ete acceptee) ou
@@ -137,6 +140,32 @@ serve(async (req) => {
       await cleanupClerkStaff(staffRows ?? [], clerkSecret);
 
       const { error } = await supabase.rpc("dev_delete_insurer", { p_insurer_id: input.insurer_id });
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_conventions") {
+      const { data, error } = await supabase
+        .from("clinic_insurer_conventions")
+        .select("id, active, created_at, clinics:clinic_id(id, name), insurers:insurer_id(id, name)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return new Response(JSON.stringify({ conventions: data }), { headers: cors });
+    }
+
+    if (input.action === "add_convention") {
+      const { error } = await supabase
+        .from("clinic_insurer_conventions")
+        .upsert(
+          { clinic_id: input.clinic_id, insurer_id: input.insurer_id, active: true },
+          { onConflict: "clinic_id,insurer_id" }
+        );
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "remove_convention") {
+      const { error } = await supabase.from("clinic_insurer_conventions").delete().eq("id", input.id);
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }

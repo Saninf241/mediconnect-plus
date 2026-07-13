@@ -26,16 +26,29 @@ type Insurer = {
   insurer_staff: { count: number }[];
 };
 
+type Convention = {
+  id: string;
+  active: boolean;
+  created_at: string;
+  clinics: { id: string; name: string } | null;
+  insurers: { id: string; name: string } | null;
+};
+
 export default function ManageOrgsPage() {
   const { getToken } = useAuth();
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [insurers, setInsurers] = useState<Insurer[]>([]);
+  const [conventions, setConventions] = useState<Convention[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmTarget, setConfirmTarget] = useState<
     { kind: "clinic" | "insurer"; id: string; name: string } | null
   >(null);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  const [newConventionClinic, setNewConventionClinic] = useState("");
+  const [newConventionInsurer, setNewConventionInsurer] = useState("");
+  const [addingConvention, setAddingConvention] = useState(false);
 
   async function call(body: unknown) {
     const token = await getToken();
@@ -52,16 +65,48 @@ export default function ManageOrgsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [c, i] = await Promise.all([
+      const [c, i, cv] = await Promise.all([
         call({ action: "list_clinics" }),
         call({ action: "list_insurers" }),
+        call({ action: "list_conventions" }),
       ]);
       setClinics(c.clinics ?? []);
       setInsurers(i.insurers ?? []);
+      setConventions(cv.conventions ?? []);
     } catch (err: any) {
       toast.error(err.message || "Impossible de charger la liste");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function addConvention() {
+    if (!newConventionClinic || !newConventionInsurer) return;
+    setAddingConvention(true);
+    try {
+      await call({
+        action: "add_convention",
+        clinic_id: newConventionClinic,
+        insurer_id: newConventionInsurer,
+      });
+      toast.success("Convention ajoutée");
+      setNewConventionClinic("");
+      setNewConventionInsurer("");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de l'ajout");
+    } finally {
+      setAddingConvention(false);
+    }
+  }
+
+  async function removeConvention(id: string) {
+    try {
+      await call({ action: "remove_convention", id });
+      toast.success("Convention retirée");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la suppression");
     }
   }
 
@@ -150,6 +195,72 @@ export default function ManageOrgsPage() {
                   className="text-red-600 text-sm hover:underline"
                 >
                   Supprimer
+                </button>
+              </Card>
+            ))}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">Conventions cabinet ↔ assureur ({conventions.length})</h2>
+            <p className="text-sm text-gray-500">
+              Seuls les assureurs conventionnés avec un cabinet sont proposés à la secrétaire lors
+              de la création d'un patient assuré.
+            </p>
+
+            <Card className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-xs text-gray-500">Cabinet</label>
+                <select
+                  className="w-full border rounded p-2 text-sm"
+                  value={newConventionClinic}
+                  onChange={(e) => setNewConventionClinic(e.target.value)}
+                >
+                  <option value="">— choisir —</option>
+                  {clinics.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-xs text-gray-500">Assureur</label>
+                <select
+                  className="w-full border rounded p-2 text-sm"
+                  value={newConventionInsurer}
+                  onChange={(e) => setNewConventionInsurer(e.target.value)}
+                >
+                  <option value="">— choisir —</option>
+                  {insurers.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                onClick={addConvention}
+                disabled={addingConvention || !newConventionClinic || !newConventionInsurer}
+              >
+                {addingConvention ? "Ajout…" : "Ajouter"}
+              </Button>
+            </Card>
+
+            {conventions.length === 0 && (
+              <p className="text-sm text-gray-500">Aucune convention pour l'instant.</p>
+            )}
+            {conventions.map((cv) => (
+              <Card key={cv.id} className="flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="font-medium">{cv.clinics?.name ?? "—"}</span>
+                  <span className="text-gray-400 mx-2">↔</span>
+                  <span className="font-medium">{cv.insurers?.name ?? "—"}</span>
+                </div>
+                <button
+                  onClick={() => removeConvention(cv.id)}
+                  className="text-red-600 text-sm hover:underline"
+                >
+                  Retirer
                 </button>
               </Card>
             ))}

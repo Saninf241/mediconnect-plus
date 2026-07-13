@@ -1,7 +1,7 @@
 // src/Pages/developer/NewInsurerPage.tsx
 import React, { useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { Card } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
@@ -12,11 +12,13 @@ const FUNCTIONS_BASE =
   "/functions/v1";
 
 type StaffRow = { name: string; email: string; role: string };
+type StaffResult = { email: string; status: "ok" | "error"; error?: string };
+type CreationResult = { insurer_id: string; insurerName: string; staff: StaffResult[] };
 
 export default function NewInsurerPage() {
   const { getToken } = useAuth();
-  const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<CreationResult | null>(null);
 
   const [insurer, setInsurer] = useState({
     name: "",
@@ -58,25 +60,85 @@ export default function NewInsurerPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Échec de la création");
 
-      const failed = (data.staff || []).filter((s: any) => s.status === "error");
-      if (failed.length > 0) {
-        const detail = failed.map((s: any) => `${s.email} : ${s.error}`).join("\n");
-        toast.error(
-          `Assureur créé, mais ${failed.length} compte(s) ont échoué :\n${detail}`,
-          { autoClose: false }
-        );
-        console.warn("Échecs création staff:", failed);
-      } else {
-        toast.success("Assureur et comptes créés avec succès");
-      }
-
-      navigate("/developer");
+      setResult({ insurer_id: data.insurer_id, insurerName: insurer.name, staff: data.staff ?? [] });
     } catch (err: any) {
       toast.error(err.message || "Erreur lors de la création");
     } finally {
       setSubmitting(false);
     }
   };
+
+  const resetForCreatingAnother = () => {
+    setResult(null);
+    setInsurer({ name: "", verification_level: "N1" });
+    setStaff([{ name: "", email: "", role: "admin" }]);
+  };
+
+  if (result) {
+    const failed = result.staff.filter((s) => s.status === "error");
+    const ok = result.staff.filter((s) => s.status === "ok");
+
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <Card className="space-y-4 border-2 border-green-200">
+          <div>
+            <h1 className="text-2xl font-bold text-green-700">✅ Assureur créé</h1>
+            <p className="text-gray-600">
+              « {result.insurerName} » — id <span className="font-mono text-sm">{result.insurer_id}</span>
+            </p>
+          </div>
+
+          {ok.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-sm text-gray-700 mb-1">
+                Invitations envoyées ({ok.length})
+              </h3>
+              <ul className="text-sm space-y-1">
+                {ok.map((s) => (
+                  <li key={s.email} className="text-green-700">✅ {s.email}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {failed.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-sm text-red-700 mb-1">
+                Échecs ({failed.length})
+              </h3>
+              <ul className="text-sm space-y-1">
+                {failed.map((s) => (
+                  <li key={s.email} className="text-red-700">
+                    ❌ {s.email} — {s.error}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.staff.length === 0 && (
+            <p className="text-sm text-gray-500">Aucun compte staff n'a été demandé.</p>
+          )}
+
+          <p className="text-sm text-amber-700 bg-amber-50 rounded p-2">
+            N'oublie pas d'ajouter une convention avec le(s) cabinet(s) concernés depuis
+            « Gérer cabinets & assureurs » pour que cet assureur soit proposé lors de la
+            création d'un patient assuré.
+          </p>
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Button onClick={resetForCreatingAnother}>Créer un autre assureur</Button>
+            <Link to="/developer/manage" className="px-4 py-2 text-sm rounded border">
+              Gérer cabinets & assureurs
+            </Link>
+            <Link to="/developer" className="px-4 py-2 text-sm rounded border">
+              Accueil dev
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

@@ -2,8 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
-import { checkEligibility, createPatientDraft, finalizeUninsured, generatePatientAccessCode, resolveExistingPatient } from "../../../lib/api/secretary";
-import { v4 as uuidv4 } from "uuid";
+import { createPatientDraft, finalizeUninsured, generatePatientAccessCode, resolveExistingPatient } from "../../../lib/api/secretary";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
 type PatientType = "insured_card" | "insured_no_card" | "uninsured";
@@ -201,36 +200,41 @@ export default function NewPatientWizard() {
     return { clinicId: data.clinic_id as string, staffId: data.id as string };
   }
 
-  // assureurs
+  // assureurs conventionnes avec le cabinet du secretaire connecte
+  // uniquement -- avant, la liste chargeait TOUS les assureurs de la
+  // plateforme, ce qui permettait de declarer un patient assure chez un
+  // assureur avec qui le cabinet n'a aucune convention reelle.
   const [insurers, setInsurers] = useState<
     { id: string; name: string; level?: "N1" | "N2" | "N3" }[]
   >([]);
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase
-        .from("insurers")
-        .select("id,name,verification_level");
-      if (!error && data) {
+      try {
+        const ctxNow = await resolveSecretaryContext();
+        const { data, error } = await supabase
+          .from("clinic_insurer_conventions")
+          .select("insurers:insurer_id(id, name, verification_level)")
+          .eq("clinic_id", ctxNow.clinicId)
+          .eq("active", true);
+
+        if (error) throw error;
+
         setInsurers(
-          data.map((x: any) => ({
-            id: x.id,
-            name: x.name,
-            level: (x.verification_level as "N1" | "N2" | "N3") ?? "N3",
-          }))
+          (data ?? [])
+            .map((row: any) => row.insurers)
+            .filter(Boolean)
+            .map((x: any) => ({
+              id: x.id,
+              name: x.name,
+              level: (x.verification_level as "N1" | "N2" | "N3") ?? "N3",
+            }))
         );
-      } else {
-        // fallback local (au cas où)
-        setInsurers([
-          { id: "ascoma", name: "Ascoma", level: "N1" },
-          { id: "olea", name: "Olea", level: "N1" },
-          { id: "cnamgs", name: "CNAMGS", level: "N2" },
-          { id: "samba", name: "Sambaa Assurances", level: "N2" },
-          { id: "nsia", name: "NSIA Assurances", level: "N2" },
-          { id: "banboo", name: "Banboo Assurances", level: "N3" },
-          { id: "autre", name: "Autre", level: "N3" },
-        ]);
+      } catch (e) {
+        console.error("[NewPatientWizard] chargement conventions assureur:", e);
+        setInsurers([]);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function next() {
@@ -364,63 +368,42 @@ export default function NewPatientWizard() {
       }
 
       if (ptype === "insured_card" || ptype === "insured_no_card") {
+        // Pas de verification temps reel automatisee pour l'instant
+        // (aucune integration API avec les assureurs n'existe) : la liste
+        // d'assureurs proposee est deja limitee a ceux conventionnes avec
+        // ce cabinet (clinic_insurer_conventions), donc l'existence meme
+        // du choix dans le <select> fait office de garde-fou. On
+        // enregistre directement l'adhesion avec le n° saisi par la
+        // secretaire.
+        if (!form.insurer_id) {
+          throw new Error(
+            "Sélectionne un assureur conventionné avec ce cabinet (liste vide ? contacte le développeur pour ajouter la convention)."
+          );
+        }
+
         const level = resolveVerificationLevel() ?? "N3";
-
-        await supabase
-          .from("patients")
-          .update({ status: "verifying" })
-          .eq("id", pid);
-
-        const resp = await checkEligibility({
-          insurer_id: form.insurer_id || undefined,
-          insurer_name: form.insurer_name || undefined,
-          patient: {
-            full_name: form.full_name,
-            dob: form.dob,
-            national_id: form.national_id,
-          },
-          membership: {
-            member_no: form.member_no,
-            plan_code: form.plan_code,
-          },
-          facility_id: ctxNow.clinicId,
-          idempotency_key: uuidv4(),
-        });
-
-        if (resp?.status === "not_eligible") {
-          await supabase
-            .from("patients")
-            .update({ status: "rejected" })
-            .eq("id", pid);
-          setMessage("Assuré non éligible aujourd’hui.");
-          return;
-        }
-        if (resp?.status === "eligible") {
-          await supabase
-            .from("patients")
-            .update({ status: "verified" })
-            .eq("id", pid);
-        }
-
-        // 👉 ICI : on fait confiance à l'id venant du <select>
-        const insurerIdOrNull = form.insurer_id || null;
 
         const { error: memErr } = await supabase
           .from("insurer_memberships")
           .insert({
             patient_id: pid,
-            insurer_id: insurerIdOrNull,
+            insurer_id: form.insurer_id,
             member_no: form.member_no || "",
-            plan_code: resp?.plan_code || form.plan_code || null,
+            plan_code: form.plan_code || null,
             coverage_start: form.coverage_start || null,
-            coverage_end: form.coverage_end || resp?.coverage?.expires || null,
+            coverage_end: form.coverage_end || null,
             last_verified_at: new Date().toISOString(),
             verification_level: level,
-            confidence: resp?.confidence || "medium",
-            source: resp || {},
+            confidence: "declarative",
+            source: { method: "convention_declarative" },
             is_active: true,
           });
         if (memErr) throw memErr;
+
+        await supabase
+          .from("patients")
+          .update({ status: "verified" })
+          .eq("id", pid);
       }
 
       const isAssured =
