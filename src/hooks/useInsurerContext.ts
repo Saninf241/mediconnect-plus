@@ -27,15 +27,33 @@ export function useInsurerContext() {
         const clerkId = user.id;
         const email = user.primaryEmailAddress?.emailAddress || null;
 
-        let q = supabase
-          .from("insurer_staff")
-          .select("id, insurer_id, role, email, clerk_user_id")
-          .limit(1);
+        const selectFields = "id, insurer_id, role, email, clerk_user_id";
 
-        if (clerkId) q = q.eq("clerk_user_id", clerkId);
-        else if (email) q = q.eq("email", email);
+        let data: any = null;
+        let error: any = null;
 
-        const { data, error } = await q.maybeSingle();
+        if (clerkId) {
+          const res = await supabase
+            .from("insurer_staff")
+            .select(selectFields)
+            .eq("clerk_user_id", clerkId)
+            .maybeSingle();
+          data = res.data;
+          error = res.error;
+        }
+
+        // Repli par email : necessaire pour un compte invite (via
+        // dev-create-insurer) dont clerk_user_id est encore null tant que
+        // l'invitation n'a pas ete acceptee au moment de l'insert.
+        if (!data && email) {
+          const res = await supabase
+            .from("insurer_staff")
+            .select(selectFields)
+            .eq("email", email)
+            .maybeSingle();
+          data = res.data;
+          error = res.error;
+        }
 
         if (error || !data) {
           console.error("[useInsurerContext] not found", error);

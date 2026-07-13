@@ -138,7 +138,7 @@ serve(async (req) => {
           name: member.name,
           role: member.role,
           email: member.email,
-          status: "invited",
+          status: "active",
         });
 
         if (staffErr) throw staffErr;
