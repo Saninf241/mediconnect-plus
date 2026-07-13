@@ -18,10 +18,6 @@ const CLERK_API = "https://api.clerk.com/v1";
 type StaffRole = "doctor" | "secretary" | "admin";
 type StaffInput = { name: string; email: string; role: StaffRole };
 
-function randomPassword() {
-  return crypto.randomUUID() + crypto.randomUUID();
-}
-
 async function clerkFetch(path: string, init: RequestInit, secretKey: string) {
   const res = await fetch(`${CLERK_API}${path}`, {
     ...init,
@@ -115,34 +111,38 @@ serve(async (req) => {
 
     for (const member of staff ?? []) {
       try {
-        const [firstName, ...rest] = (member.name || "").trim().split(/\s+/);
-        const newUser = await clerkFetch(
-          "/users",
+        // Invitation Clerk : la personne recoit un email, choisit elle-meme
+        // son mot de passe en acceptant. Avant ce correctif, le compte
+        // etait cree directement avec un mot de passe aleatoire jamais
+        // communique -> personne ne pouvait jamais se connecter.
+        await clerkFetch(
+          "/invitations",
           {
             method: "POST",
             body: JSON.stringify({
-              email_address: [member.email],
-              password: randomPassword(),
-              skip_password_checks: true,
+              email_address: member.email,
               public_metadata: { role: member.role },
-              ...(firstName ? { first_name: firstName } : {}),
-              ...(rest.length ? { last_name: rest.join(" ") } : {}),
+              notify: true,
             }),
           },
           clerkSecret
         );
 
+        // clerk_user_id reste vide tant que l'invitation n'est pas acceptee ;
+        // l'app matche deja les comptes par email en repli partout
+        // (resolveAccessContext, useClinicId, etc.), donc la connexion
+        // fonctionnera des l'acceptation, meme avant tout backfill.
         const { error: staffErr } = await supabase.from("clinic_staff").insert({
           clinic_id: clinicId,
-          clerk_user_id: newUser.id,
+          clerk_user_id: null,
           name: member.name,
           role: member.role,
           email: member.email,
-          status: "active",
+          status: "invited",
         });
 
         if (staffErr) throw staffErr;
-        results.push({ email: member.email, status: "ok", clerk_user_id: newUser.id });
+        results.push({ email: member.email, status: "ok" });
       } catch (e) {
         results.push({
           email: member.email,

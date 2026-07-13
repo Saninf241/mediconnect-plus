@@ -17,10 +17,6 @@ const CLERK_API = "https://api.clerk.com/v1";
 
 type StaffInput = { name: string; email: string; role: string };
 
-function randomPassword() {
-  return crypto.randomUUID() + crypto.randomUUID();
-}
-
 async function clerkFetch(path: string, init: RequestInit, secretKey: string) {
   const res = await fetch(`${CLERK_API}${path}`, {
     ...init,
@@ -62,11 +58,11 @@ serve(async (req) => {
 
     const body = await req.json();
     const { insurer, staff } = body as {
-      insurer: { name: string; verification_level: string; slug: string };
+      insurer: { name: string; verification_level: string };
       staff: StaffInput[];
     };
 
-    if (!insurer?.name || !insurer?.slug) {
+    if (!insurer?.name) {
       return new Response(
         JSON.stringify({ error: "Champs assureur manquants" }),
         { status: 400, headers: cors }
@@ -78,12 +74,14 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
+    // slug est une colonne generee automatiquement (a partir de name) --
+    // toute valeur explicite est rejetee par Postgres ("cannot insert a
+    // non-DEFAULT value into column").
     const { data: insurerRow, error: insurerErr } = await supabase
       .from("insurers")
       .insert({
         name: insurer.name,
         verification_level: insurer.verification_level ?? "N1",
-        slug: insurer.slug,
       })
       .select("id")
       .single();
@@ -100,32 +98,36 @@ serve(async (req) => {
 
     for (const member of staff ?? []) {
       try {
-        const [firstName, ...rest] = (member.name || "").trim().split(/\s+/);
-        const newUser = await clerkFetch(
-          "/users",
+        // Invitation Clerk : la personne recoit un email, choisit elle-meme
+        // son mot de passe en acceptant. Avant ce correctif, le compte
+        // etait cree directement avec un mot de passe aleatoire jamais
+        // communique -> personne ne pouvait jamais se connecter.
+        await clerkFetch(
+          "/invitations",
           {
             method: "POST",
             body: JSON.stringify({
-              email_address: [member.email],
-              password: randomPassword(),
-              skip_password_checks: true,
+              email_address: member.email,
               public_metadata: { role: "assurer" },
-              ...(firstName ? { first_name: firstName } : {}),
-              ...(rest.length ? { last_name: rest.join(" ") } : {}),
+              notify: true,
             }),
           },
           clerkSecret
         );
 
+        // clerk_user_id reste vide tant que l'invitation n'est pas acceptee ;
+        // l'app matche deja les comptes par email en repli (useInsurerContext,
+        // resolveAccessContext), donc la connexion fonctionnera des
+        // l'acceptation, meme avant tout backfill.
         const { error: staffErr } = await supabase.from("insurer_staff").insert({
           insurer_id: insurerId,
-          clerk_user_id: newUser.id,
+          clerk_user_id: null,
           email: member.email,
           role: member.role,
         });
 
         if (staffErr) throw staffErr;
-        results.push({ email: member.email, status: "ok", clerk_user_id: newUser.id });
+        results.push({ email: member.email, status: "ok" });
       } catch (e) {
         results.push({
           email: member.email,

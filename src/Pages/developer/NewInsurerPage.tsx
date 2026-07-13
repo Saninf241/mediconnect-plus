@@ -21,7 +21,6 @@ export default function NewInsurerPage() {
   const [insurer, setInsurer] = useState({
     name: "",
     verification_level: "N1",
-    slug: "",
   });
 
   const [staff, setStaff] = useState<StaffRow[]>([
@@ -89,12 +88,6 @@ export default function NewInsurerPage() {
             required
             value={insurer.name}
             onChange={(e) => setInsurer({ ...insurer, name: e.target.value })}
-          />
-          <Input
-            placeholder="Identifiant (slug)"
-            required
-            value={insurer.slug}
-            onChange={(e) => setInsurer({ ...insurer, slug: e.target.value })}
           />
           <select
             className="border px-3 py-2 rounded text-sm w-full"

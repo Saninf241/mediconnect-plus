@@ -80,6 +80,7 @@ import DeveloperHome from "./Pages/developer/DeveloperHome";
 import NewClinicPage from "./Pages/developer/NewClinicPage";
 import NewInsurerPage from "./Pages/developer/NewInsurerPage";
 import TicketsPage from "./Pages/developer/TicketsPage";
+import ManageOrgsPage from "./Pages/developer/ManageOrgsPage";
 
 function GlobalHeader() {
   const { pathname } = useLocation();
@@ -585,6 +586,7 @@ export default function App() {
       <Route path="multispecialist/new" element={<NewClinicPage clinicType="multi_specialist" />} />
       <Route path="insurers/new" element={<NewInsurerPage />} />
       <Route path="tickets" element={<TicketsPage />} />
+      <Route path="manage" element={<ManageOrgsPage />} />
     </Route>
 
     <Route path="*" element={<Navigate to="/" />} />
