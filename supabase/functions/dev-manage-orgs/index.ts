@@ -77,8 +77,8 @@ serve(async (req) => {
     if (input.action === "list_insurers") {
       const { data, error } = await supabase
         .from("insurers")
-        .select("id, name, verification_level, created_at, insurer_staff(count)")
-        .order("created_at", { ascending: false });
+        .select("id, name, verification_level, insurer_staff(count)")
+        .order("name", { ascending: true });
       if (error) throw error;
       return new Response(JSON.stringify({ insurers: data }), { headers: cors });
     }

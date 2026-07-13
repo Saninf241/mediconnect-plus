@@ -23,7 +23,6 @@ type Insurer = {
   id: string;
   name: string;
   verification_level: string | null;
-  created_at: string;
   insurer_staff: { count: number }[];
 };
 
@@ -140,8 +139,7 @@ export default function ManageOrgsPage() {
                 <div>
                   <div className="font-medium">{i.name}</div>
                   <div className="text-xs text-gray-500">
-                    {i.verification_level ?? "—"} · {i.insurer_staff?.[0]?.count ?? 0} membre(s) ·{" "}
-                    {new Date(i.created_at).toLocaleDateString("fr-FR")}
+                    {i.verification_level ?? "—"} · {i.insurer_staff?.[0]?.count ?? 0} membre(s)
                   </div>
                 </div>
                 <button
