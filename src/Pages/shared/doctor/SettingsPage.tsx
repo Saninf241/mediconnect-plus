@@ -1,4 +1,4 @@
-// src/Pages/multispecialist/doctor/SettingsDoctorPage.tsx
+// src/Pages/shared/doctor/SettingsPage.tsx
 import { useEffect, useState } from "react";
 import { supabase } from '../../../lib/supabase';
 import { useUser } from "@clerk/clerk-react";
@@ -9,7 +9,7 @@ import { toast } from "react-toastify";
 export default function SettingsPage() {
   const { user } = useUser();
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
-  const [bio, setBio] = useState(user?.publicMetadata?.bio ?? "");
+  const [bio, setBio] = useState(user?.unsafeMetadata?.bio ?? "");
   const [subscriptionPlan, setSubscriptionPlan] = useState<string | null>(null);
 
   useEffect(() => {

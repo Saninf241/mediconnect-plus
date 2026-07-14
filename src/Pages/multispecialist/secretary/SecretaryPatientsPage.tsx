@@ -3,6 +3,8 @@ import { supabase } from "../../../lib/supabase";
 import { Input } from "../../../components/ui/input";
 import { Button } from "../../../components/ui/button";
 import Modal from "../../../components/ui/dialog";
+import { toast } from "react-toastify";
+import { useClinicId } from "../../../hooks/useClinicId";
 
 interface Patient {
   id: string;
@@ -13,19 +15,26 @@ interface Patient {
 }
 
 export default function SecretaryPatientsPage() {
+  const { clinicId } = useClinicId();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [search, setSearch] = useState("");
   const [newPatient, setNewPatient] = useState<Partial<Patient>>({});
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  const fetchPatients = async () => {
+    if (!clinicId) return;
+    const { data, error } = await supabase
+      .from("patients")
+      .select("*")
+      .eq("clinic_id", clinicId);
+    if (!error && data) setPatients(data);
+    if (error) console.error("[SecretaryPatientsPage] fetch error:", error);
+  };
+
   useEffect(() => {
-    const fetchPatients = async () => {
-      const { data, error } = await supabase.from("patients").select("*");
-      if (!error && data) setPatients(data);
-    };
     fetchPatients();
-  }, []);
+  }, [clinicId]);
 
   const filteredPatients = patients.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -33,19 +42,26 @@ export default function SecretaryPatientsPage() {
 
   const handleSave = async () => {
     if (!newPatient.name) return;
+    if (!clinicId) {
+      toast.error("Impossible d'identifier votre cabinet.");
+      return;
+    }
 
-    if (editingPatientId) {
-      await supabase.from("patients").update(newPatient).eq("id", editingPatientId);
-    } else {
-      await supabase.from("patients").insert({ ...newPatient });
+    const { error } = editingPatientId
+      ? await supabase.from("patients").update(newPatient).eq("id", editingPatientId)
+      : await supabase.from("patients").insert({ ...newPatient, clinic_id: clinicId });
+
+    if (error) {
+      console.error("[SecretaryPatientsPage] save error:", error);
+      toast.error("Erreur lors de l'enregistrement du patient.");
+      return;
     }
 
     setNewPatient({});
     setEditingPatientId(null);
     setIsModalOpen(false);
 
-    const { data, error } = await supabase.from("patients").select("*");
-    if (!error && data) setPatients(data);
+    await fetchPatients();
   };
 
   const openEdit = (patient: Patient) => {

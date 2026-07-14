@@ -4,6 +4,7 @@ import { normalizeRole, type AppRole } from "./role-utils";
 
 export type AppArea =
   | "specialist_doctor"
+  | "specialist_secretary"
   | "multispecialist_doctor"
   | "multispecialist_secretary"
   | "multispecialist_admin"
@@ -96,7 +97,9 @@ export async function resolveAccessContext(params: {
     if (role === "secretary") {
       return {
         role,
-        area: "multispecialist_secretary",
+        area: isMultispecialist(clinicType)
+          ? "multispecialist_secretary"
+          : "specialist_secretary",
         clinicId: clinicStaff.clinic_id,
         staffId: clinicStaff.id,
       };

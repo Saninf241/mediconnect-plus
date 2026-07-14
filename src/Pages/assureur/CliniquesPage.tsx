@@ -43,7 +43,7 @@ export default function CliniquesPage() {
               <p className="text-sm text-gray-600">{clinic.address}</p>
               <p className="text-sm text-gray-600">{clinic.phone}</p>
               <span className="inline-block mt-1 px-2 py-1 text-xs rounded bg-gray-100">
-                {clinic.type === "clinic" ? "Clinique" : "Cabinet"}
+                {clinic.type === "multi_specialist" ? "Multi-spécialiste" : "Spécialiste"}
               </span>
             </Card>
           ))}

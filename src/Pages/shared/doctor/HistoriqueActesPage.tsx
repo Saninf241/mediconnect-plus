@@ -1,9 +1,10 @@
-// src/Pages/multispecialist/doctor/HistoriqueActesPage.tsx
+// src/Pages/shared/doctor/HistoriqueActesPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
-import { getUnreadMessageCounts, markConsultationNotificationsAsRead, type UnreadByConsultation,} from "../../../lib/queries/notifications";
+import { useDoctorScope } from "../../../hooks/useDoctorScope";
+import { getUnreadMessageCounts, markConsultationNotificationsAsRead, type UnreadByConsultation } from "../../../lib/queries/notifications";
 
 type RawConsultation = {
   id: string;
@@ -28,13 +29,15 @@ type ConsultationRow = {
 export default function HistoriqueActesPage() {
   const doctorInfo = useDoctorContext();
   const navigate = useNavigate();
+  const { basePath } = useDoctorScope();
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<ConsultationRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [coverageFilter, setCoverageFilter] = useState<string>("");
-  const [unreadByConsultation, setUnreadByConsultation] = useState<UnreadByConsultation>({});  const [currentPage, setCurrentPage] = useState(1);
+  const [unreadByConsultation, setUnreadByConsultation] = useState<UnreadByConsultation>({});
+  const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
   // 1. Chargement initial des consultations
@@ -84,7 +87,7 @@ export default function HistoriqueActesPage() {
     fetchConsultations();
   }, [doctorInfo]);
 
-  // 2. REALTIME & INITIAL UNREAD COUNTS (Image 872171.png & Log Bonus)
+  // 2. Realtime + compteurs de messages non lus
   useEffect(() => {
     if (!doctorInfo?.doctor_id) return;
 
@@ -95,8 +98,6 @@ export default function HistoriqueActesPage() {
       const counts = await getUnreadMessageCounts(doctorId);
       if (alive) {
         setUnreadByConsultation(counts);
-        // LOG BONUS (Image ec0e50.png)
-        console.log("[HistoriqueActesPage] counts refreshed for doctor:", doctorId);
       }
     };
 
@@ -163,7 +164,7 @@ export default function HistoriqueActesPage() {
     return filtered.slice(start, start + pageSize);
   }, [filtered, currentPage]);
 
-  // 4. LOGIQUE DE MARQUAGE COMME LU ET NAVIGATION (Image d2adc7.png)
+  // 4. Marquage comme lu + navigation
   const handleOpenDetails = async (consultationId: string) => {
     if (doctorInfo?.doctor_id) {
       const doctorId = doctorInfo.doctor_id;
@@ -174,12 +175,12 @@ export default function HistoriqueActesPage() {
       setUnreadByConsultation(counts);
     }
 
-    navigate(`/multispecialist/doctor/consultations/${consultationId}`);
+    navigate(`${basePath}/consultations/${consultationId}`);
   };
 
   useEffect(() => {
-  setCurrentPage(1);
-}, [search, statusFilter, coverageFilter]);
+    setCurrentPage(1);
+  }, [search, statusFilter, coverageFilter]);
 
   return (
     <div className="p-6 space-y-6">
@@ -273,7 +274,6 @@ export default function HistoriqueActesPage() {
                       className="text-xs bg-indigo-600 text-white px-3 py-1 rounded hover:bg-indigo-700 inline-flex items-center gap-2"
                     >
                       Voir
-                      {/* BADGE (Image 3.3 / Image d2adc7.png) */}
                       {unreadByConsultation[c.id]?.hasDecision && (
                         <span className="inline-flex items-center rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-semibold text-white">
                           Décision
@@ -293,29 +293,29 @@ export default function HistoriqueActesPage() {
           </tbody>
         </table>
       </div>
-        <div className="flex items-center justify-between pt-4">
-    <p className="text-sm text-gray-500">
-      Page {currentPage} sur {totalPages}
-    </p>
+      <div className="flex items-center justify-between pt-4">
+        <p className="text-sm text-gray-500">
+          Page {currentPage} sur {totalPages}
+        </p>
 
-    <div className="flex gap-2">
-      <button
-        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-        disabled={currentPage === 1}
-        className="px-3 py-1 rounded border disabled:opacity-50"
-      >
-        Précédent
-      </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 rounded border disabled:opacity-50"
+          >
+            Précédent
+          </button>
 
-      <button
-        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-        disabled={currentPage === totalPages}
-        className="px-3 py-1 rounded border disabled:opacity-50"
-      >
-        Suivant
-      </button>
-    </div>
-  </div>
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 rounded border disabled:opacity-50"
+          >
+            Suivant
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ interface SettingsForm {
 function clinicTypeLabel(type: string | null | undefined) {
   const t = (type ?? "").toLowerCase();
 
-  if (t === "multispecialist_office") return "Cabinet multi-spécialiste";
+  if (t === "multi_specialist") return "Cabinet multi-spécialiste";
   if (t === "specialist_office") return "Cabinet spécialiste";
   if (t === "clinic") return "Clinique";
   return type || "-";

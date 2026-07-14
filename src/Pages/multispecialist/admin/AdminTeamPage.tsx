@@ -3,7 +3,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useClinicId } from "../../../hooks/useClinicId";
 import { Card, CardContent } from "../../../components/ui/card";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
+
+const FUNCTIONS_BASE =
+  (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "") +
+  "/functions/v1";
 
 type StaffRoleFilter = "all" | "doctor" | "secretary" | "admin";
 type StaffRole = "doctor" | "secretary" | "admin";
@@ -45,6 +49,7 @@ function rolePillClass(role: string | null) {
 export default function AdminTeamPage() {
   const { clinicId, loadingClinic } = useClinicId();
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -181,18 +186,25 @@ export default function AdminTeamPage() {
         return;
       }
 
-      const { error } = await supabase
-        .from("clinic_staff")
-        .insert({
-          clinic_id: clinicId,
+      const token = await getToken();
+      const res = await fetch(`${FUNCTIONS_BASE}/admin-invite-clinic-member`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           name: form.name.trim(),
           email: normalizedEmail,
           role: form.role,
-        });
+        }),
+      });
 
-      if (error) {
-        console.error("[AdminTeamPage] create member error:", error);
-        setNote("Impossible d’ajouter ce membre.");
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("[AdminTeamPage] create member error:", data?.error);
+        setNote(data?.error || "Impossible d’ajouter ce membre.");
         setSaving(false);
         return;
       }
@@ -203,7 +215,7 @@ export default function AdminTeamPage() {
         role: "doctor",
       });
 
-      setSuccessMessage("Membre ajouté avec succès.");
+      setSuccessMessage("Invitation envoyée — le membre pourra se connecter dès qu’il l’aura acceptée.");
       await fetchStaff();
     } catch (error) {
       console.error("[AdminTeamPage] unexpected create error:", error);
@@ -233,14 +245,21 @@ export default function AdminTeamPage() {
     setDeletingId(member.id);
 
     try {
-      const { error } = await supabase
-        .from("clinic_staff")
-        .delete()
-        .eq("id", member.id);
+      const token = await getToken();
+      const res = await fetch(`${FUNCTIONS_BASE}/admin-remove-clinic-member`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ staff_id: member.id }),
+      });
 
-      if (error) {
-        console.error("[AdminTeamPage] delete member error:", error);
-        setNote("Impossible de supprimer ce membre.");
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("[AdminTeamPage] delete member error:", data?.error);
+        setNote(data?.error || "Impossible de supprimer ce membre.");
         setDeletingId(null);
         return;
       }

@@ -1,9 +1,9 @@
 // src/pages/doctor/DashboardPage.tsx
 import { useEffect, useRef, useState } from 'react';
-import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { useDoctorContext } from '../../hooks/useDoctorContext';
 
 interface Consultation {
   id: string;
@@ -20,7 +20,7 @@ interface Patient {
 }
 
 export default function DashboardPage() {
-  const { user } = useUser();
+  const doctorInfo = useDoctorContext();
   const [amountAssured, setAmountAssured] = useState(0);
   const [amountNotAssured, setAmountNotAssured] = useState(0);
   const [topActs, setTopActs] = useState<{ label: string; count: number }[]>([]);
@@ -29,8 +29,9 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const doctorId = user?.id;
-      if (!doctorId) return;
+      const doctorId = doctorInfo?.doctor_id;
+      const clinicId = doctorInfo?.clinic_id;
+      if (!doctorId || !clinicId) return;
 
       const { data: consultations } = await supabase
         .from('consultations')
@@ -39,7 +40,8 @@ export default function DashboardPage() {
 
       const { data: patients } = await supabase
         .from('patients')
-        .select('id, is_assured');
+        .select('id, is_assured')
+        .eq('clinic_id', clinicId);
 
       if (!consultations || !patients) return;
 
@@ -60,7 +62,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, [user]);
+  }, [doctorInfo]);
 
   const handleGeneratePDF = async () => {
     if (!reportRef.current) return;

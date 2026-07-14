@@ -5,9 +5,11 @@ import { supabase } from '../../lib/supabase';
 import { useNavigate, NavLink, Outlet } from 'react-router-dom';
 import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy } from 'lucide-react';
 import { toast } from 'react-toastify';
+import { useDoctorContext } from '../../hooks/useDoctorContext';
 
 export default function DoctorLayout() {
   const { user, isLoaded, isSignedIn } = useUser();
+  const doctorInfo = useDoctorContext();
   const [clinicName, setClinicName] = useState('MediConnect+');
   const [isTrusted, setIsTrusted] = useState(false);
   const [lastChecked, setLastChecked] = useState<number>(Date.now());
@@ -44,7 +46,7 @@ export default function DoctorLayout() {
 
   useEffect(() => {
     const timer = setInterval(async () => {
-      const doctorId = user?.id;
+      const doctorId = doctorInfo?.doctor_id;
       if (!doctorId) return;
       const { data } = await supabase
         .from('consultations')
@@ -58,14 +60,14 @@ export default function DoctorLayout() {
       setLastChecked(Date.now());
     }, 30000);
     return () => clearInterval(timer);
-  }, [user, lastChecked]);
+  }, [doctorInfo, lastChecked]);
 
   const Item = (to: string, Icon: any, label: string) => (
     <NavLink
       to={to}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2 rounded-lg transition
-         ${isActive ? 'bg-white/20 text-white font-semibold' : 'text-violet-100 hover:bg-white/10'}`
+         ${isActive ? 'bg-white/20 text-white font-semibold' : 'text-teal-100 hover:bg-white/10'}`
       }
       end
     >
@@ -75,8 +77,8 @@ export default function DoctorLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-fuchsia-50">
-      <div className="bg-violet-700 text-white px-5 py-3 flex justify-between items-center shadow">
+    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-cyan-50">
+      <div className="bg-teal-700 text-white px-5 py-3 flex justify-between items-center shadow">
         <div className="text-lg font-semibold">{clinicName}</div>
         <div className="text-sm flex items-center gap-2">
           {user?.firstName && <>Dr. {user.firstName}</>}
@@ -89,7 +91,7 @@ export default function DoctorLayout() {
       </div>
 
       <div className="flex">
-        <aside className="w-72 bg-violet-800 text-white p-5 space-y-4 min-h-[calc(100vh-52px)]">
+        <aside className="w-72 bg-teal-800 text-white p-5 space-y-4 min-h-[calc(100vh-52px)]">
           <div className="text-xl font-bold">Espace Médecin</div>
           <nav className="space-y-2">
             {Item('/doctor', UserRound, 'Dashboard')}
@@ -100,8 +102,8 @@ export default function DoctorLayout() {
             {Item('/doctor/support', LifeBuoy, 'Support')}
             {Item('/doctor/settings', Settings, 'Paramètres')}
           </nav>
-          <div className="text-xs text-violet-200/80 pt-6">
-            Espace “spécialiste simple” (style violet). Déconnexion via Clerk (en haut à droite).
+          <div className="text-xs text-teal-200/80 pt-6">
+            Espace “spécialiste simple” (style sauge). Déconnexion via Clerk (en haut à droite).
           </div>
         </aside>
 

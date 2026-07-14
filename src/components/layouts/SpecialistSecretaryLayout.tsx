@@ -1,22 +1,21 @@
-// src/components/layouts/MultispecialistSecretaryLayout.tsx
-import React from "react";
+// src/components/layouts/SpecialistSecretaryLayout.tsx
 import { Outlet, NavLink } from "react-router-dom";
 import LogoutButton from "../ui/LogoutButton";
 
 const linkBase =
   "block px-3 py-2 rounded-lg transition hover:bg-white/10";
 const linkActive = "bg-white/20 text-white font-semibold";
-const linkInactive = "text-sky-100";
+const linkInactive = "text-teal-100";
 
-export default function MultispecialistSecretaryLayout() {
+export default function SpecialistSecretaryLayout() {
   return (
     <div className="flex min-h-screen">
-      <aside className="w-64 bg-sky-800 text-white p-4">
+      <aside className="w-64 bg-teal-800 text-white p-4">
         <h2 className="text-xl font-bold mb-4">Espace Secrétaire</h2>
 
         <nav className="space-y-2">
           <NavLink
-            to="/multispecialist/secretary/patients"
+            to="/specialist/secretary/patients"
             className={({ isActive }) =>
               `${linkBase} ${isActive ? linkActive : linkInactive}`
             }
@@ -25,7 +24,7 @@ export default function MultispecialistSecretaryLayout() {
           </NavLink>
 
           <NavLink
-            to="/multispecialist/secretary/new"
+            to="/specialist/secretary/new"
             className={({ isActive }) =>
               `${linkBase} ${isActive ? linkActive : linkInactive}`
             }
@@ -34,7 +33,7 @@ export default function MultispecialistSecretaryLayout() {
           </NavLink>
 
           <NavLink
-            to="/multispecialist/secretary/support"
+            to="/specialist/secretary/support"
             className={({ isActive }) =>
               `${linkBase} ${isActive ? linkActive : linkInactive}`
             }

@@ -1,7 +1,8 @@
-// src/Pages/doctor/DoctorPatientDetailsPage.tsx
+// src/Pages/shared/doctor/PatientDetailsPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../../../lib/supabase";
+import { useDoctorScope } from "../../../hooks/useDoctorScope";
 
 type Patient = {
   id: string;
@@ -15,6 +16,11 @@ type Patient = {
   [key: string]: any;
 };
 
+type Act = {
+  code?: string | null;
+  title?: string | null;
+};
+
 type Consultation = {
   id: string;
   created_at: string;
@@ -24,8 +30,8 @@ type Consultation = {
   status?: string | null;
   medications?: string[] | null;
   pdf_url?: string | null;
-  icd_codes?: any;  // souvent array/json
-  ccam_codes?: any; // souvent array/json
+  acts?: Act[] | null;
+  diagnosis_code_text?: string | null;
 };
 
 type ActiveMembership = {
@@ -51,9 +57,10 @@ function calcAge(dateOfBirth?: string | null) {
   return Math.abs(ageDate.getUTCFullYear() - 1970);
 }
 
-export default function DoctorPatientDetailsPage() {
+export default function PatientDetailsPage() {
   const { id } = useParams(); // patient_id
   const [searchParams] = useSearchParams();
+  const { newConsultationPath } = useDoctorScope();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
@@ -63,12 +70,12 @@ export default function DoctorPatientDetailsPage() {
 
   const returnUrl =
     searchParams.get("return") ||
-    "/doctor/new-consultation"; // URL de fallback si pas de paramètre "return"
+    newConsultationPath; // URL de fallback si pas de paramètre "return"
 
   useEffect(() => {
     (async () => {
       if (!id) {
-        setErrorText("Aucun id patient dans l’URL.");
+        setErrorText("Aucun id patient dans l'URL.");
         setLoading(false);
         return;
       }
@@ -84,24 +91,23 @@ export default function DoctorPatientDetailsPage() {
         .maybeSingle();
 
       if (patientError) {
-        console.error("[DoctorPatientDetailsPage] patientError", patientError);
+        console.error("[PatientDetailsPage] patientError", patientError);
         setErrorText(
           `Erreur chargement patient : ${patientError.message ?? "inconnue"}`
         );
       }
 
       // 2) Consultations
-      // ✅ IMPORTANT : pas de "actes" ici, car colonne n'existe pas
       const { data: c, error: consError } = await supabase
         .from("consultations")
         .select(
-          "id,created_at,diagnosis,symptoms,amount,status,medications,pdf_url,icd_codes,ccam_codes"
+          "id,created_at,diagnosis,symptoms,amount,status,medications,pdf_url,acts,diagnosis_code_text"
         )
         .eq("patient_id", id)
         .order("created_at", { ascending: false });
 
       if (consError) {
-        console.error("[DoctorPatientDetailsPage] consError", consError);
+        console.error("[PatientDetailsPage] consError", consError);
         setErrorText((prev) =>
           prev
             ? prev + " | " + consError.message
@@ -131,15 +137,13 @@ export default function DoctorPatientDetailsPage() {
         .maybeSingle();
 
       if (membershipError) {
-        console.error("[DoctorPatientDetailsPage] membershipError", membershipError);
+        console.error("[PatientDetailsPage] membershipError", membershipError);
         setErrorText((prev) =>
           prev
             ? prev + " | " + membershipError.message
             : `Erreur chargement assurance : ${membershipError.message}`
         );
       }
-
-      setActiveMembership((membership as ActiveMembership) || null);
 
       setPatient((p as Patient) || null);
       setConsultations((c as Consultation[]) || []);
@@ -160,11 +164,8 @@ export default function DoctorPatientDetailsPage() {
 
   const lastConsult = consultations?.[0];
 
-  const lastCcam: string[] =
-    Array.isArray(lastConsult?.ccam_codes) ? lastConsult!.ccam_codes : [];
-
-  const lastIcd: string[] =
-    Array.isArray(lastConsult?.icd_codes) ? lastConsult!.icd_codes : [];
+  const lastActs: Act[] =
+    Array.isArray(lastConsult?.acts) ? lastConsult!.acts! : [];
 
   if (loading) return <div className="p-6">Chargement…</div>;
 
@@ -172,7 +173,7 @@ export default function DoctorPatientDetailsPage() {
     return (
       <div className="p-6 space-y-3">
         <h1 className="text-2xl font-bold mb-2">Dossier patient</h1>
-        <p>Patient introuvable pour l’ID : {id}</p>
+        <p>Patient introuvable pour l'ID : {id}</p>
 
         {errorText && (
           <p className="text-sm text-red-600 whitespace-pre-wrap">
@@ -220,7 +221,7 @@ export default function DoctorPatientDetailsPage() {
           </Link>
 
           <Link
-            to={`/doctor/new-consultation?patient_id=${patient.id}`}
+            to={`${newConsultationPath}?patient_id=${patient.id}`}
             className="px-4 py-2 rounded bg-blue-600 text-white text-sm"
           >
             Nouvelle consultation
@@ -287,16 +288,16 @@ export default function DoctorPatientDetailsPage() {
                   )}
 
                   {/* Codes */}
-                  {(Array.isArray(c.icd_codes) || Array.isArray(c.ccam_codes)) && (
+                  {(c.diagnosis_code_text || (Array.isArray(c.acts) && c.acts.length > 0)) && (
                     <div className="text-xs text-gray-600 mt-1">
-                      {Array.isArray(c.icd_codes) && c.icd_codes.length > 0 && (
+                      {c.diagnosis_code_text && (
                         <span className="mr-3">
-                          ICD : {c.icd_codes.join(", ")}
+                          Diagnostic : {c.diagnosis_code_text}
                         </span>
                       )}
-                      {Array.isArray(c.ccam_codes) && c.ccam_codes.length > 0 && (
+                      {Array.isArray(c.acts) && c.acts.length > 0 && (
                         <span>
-                          CCAM : {c.ccam_codes.join(", ")}
+                          Actes : {c.acts.map((a) => a.code || a.title).filter(Boolean).join(", ")}
                         </span>
                       )}
                     </div>
@@ -346,31 +347,27 @@ export default function DoctorPatientDetailsPage() {
             <div><b>Symptômes :</b> {lastConsult.symptoms || "—"}</div>
           </div>
 
-          {/* Actes = CCAM */}
+          {/* Actes (nomenclature CNAMGS) */}
           <div>
-            <h3 className="font-semibold mb-1">Actes réalisés (CCAM)</h3>
-            {lastCcam.length > 0 ? (
+            <h3 className="font-semibold mb-1">Actes réalisés</h3>
+            {lastActs.length > 0 ? (
               <ul className="list-disc pl-5 text-sm text-gray-700">
-                {lastCcam.map((code, i) => (
-                  <li key={i}>{code}</li>
+                {lastActs.map((a, i) => (
+                  <li key={i}>{[a.code, a.title].filter(Boolean).join(" — ") || "—"}</li>
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-gray-500">Aucun acte CCAM saisi.</p>
+              <p className="text-sm text-gray-500">Aucun acte saisi.</p>
             )}
           </div>
 
-          {/* ICD */}
+          {/* Code affection (diagnostic assureur) */}
           <div>
-            <h3 className="font-semibold mb-1">Codes diagnostics (ICD)</h3>
-            {lastIcd.length > 0 ? (
-              <ul className="list-disc pl-5 text-sm text-gray-700">
-                {lastIcd.map((code, i) => (
-                  <li key={i}>{code}</li>
-                ))}
-              </ul>
+            <h3 className="font-semibold mb-1">Code affection</h3>
+            {lastConsult.diagnosis_code_text ? (
+              <p className="text-sm text-gray-700">{lastConsult.diagnosis_code_text}</p>
             ) : (
-              <p className="text-sm text-gray-500">Aucun code ICD saisi.</p>
+              <p className="text-sm text-gray-500">Aucun code affection saisi.</p>
             )}
           </div>
 

@@ -6,21 +6,14 @@ import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
 import DashboardPage from './Pages/doctor/DashboardPage';
-import PatientsPage from './Pages/doctor/PatientsPage';
-import NewActPage from './Pages/doctor/NewActPage';
-import NewPatientPage from './Pages/doctor/NewPatientPage';
-import ConsultationFollowUpPage from './Pages/doctor/ConsultationFollowUpPage';
-import SettingsPage from './Pages/doctor/SettingsPage';
 import { Building, Code, User } from 'lucide-react';
 import PerformancePage from './Pages/doctor/PerformancePage';
 import MultispecialistDoctorLayout from './components/layouts/MultispecialistDoctorLayout';
 import MultispecialistAdminLayout from './components/layouts/MultispecialistAdminLayout';
 import MultispecialistSecretaryLayout from './components/layouts/MultispecialistSecretaryLayout';
+import SpecialistSecretaryLayout from './components/layouts/SpecialistSecretaryLayout';
 import DoctorDashboardPage from './Pages/multispecialist/doctor/DoctorDashboardPage';
-import DoctorPatientsPage from './Pages/multispecialist/doctor/DoctorPatientsPage';
-import NewConsultationPage  from './Pages/multispecialist/doctor/NewConsultationPage';
-import HistoriqueActesPage from "./Pages/multispecialist/doctor/HistoriqueActesPage";
-import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage'; 
+import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage';
 import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
 import DoctorSupportPage from './Pages/doctor/SupportPage';
@@ -28,12 +21,15 @@ import MultiDoctorSupportPage from './Pages/multispecialist/doctor/SupportPage';
 import AssureurSupportPage from './Pages/assureur/SupportPage';
 import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
-import ConsultationDoctorDetailsPage from './Pages/multispecialist/doctor/ConsultationDoctorDetailsPage';
-import ConsultationDoctorDetailsPageSpecialist from './Pages/doctor/ConsultationDoctorDetailsPageSpecialist';
-import SettingsDoctorPage from './Pages/multispecialist/doctor/SettingsDoctorPage';
 import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
-import DoctorPatientDetailsPage from "./Pages/multispecialist/doctor/DoctorPatientDetailsPage";
-import DoctorPatientDetailsPageSpecialist from "./Pages/doctor/DoctorPatientDetailsPageSpecialist";
+// Pages partagées entre cabinet spécialiste solo (/doctor/*) et multi-spécialiste (/multispecialist/doctor/*)
+import PatientDetailsPage from './Pages/shared/doctor/PatientDetailsPage';
+import DoctorConsultationDetailsPage from './Pages/shared/doctor/ConsultationDetailsPage';
+import NewConsultationPage from './Pages/shared/doctor/NewConsultationPage';
+import SettingsPage from './Pages/shared/doctor/SettingsPage';
+import HistoriqueActesPage from './Pages/shared/doctor/HistoriqueActesPage';
+import PatientsPage from './Pages/shared/doctor/PatientsPage';
+import NewPatientPage from './Pages/shared/doctor/NewPatientPage';
 import PharmacyLayout from "./components/layouts/PharmacyLayout";
 import PharmacyDashboard from "./Pages/pharmacy/PharmacyDashboard";
 import PharmacyOrders from "./Pages/pharmacy/Orders";
@@ -46,6 +42,7 @@ import AssureurPaiements from './Pages/assureur/PaiementsPage';
 import StatistiquesPage from './Pages/assureur/StatistiquesPage';
 import CliniquesPage from './Pages/assureur/CliniquesPage';
 import ConsultationDetailsPage from './Pages/assureur/ConsultationDetailsPage';
+import MembersDirectoryPage from './Pages/assureur/MembersDirectoryPage';
 import AdminDashboardPage from "./Pages/multispecialist/admin/AdminDashboardPage";
 import AdminConsultationsPage from "./Pages/multispecialist/admin/AdminConsultationsPage";
 import AdminPerformancePage from "./Pages/multispecialist/admin/AdminPerformancePage";
@@ -452,12 +449,12 @@ export default function App() {
       <Route index element={<DashboardPage />} />
       <Route path="patients" element={<PatientsPage />} />
       <Route path="patients/new" element={<NewPatientPage />} />
-      <Route path="new-act" element={<NewActPage />} />
-      <Route path="consultation-follow-up" element={<ConsultationFollowUpPage />} />
+      <Route path="new-act" element={<NewConsultationPage />} />
+      <Route path="consultation-follow-up" element={<HistoriqueActesPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="performance" element={<PerformancePage />} />
-      <Route path="patients/:id" element={<DoctorPatientDetailsPageSpecialist />} />
-      <Route path="consultations/:id" element={<ConsultationDoctorDetailsPageSpecialist />} />
+      <Route path="patients/:id" element={<PatientDetailsPage />} />
+      <Route path="consultations/:id" element={<DoctorConsultationDetailsPage />} />
       <Route path="support" element={<DoctorSupportPage />} />
     </Route>
 
@@ -471,6 +468,7 @@ export default function App() {
       }
     >
       <Route path="reports" element={<AssureurReports />} />
+      <Route path="members-directory" element={<MembersDirectoryPage />} />
       <Route path="anomalies" element={<AssureurAnomalies />} />
       <Route path="fingerprint-alerts" element={<FingerprintAlertsPage />} />
       <Route path="paiements" element={<AssureurPaiements />} />
@@ -490,13 +488,14 @@ export default function App() {
       }
     >
       <Route index element={<DoctorDashboardPage />} />
-      <Route path="patients" element={<DoctorPatientsPage />} />
+      <Route path="patients" element={<PatientsPage />} />
+      <Route path="patients/new" element={<NewPatientPage />} />
       <Route path="new-consultation" element={<NewConsultationPage />} />
       <Route path="consultation-follow-up" element={<HistoriqueActesPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
-      <Route path="settings" element={<SettingsDoctorPage />} />
-      <Route path="patients/:id" element={<DoctorPatientDetailsPage />} />
-      <Route path="consultations/:id" element={<ConsultationDoctorDetailsPage />} />
+      <Route path="settings" element={<SettingsPage />} />
+      <Route path="patients/:id" element={<PatientDetailsPage />} />
+      <Route path="consultations/:id" element={<DoctorConsultationDetailsPage />} />
       <Route path="support" element={<MultiDoctorSupportPage />} />
     </Route>
 
@@ -520,12 +519,27 @@ export default function App() {
       <Route path="settings" element={<AdminSettingsPage />} />
     </Route>
 
-    {/* SECRETARY */}
+    {/* SECRETARY (multi-spécialiste) */}
     <Route
       path="/multispecialist/secretary/*"
       element={
           <PrivateRouteByArea allowedArea="multispecialist_secretary">
             <MultispecialistSecretaryLayout />
+          </PrivateRouteByArea>
+      }
+    >
+      <Route index element={<SecretaryPatientsPage />} />
+      <Route path="patients" element={<SecretaryPatientsPage />} />
+      <Route path="new" element={<NewPatientWizard />} />
+      <Route path="support" element={<SupportPage />} />
+    </Route>
+
+    {/* SECRETARY (cabinet spécialiste) */}
+    <Route
+      path="/specialist/secretary/*"
+      element={
+          <PrivateRouteByArea allowedArea="specialist_secretary">
+            <SpecialistSecretaryLayout />
           </PrivateRouteByArea>
       }
     >

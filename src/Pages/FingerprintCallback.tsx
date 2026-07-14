@@ -4,14 +4,19 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 function computeBack(scope: string, stored: string | null): string {
-  const secretaryBase = "/multispecialist/secretary";
+  const secretaryBaseMulti = "/multispecialist/secretary";
+  const secretaryBaseSpecialist = "/specialist/secretary";
   const doctorMultiBase = "/multispecialist/doctor";
   const doctorSpecBase = "/doctor";
 
   console.log("[FP] computeBack scope=", scope, "stored=", stored);
 
   if (scope === "secretary") {
-    if (stored && stored.startsWith(secretaryBase)) return stored;
+    if (
+      stored &&
+      (stored.startsWith(secretaryBaseMulti) || stored.startsWith(secretaryBaseSpecialist))
+    )
+      return stored;
     return "/multispecialist/secretary/new";
   }
 
@@ -58,7 +63,10 @@ export default function FingerprintCallback() {
         scope = "doctor_multi";
       } else if (storedReturn.startsWith("/doctor")) {
         scope = "doctor_specialist";
-      } else if (storedReturn.startsWith("/multispecialist/secretary")) {
+      } else if (
+        storedReturn.startsWith("/multispecialist/secretary") ||
+        storedReturn.startsWith("/specialist/secretary")
+      ) {
         scope = "secretary";
       }
     }

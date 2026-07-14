@@ -1,6 +1,7 @@
 //src/Pages/multispecialist/doctor/DoctorDashboardPage.tsx
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
+import { useDoctorContext } from "../../../hooks/useDoctorContext";
 
 type KPIs = {
   today: number;
@@ -10,36 +11,51 @@ type KPIs = {
 };
 
 export default function DoctorDashboardPage() {
+  const doctorInfo = useDoctorContext();
   const [kpis, setKpis] = useState<KPIs>({
     today: 0, pending_rights: 0, validated: 0, revenue_today: 0
   });
 
   useEffect(() => {
-    (async () => {
-      // ⚠️ Simplifié : adapte filtres (doctor_id/clinic_id/date) selon ton contexte
-      const todayStr = new Date().toISOString().slice(0,10);
+    const clinicId = doctorInfo?.clinic_id;
+    const doctorId = doctorInfo?.doctor_id;
+    if (!clinicId || !doctorId) return;
 
-      const [{ count: cToday }, { count: cPending }, { count: cValidated }, { data: rev }] = await Promise.all([
+    (async () => {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const base = () =>
         supabase.from("consultations").select("*", { count: "exact", head: true })
+          .eq("clinic_id", clinicId).eq("doctor_id", doctorId);
+
+      const [{ count: cToday, error: eToday }, { count: cPending, error: ePending }, { count: cValidated, error: eValidated }, { data: rev, error: eRev }] = await Promise.all([
+        base()
           .gte("created_at", `${todayStr} 00:00:00`).lte("created_at", `${todayStr} 23:59:59`),
 
-        supabase.from("consultations").select("*", { count: "exact", head: true })
+        base()
           .eq("status", "pending_rights"),
 
-        supabase.from("consultations").select("*", { count: "exact", head: true })
+        base()
           .eq("status", "validated"),
 
-        supabase.rpc("sum_amount_today") // si tu crées une RPC, sinon laisse 0
+        supabase.from("consultations").select("amount")
+          .eq("clinic_id", clinicId).eq("doctor_id", doctorId)
+          .gte("created_at", `${todayStr} 00:00:00`).lte("created_at", `${todayStr} 23:59:59`)
       ]);
+
+      if (eToday || ePending || eValidated || eRev) {
+        console.error("[DoctorDashboardPage] fetch error:", { eToday, ePending, eValidated, eRev });
+      }
+
+      const revenueToday = (rev ?? []).reduce((sum, c: any) => sum + (c.amount || 0), 0);
 
       setKpis({
         today: cToday ?? 0,
         pending_rights: cPending ?? 0,
         validated: cValidated ?? 0,
-        revenue_today: (rev as any)?.sum ?? 0
+        revenue_today: revenueToday
       });
     })();
-  }, []);
+  }, [doctorInfo]);
 
   return (
     <div className="space-y-4">

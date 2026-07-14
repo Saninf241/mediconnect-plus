@@ -22,6 +22,7 @@ interface ConsultationRow {
   status: string | null;
   created_at: string | null;
   updated_at?: string | null;
+  patients?: { name?: string | null } | null;
 }
 
 interface DoctorFinanceRow {
@@ -135,7 +136,7 @@ export default function AdminPaymentsPage() {
 
         let query = supabase
           .from("consultations")
-          .select("id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at")
+          .select("id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name )")
           .eq("clinic_id", clinicId)
           .order("created_at", { ascending: false });
 
@@ -636,7 +637,7 @@ export default function AdminPaymentsPage() {
                         <td className="py-3 pr-4 font-medium text-gray-900">
                           {doctorMap.get(row.doctor_id ?? "") || "Médecin inconnu"}
                         </td>
-                        <td className="py-3 pr-4 text-gray-700">{row.patient_id || "-"}</td>
+                        <td className="py-3 pr-4 text-gray-700">{row.patients?.name || row.patient_id || "-"}</td>
                         <td className="py-3 pr-4">
                           <span
                             className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass(

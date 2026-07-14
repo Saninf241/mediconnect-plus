@@ -59,7 +59,7 @@ function getStartDate(period: PeriodFilter): string | null {
 }
 
 function getPatientName(patient: PatientRow) {
-  return patient.name || patient.name || "Patient sans nom";
+  return patient.name || "Patient sans nom";
 }
 
 export default function AdminPatientsPage() {
@@ -95,19 +95,8 @@ export default function AdminPatientsPage() {
 
         const startDate = getStartDate(periodFilter);
 
-        const patientsRes = await supabase
-          .from("patients")
-          .select("id, name, email, phone, is_assured, fingerprint_missing, created_at")
-          .order("created_at", { ascending: false });
-
-        if (patientsRes.error) {
-          console.error("[AdminPatientsPage] patients error:", patientsRes.error);
-          setPatients([]);
-          setNote("Erreur lors du chargement des patients.");
-        } else {
-          setPatients((patientsRes.data ?? []) as PatientRow[]);
-        }
-
+        // 1) Consultations scopées à la clinique — on en dérive ensuite les patients pertinents
+        // (patients.clinic_id est documenté comme "pure metadata", pas fiable pour un filtre direct).
         let consultationsQuery = supabase
           .from("consultations")
           .select("patient_id, clinic_id, created_at")
@@ -129,8 +118,34 @@ export default function AdminPatientsPage() {
               ? `${prev} Impossible de charger l’activité patient.`
               : "Impossible de charger l’activité patient."
           );
+          setPatients([]);
+          setLoading(false);
+          return;
+        }
+
+        const consultationRows = (consultationsRes.data ?? []) as ConsultationRow[];
+        setConsultations(consultationRows);
+
+        const patientIds = Array.from(
+          new Set(consultationRows.map((c) => c.patient_id).filter(Boolean) as string[])
+        );
+
+        if (patientIds.length === 0) {
+          setPatients([]);
         } else {
-          setConsultations((consultationsRes.data ?? []) as ConsultationRow[]);
+          const patientsRes = await supabase
+            .from("patients")
+            .select("id, name, email, phone, is_assured, fingerprint_missing, created_at")
+            .in("id", patientIds)
+            .order("created_at", { ascending: false });
+
+          if (patientsRes.error) {
+            console.error("[AdminPatientsPage] patients error:", patientsRes.error);
+            setPatients([]);
+            setNote("Erreur lors du chargement des patients.");
+          } else {
+            setPatients((patientsRes.data ?? []) as PatientRow[]);
+          }
         }
       } catch (error) {
         console.error("[AdminPatientsPage] unexpected error:", error);

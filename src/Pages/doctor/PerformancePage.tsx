@@ -134,8 +134,7 @@ export default function PerformanceDoctorPage() {
           return;
         }
 
-        const data = await getDoctorPerformance(user.id);
-        console.log("Performance récupérée :", data);
+        const data = await getDoctorPerformance(user.id, "6m");
         setPerformance(data ?? null);
       } catch (error) {
         console.error("Erreur chargement performance:", error);

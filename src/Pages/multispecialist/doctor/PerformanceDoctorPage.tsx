@@ -127,7 +127,6 @@ export default function PerformanceDoctorPage() {
 
         setLoading(true);
         const data = await getDoctorPerformance(user.id, period);
-        console.log("Performance récupérée :", data);
         setPerformance(data ?? null);
       } catch (error) {
         console.error("Erreur chargement performance:", error);

@@ -1,30 +1,32 @@
+// src/Pages/shared/doctor/NewConsultationPage.tsx
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../../../lib/supabase';
 import { useUser, useAuth } from '@clerk/clerk-react';
-import { Input } from '../../components/ui/input';
-import { Button } from '../../components/ui/button';
-import { Textarea } from '../../components/ui/textarea';
+import { Input } from '../../../components/ui/input';
+import { Button } from '../../../components/ui/button';
+import { Textarea } from '../../../components/ui/textarea';
 import SignatureCanvas from 'react-signature-canvas';
 import { toast } from 'react-toastify';
-import suggestions_base from '../../lib/suggestions_base.json';
-import medicationSuggestions from '../../lib/medication_suggestions.json';
-import { fetchGptSuggestions } from '../../lib/openai';
-import { useSearchParams } from "react-router-dom";
-import { useDoctorContext } from "../../hooks/useDoctorContext";
-import { buildZKDeeplink } from "../../lib/deeplink";
-import { generateConsultationPdf } from "../../lib/api/generateConsultationPdf";
-import DiagnosisSelector, { type DiagnosisCodeRow, type SelectedItem,} from "../../components/ui/uidoctor/DiagnosisSelector";
-import ActSelector, { SelectedAct } from "../../components/ui/uidoctor/ActSelector";
+import { useSearchParams, useLocation } from "react-router-dom";
+import { useDoctorContext } from "../../../hooks/useDoctorContext";
+import { useDoctorScope } from "../../../hooks/useDoctorScope";
+import { buildZKDeeplink } from "../../../lib/deeplink";
+import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
+import DiagnosisSelector, { type SelectedItem } from "../../../components/ui/uidoctor/DiagnosisSelector";
+import ActSelector, { SelectedAct } from "../../../components/ui/uidoctor/ActSelector";
 
 
 export default function NewConsultationPage() {
   const { user } = useUser();
   const { getToken } = useAuth();
+  const location = useLocation();
+  const { basePath, fingerprintScope } = useDoctorScope();
 
   // ✅ types explicites (corrige erreurs 4 et 5)
   const [step, setStep] = useState<"biometry" | "consultation" | "done">("biometry");
   const [consultationId, setConsultationId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
+  const [membershipConfidence, setMembershipConfidence] = useState<string | null>(null);
 
   const [acts, setActs] = useState<string[]>([]);
   const [currentAct, setCurrentAct] = useState<string>("");
@@ -48,7 +50,6 @@ export default function NewConsultationPage() {
   const diagnosisCanvasRef = useRef<SignatureCanvas | null>(null);
   const [diagnosisCodeId, setDiagnosisCodeId] = useState<string | null>(null);
   const [diagnosisCodeText, setDiagnosisCodeText] = useState<string>(""); // snapshot
-  const [diagnosisItems, setDiagnosisItems] = useState<{ id: string; label: string; row: any }[]>([]);
   const [diagnosisSelected, setDiagnosisSelected] = useState<SelectedItem[]>([]);
   const [primaryDiagnosis, setPrimaryDiagnosis] = useState<SelectedItem | null>(null);
   const [selectedActs, setSelectedActs] = useState<SelectedAct[]>([]);
@@ -171,7 +172,7 @@ export default function NewConsultationPage() {
       if (!cid) cid = await ensureDraftConsultation(ctx);
       if (!cid) return; // sécurité
 
-      const returnPath = `/doctor/new-act?consultation_id=${encodeURIComponent(cid)}`;
+      const returnPath = `${location.pathname}?consultation_id=${encodeURIComponent(cid)}`;
       sessionStorage.setItem("fp:return", returnPath);
 
       // ✅ consultationId optional string => on passe jamais null (corrige erreur 1)
@@ -181,7 +182,7 @@ export default function NewConsultationPage() {
         operatorId: ctx.doctorId,
         consultationId: cid || undefined,
         redirectOriginForPhone: getOriginForPhone(),
-        redirectPath: "/fp-callback?scope=doctor_specialist",
+        redirectPath: `/fp-callback?scope=${fingerprintScope}`,
       });
 
       window.location.href = deeplink;
@@ -274,7 +275,7 @@ const [searchParams] = useSearchParams();
         toast.warn("Aucun patient correspondant.");
       }
 
-      // 🔹 Nettoyage de l’URL (on garde au pire consultation_id)
+      // 🔹 Nettoyage de l'URL (on garde au pire consultation_id)
       if (urlCid) {
         window.history.replaceState(
           null,
@@ -294,6 +295,27 @@ const [searchParams] = useSearchParams();
       }
     })();
   }, [searchParams]);
+
+  // Badge de confiance en lecture seule (déclaratif vs vérifié via la base
+  // d'adhérents de l'assureur) -- purement informatif, n'affecte aucune
+  // écriture de la consultation.
+  useEffect(() => {
+    if (!patientId) {
+      setMembershipConfidence(null);
+      return;
+    }
+    (async () => {
+      const { data } = await supabase
+        .from("insurer_memberships")
+        .select("confidence")
+        .eq("patient_id", patientId)
+        .eq("is_active", true)
+        .order("last_verified_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setMembershipConfidence(data?.confidence ?? null);
+    })();
+  }, [patientId]);
 
   function buildMedsFinal(meds: string[], current: string) {
   return [
@@ -451,7 +473,7 @@ const createConsultation = async () => {
       ],
       medications: medsFinal,
       fingerprint_missing: fingerprintMissing,
-      insurer_id: insurerId, // relie bien la consultation à l’assureur
+      insurer_id: insurerId, // relie bien la consultation à l'assureur
       status: targetStatus, // 'sent' ou 'draft'
       diagnosis_code_id: diagnosisCodeId,
       diagnosis_code_text: diagnosisCodeText.trim() || null,
@@ -480,7 +502,7 @@ const createConsultation = async () => {
 
     const finalId = cid;
 
-    // 9) Si la consultation est envoyée à l’assureur → génération du PDF
+    // 9) Si la consultation est envoyée à l'assureur → génération du PDF
     if (targetStatus === "sent" && finalId) {
       try {
         console.log(
@@ -492,7 +514,7 @@ const createConsultation = async () => {
       } catch (e) {
         console.error("[createConsultation] erreur génération PDF :", e);
         toast.warn(
-          "Consultation envoyée à l’assureur, mais la fiche PDF n'a pas pu être générée."
+          "Consultation envoyée à l'assureur, mais la fiche PDF n'a pas pu être générée."
         );
       }
     } else {
@@ -508,7 +530,7 @@ const createConsultation = async () => {
     // 10) Feedback UI + reset
     toast.success(
       targetStatus === "sent"
-        ? "Consultation envoyée à l’assureur."
+        ? "Consultation envoyée à l'assureur."
         : "Consultation enregistrée en brouillon."
     );
     setStep("done");
@@ -606,12 +628,25 @@ const createConsultation = async () => {
             <div>
               <Button
                 onClick={() => {
-                  const url = `/doctor/patients/${encodeURIComponent(patientId)}`;
+                  const url = `${basePath}/patients/${encodeURIComponent(patientId)}`;
                   window.open(url, "_blank", "noreferrer");
                 }}
               >
                 Voir dossier patient
               </Button>
+              {membershipConfidence && (
+                <span
+                  className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                    membershipConfidence === "matched_directory"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {membershipConfidence === "matched_directory"
+                    ? "Vérifié via base assureur"
+                    : "Déclaratif"}
+                </span>
+              )}
             </div>
           )}
 
@@ -662,8 +697,8 @@ const createConsultation = async () => {
             />
 
               <p className="text-xs text-gray-500">
-                Astuce : tape “pal”, “septi”, “tub”, ou directement le code (A01, C02.a).
-                Sinon utilise “Chapitres”.
+                Astuce : tape "pal", "septi", "tub", ou directement le code (A01, C02.a).
+                Sinon utilise "Chapitres".
               </p>
             </div>
 

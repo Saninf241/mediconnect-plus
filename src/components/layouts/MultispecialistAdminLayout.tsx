@@ -10,8 +10,8 @@ const NavItem = ({ to, children }: { to: string; children: React.ReactNode }) =>
       className={({ isActive }) =>
         `block rounded-lg px-3 py-2 transition-colors ${
           isActive
-            ? "bg-white text-gray-900 font-semibold"
-            : "text-gray-200 hover:bg-gray-800 hover:text-white"
+            ? "bg-white/20 text-white font-semibold"
+            : "text-sky-100 hover:bg-white/10 hover:text-white"
         }`
       }
     >
@@ -21,7 +21,7 @@ const NavItem = ({ to, children }: { to: string; children: React.ReactNode }) =>
 );
 
 const SectionTitle = ({ children }: { children: React.ReactNode }) => (
-  <li className="mt-5 px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+  <li className="mt-5 px-3 text-xs font-semibold uppercase tracking-wide text-sky-300/80">
     {children}
   </li>
 );
@@ -29,11 +29,11 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 export default function MultispecialistAdminLayout() {
   return (
     <div className="flex min-h-screen bg-gray-100">
-      <aside className="w-72 bg-gray-900 text-white p-4 flex flex-col justify-between">
+      <aside className="w-72 bg-sky-800 text-white p-4 flex flex-col justify-between">
         <div>
           <div className="mb-8">
             <h2 className="text-xl font-bold">Espace Dirigeant</h2>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-sky-100/80 mt-1">
               Pilotage du cabinet multi-spécialiste
             </p>
           </div>
@@ -60,7 +60,7 @@ export default function MultispecialistAdminLayout() {
           </ul>
         </div>
 
-        <div className="pt-6 border-t border-gray-800">
+        <div className="pt-6 border-t border-sky-700">
           <LogoutButton />
         </div>
       </aside>

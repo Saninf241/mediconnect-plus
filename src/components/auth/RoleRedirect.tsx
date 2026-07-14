@@ -61,6 +61,9 @@ export default function RoleRedirect() {
         case "specialist_doctor":
           resolvedPath = "/doctor";
           break;
+        case "specialist_secretary":
+          resolvedPath = "/specialist/secretary/patients";
+          break;
         case "multispecialist_doctor":
           resolvedPath = "/multispecialist/doctor";
           break;
@@ -81,6 +84,7 @@ export default function RoleRedirect() {
       if (intendedTo) {
         const sameArea =
           (ctx.area === "specialist_doctor" && intendedTo.startsWith("/doctor")) ||
+          (ctx.area === "specialist_secretary" && intendedTo.startsWith("/specialist/secretary")) ||
           (ctx.area === "multispecialist_doctor" && intendedTo.startsWith("/multispecialist/doctor")) ||
           (ctx.area === "multispecialist_secretary" && intendedTo.startsWith("/multispecialist/secretary")) ||
           (ctx.area === "multispecialist_admin" && intendedTo.startsWith("/multispecialist/admin")) ||

@@ -21,6 +21,7 @@ interface ConsultationRow {
   status: string | null;
   created_at: string | null;
   updated_at?: string | null;
+  patients?: { name?: string | null } | null;
 }
 
 interface DoctorStats {
@@ -157,7 +158,7 @@ export default function AdminDashboardPage() {
 
         let consultationsQuery = supabase
           .from("consultations")
-          .select("id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at")
+          .select("id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name )")
           .eq("clinic_id", clinicId)
           .order("created_at", { ascending: false });
 
@@ -704,7 +705,7 @@ export default function AdminDashboardPage() {
                       {doctorMap.get(c.doctor_id ?? "") || "Médecin inconnu"}
                     </p>
                     <p className="text-sm text-gray-500">
-                      Patient : {c.patient_id || "-"}
+                      Patient : {c.patients?.name || c.patient_id || "-"}
                     </p>
                     <p className="text-xs text-gray-400">
                       {c.created_at

@@ -1,10 +1,15 @@
-// src/Pages/multispecialist/doctor/ConsultationDoctorDetailsPage.tsx
+// src/Pages/shared/doctor/ConsultationDetailsPage.tsx
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../../../lib/supabase";
 import { Button } from "../../../components/ui/button";
 import { generatePrescriptionPdf } from "../../../lib/api/generatePrescriptionPdf";
 import ConsultationChatDoctor from "../../../components/ui/uidoctor/ConsultationChat";
+
+interface Act {
+  code?: string | null;
+  title?: string | null;
+}
 
 interface ConsultationRecord {
   id: string;
@@ -18,6 +23,10 @@ interface ConsultationRecord {
   medications: string[] | null;
   doctor_id: string | null;
   insurer_agent_id: string | null;
+  diagnosis: string | null;
+  symptoms: string | null;
+  acts: Act[] | null;
+  diagnosis_code_text: string | null;
 
   // jointures
   patients?: {
@@ -35,7 +44,7 @@ interface ConsultationRecord {
   } | null;
 }
 
-export default function ConsultationDoctorDetailsPage() {
+export default function ConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [record, setRecord] = useState<ConsultationRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +69,10 @@ export default function ConsultationDoctorDetailsPage() {
           insurer_agent_id,
           medications,
           doctor_id,
+          diagnosis,
+          symptoms,
+          acts,
+          diagnosis_code_text,
           patients ( name, phone, date_of_birth ),
           clinics ( name ),
           clinic_staff:clinic_staff!consultations_doctor_id_fkey ( name )
@@ -158,6 +171,39 @@ export default function ConsultationDoctorDetailsPage() {
             ? `${record.amount.toLocaleString("fr-FR")} FCFA`
             : "—"}
         </p>
+      </section>
+
+      {/* Bloc actes & diagnostic */}
+      <section className="bg-white rounded-xl shadow-sm p-4 space-y-3">
+        <h2 className="font-semibold mb-2">Actes &amp; diagnostic</h2>
+
+        <div>
+          <p className="text-sm font-medium">Symptômes</p>
+          <p className="text-sm text-gray-700">{record.symptoms || "—"}</p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium">Diagnostic</p>
+          <p className="text-sm text-gray-700">{record.diagnosis || "—"}</p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium">Code affection</p>
+          <p className="text-sm text-gray-700">{record.diagnosis_code_text || "—"}</p>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium mb-1">Actes facturés</p>
+          {Array.isArray(record.acts) && record.acts.length > 0 ? (
+            <ul className="list-disc pl-5 text-sm text-gray-700">
+              {record.acts.map((a, i) => (
+                <li key={i}>{[a.code, a.title].filter(Boolean).join(" — ") || "—"}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-500">Aucun acte saisi.</p>
+          )}
+        </div>
       </section>
 
       {/* Bloc statut assureur */}
