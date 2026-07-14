@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
-import { createPatientDraft, finalizeUninsured, generatePatientAccessCode, resolveExistingPatient } from "../../../lib/api/secretary";
+import { createPatientDraft, finalizeUninsured, generatePatientAccessCode, resolveExistingPatient, matchInsurerDirectory } from "../../../lib/api/secretary";
 import { buildZKDeeplink } from "../../../lib/deeplink";
 
 type PatientType = "insured_card" | "insured_no_card" | "uninsured";
@@ -383,20 +383,47 @@ export default function NewPatientWizard() {
 
         const level = resolveVerificationLevel() ?? "N3";
 
+        // Rapprochement best-effort avec la base d'adherents declaree par
+        // l'assureur (utile pour N2/N3, qui n'ont pas d'API temps reel).
+        // Ne bloque JAMAIS : toute erreur reseau/edge function degrade en
+        // silence vers le comportement declaratif pur existant --
+        // matchInsurerDirectory avale deja ses propres erreurs.
+        let matchResult: { matched: boolean; plan_code?: string | null; directory_id?: string } = {
+          matched: false,
+        };
+        if (form.member_no || form.national_id) {
+          const matchToken = await getSupabaseToken();
+          matchResult = await matchInsurerDirectory(
+            {
+              insurer_id: form.insurer_id,
+              member_no: form.member_no || null,
+              national_id: form.national_id || null,
+            },
+            matchToken
+          );
+        }
+
         const { error: memErr } = await supabase
           .from("insurer_memberships")
           .insert({
             patient_id: pid,
             insurer_id: form.insurer_id,
             member_no: form.member_no || "",
-            plan_code: form.plan_code || null,
+            plan_code: matchResult.matched ? matchResult.plan_code ?? form.plan_code ?? null : form.plan_code || null,
             coverage_start: form.coverage_start || null,
             coverage_end: form.coverage_end || null,
             last_verified_at: new Date().toISOString(),
             verification_level: level,
-            confidence: "declarative",
-            source: { method: "convention_declarative" },
+            confidence: matchResult.matched ? "matched_directory" : "declarative",
+            source: {
+              method: matchResult.matched ? "insurer_directory_match" : "convention_declarative",
+            },
+            matched_directory_id: matchResult.matched ? matchResult.directory_id ?? null : null,
             is_active: true,
+            created_by_clerk_user_id: user?.id ?? null,
+            created_by_role: "secretary",
+            created_by_name: user?.fullName || user?.primaryEmailAddress?.emailAddress || null,
+            created_by_email: user?.primaryEmailAddress?.emailAddress ?? null,
           });
         if (memErr) throw memErr;
 

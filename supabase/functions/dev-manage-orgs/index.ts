@@ -39,7 +39,20 @@ type Action =
   | { action: "delete_insurer"; insurer_id: string }
   | { action: "list_conventions" }
   | { action: "add_convention"; clinic_id: string; insurer_id: string }
-  | { action: "remove_convention"; id: string };
+  | { action: "remove_convention"; id: string }
+  | { action: "update_insurer_verification_level"; insurer_id: string; verification_level: string }
+  | {
+      action: "list_directory_members";
+      insurer_id: string;
+    }
+  | {
+      action: "add_directory_member";
+      insurer_id: string;
+      full_name: string;
+      national_id?: string | null;
+      member_no?: string | null;
+      plan_code?: string | null;
+    };
 
 // Supprimer une ligne clinic_staff/insurer_staff cote Supabase ne libere
 // pas l'email cote Clerk : le compte (si l'invitation a ete acceptee) ou
@@ -166,6 +179,63 @@ serve(async (req) => {
 
     if (input.action === "remove_convention") {
       const { error } = await supabase.from("clinic_insurer_conventions").delete().eq("id", input.id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "update_insurer_verification_level") {
+      if (!["N1", "N2", "N3"].includes(input.verification_level)) {
+        return new Response(JSON.stringify({ error: "Niveau invalide" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase
+        .from("insurers")
+        .update({ verification_level: input.verification_level })
+        .eq("id", input.insurer_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_directory_members") {
+      const { data, error } = await supabase
+        .from("insurer_member_directory")
+        .select("id, full_name, national_id, member_no, plan_code, is_active, created_at, created_by_name, created_by_role")
+        .eq("insurer_id", input.insurer_id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return new Response(JSON.stringify({ members: data }), { headers: cors });
+    }
+
+    if (input.action === "add_directory_member") {
+      // Chemin "accompagnement N3" : un assureur sans compte staff
+      // operationnel n'a aucun moyen de peupler lui-meme sa base
+      // d'adherents -- le developpeur le fait pour son compte ici, via
+      // service_role (bypass RLS, qui n'autorise que insurer_staff
+      // admin). created_by_role='developer' documente explicitement
+      // cette provenance (cf CHECK sur insurer_member_directory).
+      if (!input.full_name?.trim() || (!input.member_no?.trim() && !input.national_id?.trim())) {
+        return new Response(
+          JSON.stringify({ error: "Nom complet et (n° adhérent ou NIN) requis" }),
+          { status: 400, headers: cors }
+        );
+      }
+      const callerName = caller?.first_name
+        ? `${caller.first_name} ${caller.last_name ?? ""}`.trim()
+        : null;
+      const callerEmail =
+        (caller?.email_addresses ?? []).find((e: any) => e.id === caller?.primary_email_address_id)
+          ?.email_address ?? caller?.email_addresses?.[0]?.email_address ?? null;
+
+      const { error } = await supabase.from("insurer_member_directory").insert({
+        insurer_id: input.insurer_id,
+        full_name: input.full_name.trim(),
+        national_id: input.national_id?.trim() || null,
+        member_no: input.member_no?.trim() || null,
+        plan_code: input.plan_code?.trim() || null,
+        created_by_clerk_user_id: callerId,
+        created_by_role: "developer",
+        created_by_name: callerName,
+        created_by_email: callerEmail,
+      });
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }

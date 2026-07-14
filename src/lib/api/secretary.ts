@@ -94,6 +94,32 @@ export async function finalizeUninsured(patientId: string, fingerprintMissing: b
   if (error) throw new Error(error.message);
 }
 
+// Rapprochement best-effort avec la base d'adhérents déclarée par
+// l'assureur (insurer_member_directory, assureurs N2/N3). Contrat
+// volontairement différent de resolveExistingPatient : celle-ci ne doit
+// JAMAIS throw, une erreur réseau/edge function dégrade en silence vers
+// { matched: false } pour ne jamais bloquer l'enregistrement du patient.
+export async function matchInsurerDirectory(
+  args: { insurer_id: string; member_no?: string | null; national_id?: string | null },
+  token: string
+): Promise<{ matched: boolean; plan_code?: string | null; directory_id?: string }> {
+  try {
+    const r = await fetch(`${FUNCTIONS_BASE}/match-insurer-directory`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(args),
+    });
+    const json = await r.json();
+    if (!r.ok) return { matched: false };
+    return json;
+  } catch {
+    return { matched: false };
+  }
+}
+
 export async function resolveExistingPatient(
   args: { insurer_id?: string | null; member_no?: string | null; national_id?: string | null },
   token: string

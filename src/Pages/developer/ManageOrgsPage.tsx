@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { toast } from "react-toastify";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 
 const FUNCTIONS_BASE =
   (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "") +
@@ -34,6 +35,18 @@ type Convention = {
   insurers: { id: string; name: string } | null;
 };
 
+type DirectoryMember = {
+  id: string;
+  full_name: string;
+  national_id: string | null;
+  member_no: string | null;
+  plan_code: string | null;
+  is_active: boolean;
+  created_at: string;
+  created_by_name: string | null;
+  created_by_role: string | null;
+};
+
 export default function ManageOrgsPage() {
   const { getToken } = useAuth();
   const [clinics, setClinics] = useState<Clinic[]>([]);
@@ -49,6 +62,20 @@ export default function ManageOrgsPage() {
   const [newConventionClinic, setNewConventionClinic] = useState("");
   const [newConventionInsurer, setNewConventionInsurer] = useState("");
   const [addingConvention, setAddingConvention] = useState(false);
+
+  const [updatingLevelFor, setUpdatingLevelFor] = useState<string | null>(null);
+
+  // Base adherents (accompagnement N3) : un seul panneau ouvert a la fois.
+  const [directoryFor, setDirectoryFor] = useState<string | null>(null);
+  const [directoryMembers, setDirectoryMembers] = useState<DirectoryMember[]>([]);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryForm, setDirectoryForm] = useState({
+    full_name: "",
+    national_id: "",
+    member_no: "",
+    plan_code: "",
+  });
+  const [addingDirectoryMember, setAddingDirectoryMember] = useState(false);
 
   async function call(body: unknown) {
     const token = await getToken();
@@ -115,6 +142,64 @@ export default function ManageOrgsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function updateVerificationLevel(insurerId: string, level: string) {
+    setUpdatingLevelFor(insurerId);
+    try {
+      await call({ action: "update_insurer_verification_level", insurer_id: insurerId, verification_level: level });
+      toast.success("Niveau mis à jour");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setUpdatingLevelFor(null);
+    }
+  }
+
+  async function toggleDirectory(insurerId: string) {
+    if (directoryFor === insurerId) {
+      setDirectoryFor(null);
+      return;
+    }
+    setDirectoryFor(insurerId);
+    setDirectoryLoading(true);
+    try {
+      const res = await call({ action: "list_directory_members", insurer_id: insurerId });
+      setDirectoryMembers(res.members ?? []);
+    } catch (err: any) {
+      toast.error(err.message || "Impossible de charger la base adhérents");
+      setDirectoryMembers([]);
+    } finally {
+      setDirectoryLoading(false);
+    }
+  }
+
+  async function addDirectoryMember() {
+    if (!directoryFor) return;
+    if (!directoryForm.full_name.trim() || (!directoryForm.member_no.trim() && !directoryForm.national_id.trim())) {
+      toast.error("Nom complet et (n° adhérent ou NIN) requis.");
+      return;
+    }
+    setAddingDirectoryMember(true);
+    try {
+      await call({
+        action: "add_directory_member",
+        insurer_id: directoryFor,
+        full_name: directoryForm.full_name.trim(),
+        national_id: directoryForm.national_id.trim() || null,
+        member_no: directoryForm.member_no.trim() || null,
+        plan_code: directoryForm.plan_code.trim() || null,
+      });
+      toast.success("Adhérent ajouté");
+      setDirectoryForm({ full_name: "", national_id: "", member_no: "", plan_code: "" });
+      const res = await call({ action: "list_directory_members", insurer_id: directoryFor });
+      setDirectoryMembers(res.members ?? []);
+    } catch (err: any) {
+      toast.error(err.message || "Échec de l'ajout");
+    } finally {
+      setAddingDirectoryMember(false);
+    }
+  }
+
   async function confirmDelete() {
     if (!confirmTarget || confirmText.trim() !== confirmTarget.name) return;
     setDeleting(true);
@@ -178,24 +263,102 @@ export default function ManageOrgsPage() {
 
           <section className="space-y-3">
             <h2 className="text-lg font-semibold">Assureurs ({insurers.length})</h2>
+            <p className="text-xs text-gray-500">
+              N1 = intégration automatisée (API/fichier fréquent). N2 = base consultable mais via
+              une action humaine. N3 = aucune base numérique — déclaratif, accompagné.
+            </p>
             {insurers.length === 0 && <p className="text-sm text-gray-500">Aucun assureur.</p>}
             {insurers.map((i) => (
-              <Card key={i.id} className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{i.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {i.verification_level ?? "—"} · {i.insurer_staff?.[0]?.count ?? 0} membre(s)
+              <Card key={i.id} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{i.name}</div>
+                    <div className="text-xs text-gray-500">{i.insurer_staff?.[0]?.count ?? 0} membre(s)</div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <select
+                      className="border rounded text-xs px-2 py-1"
+                      value={i.verification_level ?? "N3"}
+                      disabled={updatingLevelFor === i.id}
+                      onChange={(e) => updateVerificationLevel(i.id, e.target.value)}
+                    >
+                      <option value="N1">N1 — intégration automatisée</option>
+                      <option value="N2">N2 — base consultable manuellement</option>
+                      <option value="N3">N3 — déclaratif</option>
+                    </select>
+                    <button
+                      onClick={() => toggleDirectory(i.id)}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {directoryFor === i.id ? "Fermer" : "Base adhérents"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmTarget({ kind: "insurer", id: i.id, name: i.name });
+                        setConfirmText("");
+                      }}
+                      className="text-red-600 text-sm hover:underline"
+                    >
+                      Supprimer
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setConfirmTarget({ kind: "insurer", id: i.id, name: i.name });
-                    setConfirmText("");
-                  }}
-                  className="text-red-600 text-sm hover:underline"
-                >
-                  Supprimer
-                </button>
+
+                {directoryFor === i.id && (
+                  <div className="border-t pt-3 space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Adhérents que vous déclarez pour le compte de cet assureur (accompagnement
+                      N3, sans compte staff opérationnel côté assureur) — sert au rapprochement
+                      best-effort lors de la déclaration d'un patient assuré.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Nom complet"
+                        value={directoryForm.full_name}
+                        onChange={(e) => setDirectoryForm({ ...directoryForm, full_name: e.target.value })}
+                      />
+                      <Input
+                        placeholder="N° adhérent"
+                        value={directoryForm.member_no}
+                        onChange={(e) => setDirectoryForm({ ...directoryForm, member_no: e.target.value })}
+                      />
+                      <Input
+                        placeholder="NIN"
+                        value={directoryForm.national_id}
+                        onChange={(e) => setDirectoryForm({ ...directoryForm, national_id: e.target.value })}
+                      />
+                      <Input
+                        placeholder="Code plan"
+                        value={directoryForm.plan_code}
+                        onChange={(e) => setDirectoryForm({ ...directoryForm, plan_code: e.target.value })}
+                      />
+                    </div>
+                    <Button onClick={addDirectoryMember} disabled={addingDirectoryMember}>
+                      {addingDirectoryMember ? "Ajout…" : "Ajouter l'adhérent"}
+                    </Button>
+
+                    {directoryLoading ? (
+                      <p className="text-sm text-gray-500">Chargement…</p>
+                    ) : directoryMembers.length === 0 ? (
+                      <p className="text-sm text-gray-500">Aucun adhérent déclaré.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {directoryMembers.map((m) => (
+                          <div key={m.id} className="text-xs text-gray-600 flex justify-between border-b py-1">
+                            <span>
+                              {m.full_name} · N° {m.member_no ?? "—"} · NIN {m.national_id ?? "—"} · Plan{" "}
+                              {m.plan_code ?? "—"}
+                              {!m.is_active && <span className="text-red-600"> (inactif)</span>}
+                            </span>
+                            <span className="text-gray-400">
+                              par {m.created_by_name ?? "?"} ({m.created_by_role ?? "?"})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </Card>
             ))}
           </section>

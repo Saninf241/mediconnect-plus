@@ -5,6 +5,7 @@ import { useInsurerContext } from "../../hooks/useInsurerContext";
 
 const navItems = [
   { name: "Rapports", path: "/assureur/reports" },
+  { name: "Base adhérents", path: "/assureur/members-directory" },
   { name: "Anomalies (tech)", path: "/assureur/anomalies" },
   { name: "Alertes empreinte", path: "/assureur/fingerprint-alerts" },
   { name: "Paiements", path: "/assureur/paiements" },

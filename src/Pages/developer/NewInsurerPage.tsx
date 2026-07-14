@@ -164,6 +164,13 @@ export default function NewInsurerPage() {
             <option value="N2">N2</option>
             <option value="N3">N3</option>
           </select>
+          <p className="text-xs text-gray-500">
+            N1 = intégration automatisée avec l'assureur (API/fichier fréquent, vérification temps
+            réel). N2 = l'assureur a une base consultable mais uniquement via une action humaine
+            (portail, import périodique). N3 = aucune base numérique côté assureur — purement
+            déclaratif, accompagné jusqu'à digitalisation (voir "Base adhérents" dans Gérer
+            cabinets & assureurs).
+          </p>
         </Card>
 
         <Card className="space-y-3">
