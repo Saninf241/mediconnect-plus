@@ -14,6 +14,7 @@ import { buildZKDeeplink } from "../../../lib/deeplink";
 import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
 import DiagnosisSelector, { type SelectedItem } from "../../../components/ui/uidoctor/DiagnosisSelector";
 import ActSelector, { SelectedAct } from "../../../components/ui/uidoctor/ActSelector";
+import { getInsurerCoveredKeyLetters } from "../../../lib/queries/tariffCoverage";
 
 
 export default function NewConsultationPage() {
@@ -27,6 +28,8 @@ export default function NewConsultationPage() {
   const [consultationId, setConsultationId] = useState<string | null>(null);
   const [patientId, setPatientId] = useState<string | null>(null);
   const [membershipConfidence, setMembershipConfidence] = useState<string | null>(null);
+  const [patientInsurerId, setPatientInsurerId] = useState<string | null>(null);
+  const [insurerCoveredKeyLetters, setInsurerCoveredKeyLetters] = useState<Set<string> | null>(null);
 
   const [acts, setActs] = useState<string[]>([]);
   const [currentAct, setCurrentAct] = useState<string>("");
@@ -302,20 +305,39 @@ const [searchParams] = useSearchParams();
   useEffect(() => {
     if (!patientId) {
       setMembershipConfidence(null);
+      setPatientInsurerId(null);
       return;
     }
     (async () => {
       const { data } = await supabase
         .from("insurer_memberships")
-        .select("confidence")
+        .select("confidence, insurer_id")
         .eq("patient_id", patientId)
         .eq("is_active", true)
         .order("last_verified_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       setMembershipConfidence(data?.confidence ?? null);
+      setPatientInsurerId(data?.insurer_id ?? null);
     })();
   }, [patientId]);
+
+  // Lettres-clé couvertes par l'assureur du patient → permet d'avertir le
+  // médecin si l'acte choisi n'a pas de tarif configuré (donc pas remboursé).
+  useEffect(() => {
+    if (!patientInsurerId) {
+      setInsurerCoveredKeyLetters(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const covered = await getInsurerCoveredKeyLetters(patientInsurerId);
+      if (!cancelled) setInsurerCoveredKeyLetters(covered);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [patientInsurerId]);
 
   function buildMedsFinal(meds: string[], current: string) {
   return [
@@ -677,6 +699,7 @@ const createConsultation = async () => {
             <DiagnosisSelector
               mode="multi"
               maxItems={5}
+              doctorId={doctorInfo?.doctor_id ?? null}
               valueIds={primaryDiagnosis?.id ? [primaryDiagnosis.id] : []}
               valueTexts={primaryDiagnosis?.label ? [primaryDiagnosis.label] : []}
               onChange={(items) => {
@@ -720,6 +743,8 @@ const createConsultation = async () => {
                 onChange={setSelectedActs}
                 source="ACTES-CNAMGS-2012"
                 maxItems={10}
+                doctorId={doctorInfo?.doctor_id ?? null}
+                insurerCoveredKeyLetters={insurerCoveredKeyLetters}
                 // professionScope="physician" // si tu veux filtrer, sinon laisse sans
               />
 

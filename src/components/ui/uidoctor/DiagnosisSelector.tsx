@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { Input } from "../input";
 import { Button } from "../button";
+import { getDiagnosisUsage, type DiagnosisUsageItem } from "../../../lib/queries/codeUsage";
 
 export type DiagnosisCodeRow = {
   id: string;
@@ -29,6 +30,7 @@ type MultiProps = {
   source?: string;
   disabled?: boolean;
   maxItems?: number;
+  doctorId?: string | null; // active "Récents" / "Fréquents" quand fourni
 
   onChange: (items: SelectedItem[]) => void;
   onPrimaryChange?: (item: SelectedItem | null) => void;
@@ -69,6 +71,7 @@ export default function DiagnosisSelector(props: Props) {
   const source = props.source ?? "ICD10-CNAMGS-2012";
   const disabled = props.disabled ?? false;
   const maxItems = "onChange" in props ? props.maxItems ?? 5 : 1;
+  const doctorId = "doctorId" in props ? props.doctorId : null;
 
   // input de recherche
   const [query, setQuery] = useState<string>("");
@@ -76,6 +79,10 @@ export default function DiagnosisSelector(props: Props) {
   // résultats recherche
   const [results, setResults] = useState<DiagnosisCodeRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Récents / Fréquents (dérivés de l'historique du médecin)
+  const [recentDiagnoses, setRecentDiagnoses] = useState<DiagnosisUsageItem[]>([]);
+  const [frequentDiagnoses, setFrequentDiagnoses] = useState<DiagnosisUsageItem[]>([]);
 
   // sélection multi
   const [selected, setSelected] = useState<SelectedItem[]>([]);
@@ -204,6 +211,28 @@ export default function DiagnosisSelector(props: Props) {
       setChapters(arr);
     })();
   }, [source]);
+
+  // ✅ charger Récents / Fréquents pour ce médecin (mode multi uniquement)
+  useEffect(() => {
+    if (mode !== "multi" || !doctorId) {
+      setRecentDiagnoses([]);
+      setFrequentDiagnoses([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const usage = await getDiagnosisUsage(doctorId, 8);
+      if (cancelled) return;
+      setRecentDiagnoses(usage.recent);
+      setFrequentDiagnoses(usage.frequent);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, doctorId]);
 
   const debouncedQuery = useDebouncedValue(query, 250);
 
@@ -452,6 +481,55 @@ export default function DiagnosisSelector(props: Props) {
           {mode === "multi" ? "Tout effacer" : "Effacer"}
         </Button>
       </div>
+
+      {/* ✅ Récents / Fréquents (seulement tant qu'on ne cherche pas) */}
+      {mode === "multi" && !query.trim() && (frequentDiagnoses.length > 0 || recentDiagnoses.length > 0) && (
+        <div className="space-y-2">
+          {frequentDiagnoses.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">Fréquentes</div>
+              <div className="flex flex-wrap gap-1.5">
+                {frequentDiagnoses
+                  .filter((d) => !selected.some((s) => s.id === d.id))
+                  .map((d) => (
+                    <button
+                      key={`freq-${d.id}`}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => addSelection(d)}
+                      title={`${d.code} — ${d.title}`}
+                      className="text-left px-2 py-1 rounded-full text-xs border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                    >
+                      {d.code} — {d.title.length > 40 ? `${d.title.slice(0, 40)}…` : d.title}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {recentDiagnoses.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">Récentes</div>
+              <div className="flex flex-wrap gap-1.5">
+                {recentDiagnoses
+                  .filter((d) => !selected.some((s) => s.id === d.id))
+                  .map((d) => (
+                    <button
+                      key={`rec-${d.id}`}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => addSelection(d)}
+                      title={`${d.code} — ${d.title}`}
+                      className="text-left px-2 py-1 rounded-full text-xs border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                    >
+                      {d.code} — {d.title.length > 40 ? `${d.title.slice(0, 40)}…` : d.title}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ✅ Résultats recherche */}
       {loading && <div className="text-sm text-gray-500">Recherche…</div>}

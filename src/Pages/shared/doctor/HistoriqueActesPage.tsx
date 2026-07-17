@@ -38,7 +38,7 @@ export default function HistoriqueActesPage() {
   const [coverageFilter, setCoverageFilter] = useState<string>("");
   const [unreadByConsultation, setUnreadByConsultation] = useState<UnreadByConsultation>({});
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 10;
 
   // 1. Chargement initial des consultations
   useEffect(() => {
@@ -182,6 +182,32 @@ export default function HistoriqueActesPage() {
     setCurrentPage(1);
   }, [search, statusFilter, coverageFilter]);
 
+  const paginationControls = (
+    <div className="flex items-center justify-between">
+      <p className="text-sm text-gray-500">
+        Page {currentPage} sur {totalPages} • {filtered.length} consultation{filtered.length > 1 ? "s" : ""}
+      </p>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          ← Précédent
+        </button>
+
+        <button
+          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 rounded border bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          Suivant →
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Historique des consultations</h1>
@@ -222,9 +248,11 @@ export default function HistoriqueActesPage() {
         <div />
       </div>
 
+      {!loading && filtered.length > 0 && paginationControls}
+
       {/* Tableau */}
-      <div className="overflow-x-auto mt-4">
-        <table className="min-w-full border bg-white">
+      <div className="overflow-x-auto rounded-xl border shadow-sm">
+        <table className="min-w-full bg-white">
           <thead>
             <tr className="bg-gray-100 text-sm">
               <th className="p-3 text-left">Date</th>
@@ -251,7 +279,7 @@ export default function HistoriqueActesPage() {
               </tr>
             ) : (
               paginatedRows.map((c) => (
-                <tr key={c.id} className="border-t text-sm">
+                <tr key={c.id} className="border-t text-sm hover:bg-gray-50">
                   <td className="p-3">{new Date(c.created_at).toLocaleString()}</td>
                   <td className="p-3">{c.patientName}</td>
                   <td className="p-3 text-right">
@@ -293,29 +321,8 @@ export default function HistoriqueActesPage() {
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between pt-4">
-        <p className="text-sm text-gray-500">
-          Page {currentPage} sur {totalPages}
-        </p>
 
-        <div className="flex gap-2">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-1 rounded border disabled:opacity-50"
-          >
-            Précédent
-          </button>
-
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-1 rounded border disabled:opacity-50"
-          >
-            Suivant
-          </button>
-        </div>
-      </div>
+      {!loading && filtered.length > 0 && paginationControls}
     </div>
   );
 }

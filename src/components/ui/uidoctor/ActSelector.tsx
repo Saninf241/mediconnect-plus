@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { Input } from "../input";
 import { Button } from "../button";
+import { getActUsage, type ActUsageItem } from "../../../lib/queries/codeUsage";
 
 export type ActCodeRow = {
   id: string;
@@ -38,6 +39,8 @@ type Props = {
   professionScope?: string; // ex "physician"
   maxItems?: number;
   disabled?: boolean;
+  doctorId?: string | null; // active "Récents" / "Fréquents" quand fourni
+  insurerCoveredKeyLetters?: Set<string> | null; // lettres-clé avec un tarif actif chez l'assureur du patient
 };
 
 function escapeLike(s: string) {
@@ -64,12 +67,18 @@ export default function ActSelector({
   professionScope,
   maxItems = 10,
   disabled = false,
+  doctorId,
+  insurerCoveredKeyLetters = null,
 }: Props) {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
 
   const [results, setResults] = useState<ActCodeRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Récents / Fréquents (dérivés de l'historique du médecin)
+  const [recentActs, setRecentActs] = useState<ActUsageItem[]>([]);
+  const [frequentActs, setFrequentActs] = useState<ActUsageItem[]>([]);
 
   // Chapitres
   const [chapterOpen, setChapterOpen] = useState(false);
@@ -82,7 +91,46 @@ export default function ActSelector({
 
   const canClear = useMemo(() => (value?.length ?? 0) > 0, [value]);
 
-  const addAct = (r: ActCodeRow) => {
+  // null = assureur du patient inconnu → pas d'avertissement affiché
+  const hasTariff = (keyLetter: string | null): boolean | null => {
+    if (!insurerCoveredKeyLetters) return null;
+    if (!keyLetter) return false;
+    return insurerCoveredKeyLetters.has(keyLetter);
+  };
+
+  // Tarif couvert d'abord, sans changer l'ordre relatif au sein de chaque groupe
+  function sortByTariffCoverage<T extends { key_letter: string | null }>(rows: T[]): T[] {
+    if (!insurerCoveredKeyLetters) return rows;
+    return [...rows].sort((a, b) => {
+      const aOk = hasTariff(a.key_letter) ? 0 : 1;
+      const bOk = hasTariff(b.key_letter) ? 0 : 1;
+      return aOk - bOk;
+    });
+  }
+
+  // Charger Récents / Fréquents pour ce médecin
+  useEffect(() => {
+    if (!doctorId) {
+      setRecentActs([]);
+      setFrequentActs([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const usage = await getActUsage(doctorId, 8);
+      if (cancelled) return;
+      setRecentActs(usage.recent);
+      setFrequentActs(usage.frequent);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [doctorId]);
+
+  const addAct = (r: ActUsageItem) => {
     if (value.some((a) => a.act_id === r.id)) return;
     if (value.length >= maxItems) {
       alert(`Maximum ${maxItems} actes pour le moment.`);
@@ -250,6 +298,11 @@ export default function ActSelector({
                     {a.coefficient != null ? `• Coef: ${a.coefficient}` : ""}{" "}
                     {a.profession_scope ? `• ${a.profession_scope}` : ""}
                   </div>
+                  {hasTariff(a.key_letter) === false && (
+                    <div className="text-xs text-red-600 font-medium mt-0.5">
+                      ⚠️ Pas de tarif configuré pour l'assureur de ce patient
+                    </div>
+                  )}
                 </div>
                 <Button
                   type="button"
@@ -291,27 +344,108 @@ export default function ActSelector({
         </Button>
       </div>
 
+      {/* Récents / Fréquents (seulement tant qu'on ne cherche pas) */}
+      {!query.trim() && (recentActs.length > 0 || frequentActs.length > 0) && (
+        <div className="space-y-2">
+          {frequentActs.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">Fréquents</div>
+              <div className="flex flex-wrap gap-1.5">
+                {sortByTariffCoverage(frequentActs)
+                  .filter((a) => !value.some((v) => v.act_id === a.id))
+                  .map((a) => {
+                    const ok = hasTariff(a.key_letter);
+                    return (
+                      <button
+                        key={`freq-${a.id}`}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => addAct(a)}
+                        title={
+                          ok === false
+                            ? `${a.code} — ${a.title} (pas de tarif pour l'assureur de ce patient)`
+                            : `${a.code} — ${a.title}`
+                        }
+                        className={`text-left px-2 py-1 rounded-full text-xs border hover:bg-indigo-100 disabled:opacity-50 ${
+                          ok === false
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : "border-indigo-200 bg-indigo-50 text-indigo-800"
+                        }`}
+                      >
+                        {ok === false ? "⚠️ " : ""}
+                        {a.code} — {a.title.length > 40 ? `${a.title.slice(0, 40)}…` : a.title}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {recentActs.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-gray-500 mb-1">Récents</div>
+              <div className="flex flex-wrap gap-1.5">
+                {sortByTariffCoverage(recentActs)
+                  .filter((a) => !value.some((v) => v.act_id === a.id))
+                  .map((a) => {
+                    const ok = hasTariff(a.key_letter);
+                    return (
+                      <button
+                        key={`rec-${a.id}`}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => addAct(a)}
+                        title={
+                          ok === false
+                            ? `${a.code} — ${a.title} (pas de tarif pour l'assureur de ce patient)`
+                            : `${a.code} — ${a.title}`
+                        }
+                        className={`text-left px-2 py-1 rounded-full text-xs border hover:bg-amber-100 disabled:opacity-50 ${
+                          ok === false
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : "border-amber-200 bg-amber-50 text-amber-800"
+                        }`}
+                      >
+                        {ok === false ? "⚠️ " : ""}
+                        {a.code} — {a.title.length > 40 ? `${a.title.slice(0, 40)}…` : a.title}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* résultats */}
       {loading && <div className="text-sm text-gray-500">Recherche…</div>}
 
       {!loading && results.length > 0 && (
         <div className="border rounded-lg bg-white overflow-hidden">
-          {results.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => addAct(r)}
-              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
-            >
-              <div className="font-medium">{r.code} — {r.title}</div>
-              <div className="text-xs text-gray-500">
-                {r.key_letter ? `Lettre-clé: ${r.key_letter}` : "Lettre-clé: —"}
-                {r.coefficient != null ? ` • Coef: ${r.coefficient}` : ""}
-                {r.chapter_title ? ` • ${r.chapter_title}` : ""}
-              </div>
-            </button>
-          ))}
+          {sortByTariffCoverage(results).map((r) => {
+            const ok = hasTariff(r.key_letter);
+            return (
+              <button
+                key={r.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => addAct(r)}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b last:border-b-0"
+              >
+                <div className="font-medium">{r.code} — {r.title}</div>
+                <div className="text-xs text-gray-500">
+                  {r.key_letter ? `Lettre-clé: ${r.key_letter}` : "Lettre-clé: —"}
+                  {r.coefficient != null ? ` • Coef: ${r.coefficient}` : ""}
+                  {r.chapter_title ? ` • ${r.chapter_title}` : ""}
+                </div>
+                {ok === false && (
+                  <div className="text-xs text-red-600 font-medium mt-0.5">
+                    ⚠️ Pas de tarif configuré pour l'assureur de ce patient
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -351,17 +485,26 @@ export default function ActSelector({
             {chapterLoading && <div className="text-sm text-gray-500">Chargement…</div>}
             {!chapterLoading && (
               <div className="max-h-64 overflow-y-auto">
-                {chapterRows.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => addAct(r)}
-                    className="w-full text-left px-2 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                  >
-                    <div className="text-sm font-medium">{r.code} — {r.title}</div>
-                  </button>
-                ))}
+                {sortByTariffCoverage(chapterRows).map((r) => {
+                  const ok = hasTariff(r.key_letter);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => addAct(r)}
+                      className="w-full text-left px-2 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                    >
+                      <div className="text-sm font-medium">
+                        {ok === false ? "⚠️ " : ""}
+                        {r.code} — {r.title}
+                      </div>
+                      {ok === false && (
+                        <div className="text-xs text-red-600">Pas de tarif pour cet assureur</div>
+                      )}
+                    </button>
+                  );
+                })}
                 {chapterRows.length === 0 && (
                   <div className="text-sm text-gray-500 p-2">Aucun acte dans ce chapitre.</div>
                 )}
