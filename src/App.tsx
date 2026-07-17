@@ -43,6 +43,7 @@ import StatistiquesPage from './Pages/assureur/StatistiquesPage';
 import CliniquesPage from './Pages/assureur/CliniquesPage';
 import ConsultationDetailsPage from './Pages/assureur/ConsultationDetailsPage';
 import MembersDirectoryPage from './Pages/assureur/MembersDirectoryPage';
+import AssureurSettingsPage from './Pages/assureur/AssureurSettingsPage';
 import AdminDashboardPage from "./Pages/multispecialist/admin/AdminDashboardPage";
 import AdminConsultationsPage from "./Pages/multispecialist/admin/AdminConsultationsPage";
 import AdminPerformancePage from "./Pages/multispecialist/admin/AdminPerformancePage";
@@ -476,6 +477,7 @@ export default function App() {
       <Route path="statistiques" element={<StatistiquesPage />} />
       <Route path="consultations/:id" element={<ConsultationDetailsPage />} />
       <Route path="support" element={<AssureurSupportPage />} />
+      <Route path="settings" element={<AssureurSettingsPage />} />
     </Route>
 
     {/* MULTISPECIALIST DOCTOR */}

@@ -1,21 +1,33 @@
 // src/components/layouts/AssureurLayout.tsx
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
+import {
+  FileText,
+  Users,
+  AlertTriangle,
+  Fingerprint,
+  Wallet,
+  Building2,
+  LineChart,
+  LifeBuoy,
+  Settings,
+} from "lucide-react";
 import LogoutButton from "../ui/LogoutButton";
+import NotificationBell from "../ui/assureur/NotificationBell";
 import { useInsurerContext } from "../../hooks/useInsurerContext";
 
 const navItems = [
-  { name: "Rapports", path: "/assureur/reports" },
-  { name: "Base adhérents", path: "/assureur/members-directory" },
-  { name: "Anomalies (tech)", path: "/assureur/anomalies" },
-  { name: "Alertes empreinte", path: "/assureur/fingerprint-alerts" },
-  { name: "Paiements", path: "/assureur/paiements" },
-  { name: "Cliniques", path: "/assureur/cliniques" },
-  { name: "Statistiques", path: "/assureur/statistiques" },
-  { name: "Support", path: "/assureur/support" },
+  { name: "Rapports", path: "/assureur/reports", icon: FileText },
+  { name: "Base adhérents", path: "/assureur/members-directory", icon: Users },
+  { name: "Anomalies", path: "/assureur/anomalies", icon: AlertTriangle },
+  { name: "Alertes empreinte", path: "/assureur/fingerprint-alerts", icon: Fingerprint },
+  { name: "Paiements", path: "/assureur/paiements", icon: Wallet },
+  { name: "Cliniques", path: "/assureur/cliniques", icon: Building2 },
+  { name: "Statistiques", path: "/assureur/statistiques", icon: LineChart },
+  { name: "Support", path: "/assureur/support", icon: LifeBuoy },
+  { name: "Paramètres", path: "/assureur/settings", icon: Settings },
 ];
 
 export default function AssureurLayout() {
-  const location = useLocation();
   const { ctx, loading } = useInsurerContext();
 
   if (loading) {
@@ -34,7 +46,7 @@ export default function AssureurLayout() {
             Accès non autorisé à l’espace assureur.
           </p>
           <p className="text-sm text-gray-600 max-w-md mx-auto">
-            Ce compte n’est relié à aucun assureur dans Mediconnect+.  
+            Ce compte n’est relié à aucun assureur dans Mediconnect+.
             Vérifie que l’email de connexion correspond bien à une ligne dans
             <code className="px-1 mx-1 rounded bg-gray-100">insurer_staff</code>.
           </p>
@@ -47,36 +59,45 @@ export default function AssureurLayout() {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-64 bg-indigo-600 text-white p-6 space-y-4">
-        <h2 className="text-2xl font-bold mb-2">Assureur</h2>
-        <p className="text-xs text-indigo-100 mb-4">
-          {ctx.email} • rôle : {ctx.role}
-        </p>
+      <aside className="w-64 bg-indigo-600 text-white p-6 flex flex-col shrink-0">
+        <h2 className="text-2xl font-bold mb-6">Assureur</h2>
 
-        <nav className="space-y-3">
+        <nav className="space-y-1 flex-1">
           {navItems.map((item) => (
-            <Link
+            <NavLink
               key={item.path}
               to={item.path}
-              className={`block px-4 py-2 rounded hover:bg-indigo-500 ${
-                location.pathname === item.path ? "bg-indigo-800" : ""
-              }`}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-2 rounded transition ${
+                  isActive ? "bg-indigo-800 font-semibold" : "hover:bg-indigo-500"
+                }`
+              }
             >
-              {item.name}
-            </Link>
+              <item.icon className="w-4 h-4 shrink-0" />
+              <span>{item.name}</span>
+            </NavLink>
           ))}
         </nav>
 
-        <div className="mt-8">
+        <div className="mt-6">
           <LogoutButton />
         </div>
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 p-6 bg-gray-50 overflow-y-auto">
-        <Outlet />
-      </main>
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="h-14 bg-white border-b flex items-center justify-between px-6 shrink-0">
+          <div className="text-sm text-gray-600">
+            {ctx.email} • <span>{ctx.role === "admin" ? "administrateur" : "agent"}</span>
+          </div>
+          <NotificationBell staffId={ctx.staffId} />
+        </header>
+
+        <main className="flex-1 p-6 bg-gray-50 overflow-y-auto min-w-0">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }
-
