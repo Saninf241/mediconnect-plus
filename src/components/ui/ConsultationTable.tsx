@@ -105,7 +105,8 @@ export default function ConsultationTable({
   unreadCounts = {}, // ✅ Initialisation
 }: Props) {
   return (
-    <table className="min-w-full bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+    <table className="min-w-[1100px] w-full bg-white">
       <thead className="bg-gray-100">
         <tr>
           <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Date</th>
@@ -241,5 +242,6 @@ export default function ConsultationTable({
         })}
       </tbody>
     </table>
+    </div>
   );
 }
