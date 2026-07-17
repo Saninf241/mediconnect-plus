@@ -136,13 +136,18 @@ serve(async (req) => {
     let filteredData = data ?? [];
 
     if (search.trim()) {
-      const s = search.trim().toLowerCase();
+      // Insensible aux accents en plus de la casse : "loic"/"francois" doit
+      // retrouver "Loïc"/"François" -- tres frequent sur des noms francophones.
+      const normalize = (v: string) =>
+        v.normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase();
+
+      const s = normalize(search.trim());
 
       filteredData = filteredData.filter((row: any) => {
-        const patientName = row?.patients?.name?.toLowerCase?.() ?? "";
-        const doctorName = row?.clinic_staff?.name?.toLowerCase?.() ?? "";
-        const clinicName = row?.clinics?.name?.toLowerCase?.() ?? "";
-        const statusText = row?.status?.toLowerCase?.() ?? "";
+        const patientName = normalize(row?.patients?.name ?? "");
+        const doctorName = normalize(row?.clinic_staff?.name ?? "");
+        const clinicName = normalize(row?.clinics?.name ?? "");
+        const statusText = normalize(row?.status ?? "");
 
         return (
           patientName.includes(s) ||

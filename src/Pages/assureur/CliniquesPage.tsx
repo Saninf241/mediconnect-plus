@@ -70,9 +70,13 @@ export default function CliniquesPage() {
   }, [ctx]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    // Insensible aux accents en plus de la casse (ex: "clinique de l'etoile"
+    // doit retrouver "Clinique de l'Étoile").
+    const normalize = (v: string) =>
+      v.normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase();
+    const q = normalize(search.trim());
     if (!q) return clinics;
-    return clinics.filter((c) => c.name.toLowerCase().includes(q));
+    return clinics.filter((c) => normalize(c.name).includes(q));
   }, [clinics, search]);
 
   if (ctxLoading) return <p>Chargement...</p>;
