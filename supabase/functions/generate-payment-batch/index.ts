@@ -79,8 +79,12 @@ serve(async (req) => {
 
     const eligible = (candidates ?? []).filter((c: any) => !excludeIds.has(c.id));
 
-    const notPriced = eligible.filter((c: any) => c.pricing_status !== "computed");
-    const ready = eligible.filter((c: any) => c.pricing_status === "computed" && c.clinic_id);
+    // "manual_approved" = surcharge manuelle validee par un admin assureur
+    // (consultation_manual_pricing) -- suit ensuite exactement le meme
+    // chemin qu'un calcul automatique reussi.
+    const isPriced = (status: string | null) => status === "computed" || status === "manual_approved";
+    const notPriced = eligible.filter((c: any) => !isPriced(c.pricing_status));
+    const ready = eligible.filter((c: any) => isPriced(c.pricing_status) && c.clinic_id);
 
     if (ready.length === 0) {
       return new Response(

@@ -112,7 +112,7 @@ export default function PaiementsPage() {
       const key = c.clinic_id ?? "unknown";
       const entry =
         map.get(key) ?? { clinicId: key, name: c.clinic?.name ?? "Clinique inconnue", count: 0, amount: 0, notPriced: [] };
-      if (c.pricing_status === "computed") {
+      if (c.pricing_status === "computed" || c.pricing_status === "manual_approved") {
         entry.count += 1;
         entry.amount += c.insurer_amount ?? 0;
       } else {

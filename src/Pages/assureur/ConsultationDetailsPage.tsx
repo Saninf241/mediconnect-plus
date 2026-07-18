@@ -51,6 +51,20 @@ interface MembershipRow {
     | null;
 }
 
+interface ManualPricingRow {
+  id: string;
+  proposed_amount: number;
+  justification: string | null;
+  status: "pending" | "approved" | "rejected";
+  proposed_by_name: string | null;
+  proposed_at: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+}
+
+const FUNCTIONS_BASE = "https://zwxegqevthzfphdqtjew.supabase.co/functions/v1";
+
 export default function AssureurConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -62,6 +76,7 @@ export default function AssureurConsultationDetailsPage() {
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [membership, setMembership] = useState<MembershipRow | null>(null);
   const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
+  const [myRole, setMyRole] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
@@ -70,6 +85,16 @@ export default function AssureurConsultationDetailsPage() {
   const [coverageCase, setCoverageCase] = useState<"acute" | "chronic">("acute");
 
   const [pricingComputing, setPricingComputing] = useState(false);
+
+  // Surcharge manuelle du montant (quand le calcul auto est bloque ou juge errone)
+  const [manualPricing, setManualPricing] = useState<ManualPricingRow | null>(null);
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualAmount, setManualAmount] = useState("");
+  const [manualJustification, setManualJustification] = useState("");
+  const [submittingManual, setSubmittingManual] = useState(false);
+  const [reviewingManual, setReviewingManual] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showRejectForm, setShowRejectForm] = useState(false);
 
   // ✅ IMPORTANT : fetchDetails doit être réutilisable (PDF regen)
   const fetchDetails = useCallback(async () => {
@@ -169,7 +194,7 @@ export default function AssureurConsultationDetailsPage() {
     if (user?.id) {
       const { data: staffRow, error: staffError } = await supabase
         .from("insurer_staff")
-        .select("id")
+        .select("id, role")
         .eq("clerk_user_id", user.id)
         .maybeSingle();
 
@@ -177,8 +202,21 @@ export default function AssureurConsultationDetailsPage() {
         console.error("[AssureurDetails] erreur insurer_staff:", staffError);
       } else if (staffRow?.id) {
         setInsurerAgentId(staffRow.id);
+        setMyRole(staffRow.role ?? null);
       }
     }
+
+    // 5) Proposition de tarification manuelle existante (le cas échéant)
+    const { data: manualRow, error: manualErr } = await supabase
+      .from("consultation_manual_pricing")
+      .select(
+        "id, proposed_amount, justification, status, proposed_by_name, proposed_at, approved_by_name, approved_at, rejection_reason"
+      )
+      .eq("consultation_id", id)
+      .maybeSingle();
+
+    if (manualErr) console.error("[AssureurDetails] erreur manual pricing:", manualErr);
+    setManualPricing((manualRow as ManualPricingRow) ?? null);
 
     setLoading(false);
   }, [id, user?.id]);
@@ -245,6 +283,80 @@ export default function AssureurConsultationDetailsPage() {
     } finally {
       setPricingComputing(false);
       setRegenerating(false);
+    }
+  };
+
+  const callFunction = async (path: string, body: unknown) => {
+    const token = await getToken();
+    const res = await fetch(`${FUNCTIONS_BASE}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Erreur ${path}.`);
+    return json;
+  };
+
+  const handleSubmitManualPricing = async () => {
+    if (!consultation?.id) return;
+    const amount = Number(manualAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      alert("Montant invalide.");
+      return;
+    }
+    setSubmittingManual(true);
+    try {
+      await callFunction("propose-manual-pricing", {
+        consultation_id: consultation.id,
+        proposed_amount: amount,
+        justification: manualJustification,
+      });
+      setShowManualForm(false);
+      setManualAmount("");
+      setManualJustification("");
+      await fetchDetails();
+    } catch (e: any) {
+      alert(e.message || "Erreur lors de la soumission.");
+    } finally {
+      setSubmittingManual(false);
+    }
+  };
+
+  const handleApproveManualPricing = async () => {
+    if (!manualPricing || !consultation?.id) return;
+    if (!window.confirm(`Approuver le montant manuel de ${manualPricing.proposed_amount.toLocaleString("fr-FR")} FCFA ?`)) return;
+    setReviewingManual(true);
+    try {
+      await callFunction("review-manual-pricing", { manual_pricing_id: manualPricing.id, decision: "approve" });
+      // Trace claire : régénère le PDF avec le nouveau montant approuvé.
+      const token = await getToken();
+      await generateConsultationPdf(consultation.id, token);
+      await fetchDetails();
+      alert("Montant approuvé et PDF régénéré ✅");
+    } catch (e: any) {
+      alert(e.message || "Erreur lors de l'approbation.");
+    } finally {
+      setReviewingManual(false);
+    }
+  };
+
+  const handleRejectManualPricing = async () => {
+    if (!manualPricing || !rejectReason.trim()) return;
+    setReviewingManual(true);
+    try {
+      await callFunction("review-manual-pricing", {
+        manual_pricing_id: manualPricing.id,
+        decision: "reject",
+        rejection_reason: rejectReason,
+      });
+      setShowRejectForm(false);
+      setRejectReason("");
+      await fetchDetails();
+    } catch (e: any) {
+      alert(e.message || "Erreur lors du rejet.");
+    } finally {
+      setReviewingManual(false);
     }
   };
 
@@ -365,6 +477,131 @@ export default function AssureurConsultationDetailsPage() {
               <option value="chronic">Chronique</option>
             </select>
           </div>
+        </div>
+
+        <div className="mt-3 p-3 rounded border bg-amber-50">
+          <p className="font-semibold">Tarification manuelle</p>
+          <p className="text-xs text-gray-600 mb-2">
+            Si le calcul automatique est bloqué (acte non tarifable, tarif manquant) ou vous semble erroné,
+            proposez un montant — il devra être validé par un administrateur de l'assureur avant de devenir actif.
+          </p>
+
+          {!manualPricing || manualPricing.status === "rejected" ? (
+            <>
+              {manualPricing?.status === "rejected" && (
+                <p className="text-sm text-red-700 bg-red-100 rounded p-2 mb-2">
+                  Précédente proposition rejetée — motif : {manualPricing.rejection_reason ?? "—"}
+                </p>
+              )}
+              {!showManualForm ? (
+                <button
+                  onClick={() => setShowManualForm(true)}
+                  className="text-sm bg-amber-600 text-white px-3 py-1.5 rounded"
+                >
+                  Proposer un montant manuel
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <input
+                    type="number"
+                    min={0}
+                    placeholder="Montant proposé (FCFA)"
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    value={manualAmount}
+                    onChange={(e) => setManualAmount(e.target.value)}
+                  />
+                  <textarea
+                    placeholder="Justification (ex : acte X réalisé mais non présent dans la grille tarifaire)"
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    rows={2}
+                    value={manualJustification}
+                    onChange={(e) => setManualJustification(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSubmitManualPricing}
+                      disabled={submittingManual || !manualAmount}
+                      className="text-sm bg-amber-600 text-white px-3 py-1.5 rounded disabled:opacity-50"
+                    >
+                      {submittingManual ? "Envoi..." : "Soumettre pour validation"}
+                    </button>
+                    <button
+                      onClick={() => setShowManualForm(false)}
+                      className="text-sm px-3 py-1.5 rounded border"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2 text-sm">
+              <p>
+                <strong>Montant proposé :</strong> {manualPricing.proposed_amount.toLocaleString("fr-FR")} FCFA
+              </p>
+              {manualPricing.justification && (
+                <p className="text-gray-700">Justification : {manualPricing.justification}</p>
+              )}
+              <p className="text-xs text-gray-500">
+                Proposé par {manualPricing.proposed_by_name ?? "?"}
+                {manualPricing.proposed_at ? ` le ${new Date(manualPricing.proposed_at).toLocaleDateString("fr-FR")}` : ""}
+              </p>
+
+              {manualPricing.status === "pending" && (
+                <>
+                  <span className="inline-block text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-800 font-medium">
+                    En attente de validation admin
+                  </span>
+
+                  {myRole === "admin" && (
+                    <div className="pt-2 space-y-2">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleApproveManualPricing}
+                          disabled={reviewingManual}
+                          className="text-sm bg-green-600 text-white px-3 py-1.5 rounded disabled:opacity-50"
+                        >
+                          Approuver
+                        </button>
+                        <button
+                          onClick={() => setShowRejectForm((v) => !v)}
+                          className="text-sm bg-red-600 text-white px-3 py-1.5 rounded"
+                        >
+                          Rejeter
+                        </button>
+                      </div>
+                      {showRejectForm && (
+                        <div className="space-y-2">
+                          <textarea
+                            placeholder="Motif du rejet"
+                            className="border rounded px-2 py-1 text-sm w-full"
+                            rows={2}
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                          />
+                          <button
+                            onClick={handleRejectManualPricing}
+                            disabled={reviewingManual || !rejectReason.trim()}
+                            className="text-sm bg-red-600 text-white px-3 py-1.5 rounded disabled:opacity-50"
+                          >
+                            Confirmer le rejet
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {manualPricing.status === "approved" && (
+                <span className="inline-block text-xs px-2 py-1 rounded bg-green-100 text-green-800 font-medium">
+                  Approuvé par {manualPricing.approved_by_name ?? "?"}
+                  {manualPricing.approved_at ? ` le ${new Date(manualPricing.approved_at).toLocaleDateString("fr-FR")}` : ""}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <p>
