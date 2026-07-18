@@ -288,17 +288,28 @@ export default function App() {
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-3">
               Stoppez la fraude à l’acte.<br className="hidden sm:block" />{" "}
-              Remboursez vos assurés en 48h, pas en 3 semaines.
+              Remboursez dès réception d’un dossier vérifié.
             </h1>
             <p className="text-lg md:text-xl text-gray-600">
               Biométrie anti-fraude, vérification d’assurance instantanée et dossier patient unifié —
               pour assureurs, courtiers, cliniques et cabinets.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 justify-center">
-              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm">-30% fraude</span>
-              <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-sm">2× plus vite à l’accueil</span>
+              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm">Vérification à chaque acte</span>
+              <span className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-sm">Vérification d’assurance en quelques secondes</span>
               <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-sm">Moins d’impayés</span>
             </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Jusqu’à 10 % des dépenses de santé sont perdues à la fraude dans le monde —{" "}
+              <a
+                href="https://www.nhcaa.org/tools-insights/about-health-care-fraud/the-challenge-of-health-care-fraud/"
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:text-gray-700"
+              >
+                source : NHCAA
+              </a>.
+            </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
@@ -450,7 +461,7 @@ export default function App() {
               <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">7</div>
               <div>
                 <p className="text-gray-900 font-medium flex items-center gap-2"><Wallet className="h-4 w-4 text-indigo-600 shrink-0" /> Remboursement</p>
-                <p className="text-gray-600 text-sm">Remboursement en 48h au lieu de 3 semaines, sans déplacement ni paperasse.</p>
+                <p className="text-gray-600 text-sm">Dès que le dossier est vérifié, le remboursement part — sans déplacement ni paperasse.</p>
               </div>
             </div>
           </div>

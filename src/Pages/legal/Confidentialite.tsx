@@ -1,7 +1,13 @@
 // src/Pages/legal/Confidentialite.tsx
 import { Link } from "react-router-dom";
+import { usePageMeta } from "../../hooks/usePageMeta";
 
 export default function Confidentialite() {
+  usePageMeta(
+    "Politique de confidentialité — MediConnect+",
+    "Comment MediConnect+ protège vos données de santé et biométriques : base légale (loi gabonaise n°001/2011), sécurité, droits des personnes."
+  );
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
       <Link to="/" className="text-indigo-600 hover:underline text-sm">

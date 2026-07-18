@@ -1,7 +1,13 @@
 // src/Pages/legal/MentionsLegales.tsx
 import { Link } from "react-router-dom";
+import { usePageMeta } from "../../hooks/usePageMeta";
 
 export default function MentionsLegales() {
+  usePageMeta(
+    "Mentions légales — MediConnect+",
+    "Mentions légales de MediConnect+, édité par SANINF SARLU (Gabon) : éditeur, hébergement, propriété intellectuelle."
+  );
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
       <Link to="/" className="text-indigo-600 hover:underline text-sm">
