@@ -6,6 +6,7 @@ import { useNavigate, NavLink, Outlet } from 'react-router-dom';
 import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useDoctorContext } from '../../hooks/useDoctorContext';
+import LogoutButton from '../ui/LogoutButton';
 
 export default function DoctorLayout() {
   const { user, isLoaded, isSignedIn } = useUser();
@@ -102,8 +103,8 @@ export default function DoctorLayout() {
             {Item('/doctor/support', LifeBuoy, 'Support')}
             {Item('/doctor/settings', Settings, 'Paramètres')}
           </nav>
-          <div className="text-xs text-teal-200/80 pt-6">
-            Espace “spécialiste simple” (style sauge). Déconnexion via Clerk (en haut à droite).
+          <div className="pt-6">
+            <LogoutButton />
           </div>
         </aside>
 

@@ -79,6 +79,8 @@ import NewClinicPage from "./Pages/developer/NewClinicPage";
 import NewInsurerPage from "./Pages/developer/NewInsurerPage";
 import TicketsPage from "./Pages/developer/TicketsPage";
 import ManageOrgsPage from "./Pages/developer/ManageOrgsPage";
+import MentionsLegales from "./Pages/legal/MentionsLegales";
+import Confidentialite from "./Pages/legal/Confidentialite";
 
 function GlobalHeader() {
   const { pathname } = useLocation();
@@ -123,53 +125,91 @@ function GlobalHeader() {
 
 
 function SiteFooter() {
+  const socialLinks = (
+    <div className="flex items-center gap-4">
+      <a
+        href="https://www.linkedin.com/company/mediconnect-plus"
+        target="_blank" rel="noreferrer"
+        aria-label="LinkedIn"
+        className="text-gray-500 hover:text-indigo-600"
+        title="LinkedIn"
+      >
+        <Linkedin className="h-5 w-5" />
+      </a>
+
+      <a
+        href="https://facebook.com/mediconnectplus"
+        target="_blank" rel="noreferrer"
+        aria-label="Facebook"
+        className="text-gray-500 hover:text-indigo-600"
+        title="Facebook"
+      >
+        <Facebook className="h-5 w-5" />
+      </a>
+
+      <a
+        href="https://wa.me/0033782525687?text=Je%20souhaite%20en%20savoir%20plus%20sur%20MediConnect%2B"
+        target="_blank" rel="noreferrer"
+        aria-label="WhatsApp"
+        className="text-gray-500 hover:text-indigo-600"
+        title="WhatsApp"
+      >
+        <MessageCircle className="h-5 w-5" />
+      </a>
+
+      <a
+        href="mailto:contact@ndoungconsulting.com?subject=Demande%20d%27information%20MediConnect%2B"
+        className="text-gray-500 hover:text-indigo-600"
+        aria-label="Email"
+        title="Email"
+      >
+        <Mail className="h-5 w-5" />
+      </a>
+    </div>
+  );
+
   return (
     <footer className="mt-16 border-t bg-white">
-      <div className="mx-auto max-w-7xl px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p className="text-sm text-gray-500">
-          © {new Date().getFullYear()} MediConnect+
-        </p>
+      <div className="mx-auto max-w-7xl px-4 py-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-lg font-bold text-gray-900">MediConnect+</p>
+          <p className="mt-2 text-sm text-gray-600">
+            Biométrie anti-fraude, vérification d'assurance en temps réel et
+            dossier patient unifié pour cliniques, assureurs et courtiers.
+          </p>
+          <div className="mt-4">{socialLinks}</div>
+        </div>
 
-        <div className="flex items-center gap-4">
-          {/* Remplace les href par tes vrais liens */}
-          <a
-            href="https://www.linkedin.com/company/mediconnect-plus"
-            target="_blank" rel="noreferrer"
-            aria-label="LinkedIn"
-            className="text-gray-500 hover:text-indigo-600"
-            title="LinkedIn"
-          >
-            <Linkedin className="h-5 w-5" />
-          </a>
+        <div>
+          <p className="text-sm font-semibold text-gray-900 mb-3">Solutions</p>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li><a href="/#comment-ca-marche" className="hover:text-indigo-600">Comment ça marche</a></li>
+            <li><a href="/#securite" className="hover:text-indigo-600">Sécurité & conformité</a></li>
+          </ul>
+        </div>
 
-          <a
-            href="https://facebook.com/mediconnectplus"
-            target="_blank" rel="noreferrer"
-            aria-label="Facebook"
-            className="text-gray-500 hover:text-indigo-600"
-            title="Facebook"
-          >
-            <Facebook className="h-5 w-5" />
-          </a>
+        <div>
+          <p className="text-sm font-semibold text-gray-900 mb-3">Espaces</p>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li><a href="/#benefices" className="hover:text-indigo-600">Assureurs & courtiers</a></li>
+            <li><a href="/#benefices" className="hover:text-indigo-600">Cliniques & cabinets</a></li>
+          </ul>
+        </div>
 
-          <a
-            href="https://wa.me/0033782525687?text=Je%20souhaite%20participer%20%C3%A0%20la%20phase%20pilote%20MARS%202026"
-            target="_blank" rel="noreferrer"
-            aria-label="WhatsApp"
-            className="text-gray-500 hover:text-indigo-600"
-            title="WhatsApp"
-          >
-            <MessageCircle className="h-5 w-5" />
-          </a>
+        <div>
+          <p className="text-sm font-semibold text-gray-900 mb-3">Légal</p>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li><Link to="/mentions-legales" className="hover:text-indigo-600">Mentions légales</Link></li>
+            <li><Link to="/politique-confidentialite" className="hover:text-indigo-600">Politique de confidentialité</Link></li>
+          </ul>
+        </div>
+      </div>
 
-          <a
-            href="mailto:contact@ndoungconsulting.com?subject=Inscription%20phase%20pilote&body=Bonjour%2C%20je%20souhaite%20participer%20%C3%A0%20la%20phase%20pilote."
-            className="text-gray-500 hover:text-indigo-600"
-            aria-label="Email"
-            title="Email"
-          >
-            <Mail className="h-5 w-5" />
-          </a>
+      <div className="border-t">
+        <div className="mx-auto max-w-7xl px-4 py-4">
+          <p className="text-xs text-gray-500">
+            © {new Date().getFullYear()} MediConnect+ — SANINF SARLU, SARLU au capital de 200 000 FCFA, Gabon
+          </p>
         </div>
       </div>
     </footer>
@@ -186,6 +226,16 @@ export default function App() {
   // Clerk : il ne doit pas rester bloqué sur cet écran si Clerk est lent
   // ou indisponible.
   const isPatientArea = location.pathname.startsWith("/patient");
+
+  // Espaces connectés : chacun a déjà sa propre sidebar/en-tête en plein
+  // écran, donc le footer marketing ne doit pas s'y ajouter (ça créait une
+  // zone blanche avant d'atteindre le footer). On le réserve aux pages
+  // publiques (accueil, connexion, pages légales...).
+  const isAppArea =
+    (isPatientArea && location.pathname !== "/patient/login") ||
+    ["/doctor", "/assureur", "/multispecialist", "/specialist", "/pharmacy", "/developer"].some((p) =>
+      location.pathname.startsWith(p)
+    );
 
   // ✅ Sync Clerk JWT -> Supabase headers
   useEffect(() => {
@@ -220,13 +270,11 @@ export default function App() {
     };
   }, [isLoaded, isSignedIn, getToken]);
 
-  if (!isLoaded && !isPatientArea) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        Chargement...
-      </div>
-    );
-  }
+  // Pas de garde globale "Chargement..." ici : elle bloquait aussi les pages
+  // publiques (accueil, mentions légales...) tant que Clerk n'avait pas fini
+  // de charger. Chaque route protégée (PrivateRouteByArea, RequireDeveloper,
+  // RoleRedirect, <SignIn>/<SignUp> de Clerk) gère déjà son propre état de
+  // chargement le temps que Clerk soit prêt.
 
   const renderLandingPage = () => {
   const go = (to: string) => navigate(`/sign-in?to=${encodeURIComponent(to)}`);
@@ -238,11 +286,12 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-3">
-              Arrêtez la fraude. Accélérez les soins.
+              Arrêtez la fraude à l’acte, vérifiez l’assurance en temps réel,<br className="hidden sm:block" />{" "}
+              et remboursez vos assurés en 48h au lieu de 3 semaines.
             </h1>
             <p className="text-lg md:text-xl text-gray-600">
-              Biométrie, vérification d’assurance en temps réel, dossier patient &amp; facturation —
-              pour cliniques, assureurs et pharmacies.
+              Biométrie anti-fraude, vérification d’assurance instantanée et dossier patient unifié —
+              pour assureurs, courtiers, cliniques et cabinets.
             </p>
             <div className="mt-4 flex flex-wrap gap-2 justify-center">
               <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm">-30% fraude</span>
@@ -261,11 +310,10 @@ export default function App() {
                   <p className="text-gray-600">Accédez à votre interface professionnelle</p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <button onClick={() => go("/multispecialist/secretary/patients")} className="w-full bg-indigo-600 text-white px-4 py-2 rounded-lg">Secrétaire</button>
                 <button onClick={() => go("/doctor/patients")} className="w-full bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg border">Médecin</button>
                 <button onClick={() => go("/assureur/reports")} className="w-full bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg border">Assureur</button>
-                <button onClick={() => go("/pharmacy")} className="w-full bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg border">Pharmacie</button>
               </div>
               <p className="text-xs text-gray-500 mt-3">Après connexion, vous serez redirigé vers l’espace sélectionné.</p>
             </div>
@@ -303,8 +351,26 @@ export default function App() {
       </section>
 
       {/* BÉNÉFICES — cartes alignées et centrées */}
-      <section className="w-full py-6">
+      <section id="benefices" className="w-full py-6">
         <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-3 gap-6">
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <h3 className="text-xl font-semibold mb-3">Pour assureurs & courtiers</h3>
+            <ul className="space-y-2 text-gray-700">
+              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Éligibilité en temps réel (droits, plafond, plan)</li>
+              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Remboursements accélérés, moins de litiges avec les assurés</li>
+              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Reporting consolidé multi-cliniques pour piloter le risque</li>
+            </ul>
+          </div>
+
+          <div className="rounded-2xl border bg-white p-6 shadow-sm">
+            <h3 className="text-xl font-semibold mb-3">Anti-fraude</h3>
+            <ul className="space-y-2 text-gray-700">
+              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Anti-fraude biométrique à l’acte</li>
+              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Détection des doublons et des abus en temps réel</li>
+              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Traçabilité & preuves d’audit détaillées</li>
+            </ul>
+          </div>
+
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
             <h3 className="text-xl font-semibold mb-3">Pour cliniques & cabinets</h3>
             <ul className="space-y-2 text-gray-700">
@@ -313,29 +379,11 @@ export default function App() {
               <li className="flex items-start gap-2"> - <span className="mt-1"></span> Moins d’impayés grâce à la vérification d’assurance</li>
             </ul>
           </div>
-
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold mb-3">Pour assureurs</h3>
-            <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Anti-fraude biométrique à l’acte</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Éligibilité en temps réel (droits, plafond, plan)</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Traçabilité & rapports détaillés</li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold mb-3">Pour pharmacies</h3>
-            <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Validation ordonnance & historique patient</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Remboursement accéléré (moins de litiges)</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Intégration simple avec le stock</li>
-            </ul>
-          </div>
         </div>
       </section>
 
       {/* COMMENT ÇA MARCHE */}
-      <section className="w-full py-6">
+      <section id="comment-ca-marche" className="w-full py-6">
         <div className="max-w-7xl mx-auto px-4">
           <h3 className="text-2xl font-bold mb-4 text-center">Comment ça marche ?</h3>
           <div className="grid md:grid-cols-3 gap-6">
@@ -359,14 +407,14 @@ export default function App() {
       </section>
 
       {/* SÉCURITÉ */}
-      <section className="w-full py-6">
+      <section id="securite" className="w-full py-6">
         <div className="max-w-7xl mx-auto px-4 rounded-2xl bg-gray-50 p-6 border">
           <h3 className="text-2xl font-bold mb-3 text-center">Sécurité & conformité</h3>
           <div className="grid md:grid-cols-4 gap-4 text-sm">
             <div className="rounded-lg bg-white p-4 border">Chiffrement en transit & au repos (HTTPS/TLS, AES-256)</div>
             <div className="rounded-lg bg-white p-4 border">Rôles & autorisations granulaires </div>
             <div className="rounded-lg bg-white p-4 border">Journalisation des accès & preuves anti-fraude</div>
-            <div className="rounded-lg bg-white p-4 border">Conforme RGPD / consentement patient</div>
+            <div className="rounded-lg bg-white p-4 border">Loi gabonaise n°001/2011 & bonnes pratiques RGPD</div>
           </div>
           <p className="mt-3 text-gray-600 text-sm text-center">
             Les données biométriques sont <b>hachées/templatisées</b> et sécurisés.
@@ -375,14 +423,13 @@ export default function App() {
       </section>
 
       {/* CTA FINAL */}
-{/* CTA FINAL */}
 <section className="w-full py-10">
   <div className="max-w-7xl mx-auto px-4">
     <div className="rounded-2xl bg-indigo-600 text-white p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
       <div>
         <h3 className="text-xl font-semibold">Prêt à tester ?</h3>
         <p className="opacity-90">
-          Enregistrez-vous afin de participer à la phase pilote en <b>MARS 2026</b>.
+          Rejoignez la phase pilote MediConnect+ et testez la vérification d’assurance en temps réel.
         </p>
       </div>
 
@@ -391,8 +438,8 @@ export default function App() {
           {(() => {
             const whatsappNumber = "0033782525687"; // ← mets ton numéro ici (format international, sans + ni espaces)
             const defaultMsg =
-              "Bonjour, je souhaite rejoindre la phase pilote MediConnect+ (Mars 2026). " +
-              "Nom: ____ | Structure: ____ | Rôle: (clinique/cabinet/assureur/pharmacie) | Ville: ____ | Pays: ____ ";
+              "Bonjour, je souhaite rejoindre la phase pilote MediConnect+. " +
+              "Nom: ____ | Structure: ____ | Rôle: (clinique/cabinet/assureur/courtier) | Ville: ____ | Pays: ____ ";
             const whatsappHref = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(defaultMsg)}`;
             return (
               <>
@@ -406,7 +453,7 @@ export default function App() {
                 </a>
 
                 <a
-                  href="/a-propos#pilot"  // ou une vraie page de détails si tu en as une
+                  href="#comment-ca-marche"
                   className="px-4 py-2 rounded-lg border border-white/70 text-white hover:bg-white/10"
                 >
                   En savoir plus
@@ -423,13 +470,16 @@ export default function App() {
 };
 
   return (
-    <>
-    <GlobalHeader />
+    <div className="min-h-screen flex flex-col">
+    {!isAppArea && <GlobalHeader />}
+    <div className="flex-1 flex flex-col">
   <Routes>
     {/* PUBLIC */}
     <Route path="/" element={renderLandingPage()} />
     <Route path="/unauthorized" element={<Unauthorized />} />
     <Route path="/debug/reset" element={<DebugReset />} />
+    <Route path="/mentions-legales" element={<MentionsLegales />} />
+    <Route path="/politique-confidentialite" element={<Confidentialite />} />
 
     {/* Clerk auth */}
     <Route path="/sign-in/*" element={<SignInPage />} />
@@ -607,7 +657,8 @@ export default function App() {
 
     <Route path="*" element={<Navigate to="/" />} />
   </Routes>
-  <SiteFooter />
-  </>
+    </div>
+    {!isAppArea && <SiteFooter />}
+    </div>
 );
 }

@@ -6,6 +6,7 @@ import { Stethoscope, Users, PlusSquare, History, Gauge, Settings, LifeBuoy } fr
 import { toast } from "react-toastify";
 import { supabase } from "../../lib/supabase";
 import { useDoctorContext } from "../../hooks/useDoctorContext";
+import LogoutButton from "../ui/LogoutButton";
 
 const Item = ({
   to,
@@ -80,7 +81,6 @@ export default function MultispecialistDoctorLayout() {
             ✅ Médecin fiable
           </span>
         )}
-        {/* Avatar Clerk via <GlobalHeader /> au-dessus, donc rien ici */}
       </header>
 
       {/* Sidebar */}
@@ -95,8 +95,8 @@ export default function MultispecialistDoctorLayout() {
           <Item to="support" icon={LifeBuoy} label="Support" />
           <Item to="settings" icon={Settings} label="Paramètres" />
         </nav>
-        <div className="text-xs text-white/70 mt-6">
-          Interface multi-spécialiste (ardoise). Déconnexion via l’avatar (en haut à droite).
+        <div className="mt-6">
+          <LogoutButton />
         </div>
       </aside>
 
