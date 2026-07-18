@@ -36,7 +36,7 @@ serve(async (req) => {
 
     const { data: staffRow, error: staffErr } = await supabase
       .from("clinic_staff")
-      .select("id, clinic_id, role, name")
+      .select("id, clinic_id, role, name, email")
       .eq("clerk_user_id", callerId)
       .maybeSingle();
 
@@ -129,6 +129,7 @@ serve(async (req) => {
           submitted_by_clerk_user_id: callerId,
           submitted_by_role: staffRow.role,
           submitted_by_name: staffRow.name,
+          submitted_by_email: staffRow.email,
           submitted_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },

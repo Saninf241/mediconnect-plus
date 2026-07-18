@@ -16,6 +16,33 @@ const cors = {
 
 const CLERK_API = "https://api.clerk.com/v1";
 
+async function sendEmail(to: string | null, subject: string, text: string) {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  const from = Deno.env.get("RESEND_FROM_EMAIL");
+  if (!apiKey || !from || !to) {
+    console.warn("[dev-manage-orgs] secrets ou destinataire manquants, envoi email ignore");
+    return;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, subject, text }),
+    });
+    if (!res.ok) console.error("[dev-manage-orgs] Resend error:", await res.text());
+  } catch (e) {
+    // Ne doit jamais faire echouer la verification/le rejet elle-meme.
+    console.error("[dev-manage-orgs] sendEmail failed:", e);
+  }
+}
+
+function maskAccountNumber(v: string | null) {
+  if (!v) return "—";
+  const trimmed = v.replace(/\s+/g, "");
+  if (trimmed.length <= 4) return trimmed;
+  return `${"•".repeat(trimmed.length - 4)}${trimmed.slice(-4)}`;
+}
+
 async function clerkFetch(path: string, init: RequestInit, secretKey: string) {
   const res = await fetch(`${CLERK_API}${path}`, {
     ...init,
@@ -54,6 +81,7 @@ type Action =
       plan_code?: string | null;
     }
   | { action: "list_pending_payment_info" }
+  | { action: "list_payment_info_drift" }
   | { action: "verify_clinic_payment_info"; id: string }
   | { action: "reject_clinic_payment_info"; id: string; reason: string };
 
@@ -254,10 +282,44 @@ serve(async (req) => {
       return new Response(JSON.stringify({ payment_info: data }), { headers: cors });
     }
 
+    if (input.action === "list_payment_info_drift") {
+      // Devrait toujours etre vide -- une ligne ici signifie que des
+      // champs bancaires "verifies" ont change sans repasser par
+      // clinic-submit-payment-info (qui remet toujours status a pending).
+      const { data, error } = await supabase
+        .from("clinic_payment_info_drift")
+        .select("id, clinic_id, verified_at, verified_snapshot, current_values");
+      if (error) throw error;
+      return new Response(JSON.stringify({ drift: data }), { headers: cors });
+    }
+
     if (input.action === "verify_clinic_payment_info") {
       const callerEmail =
         (caller?.email_addresses ?? []).find((e: any) => e.id === caller?.primary_email_address_id)
           ?.email_address ?? caller?.email_addresses?.[0]?.email_address ?? null;
+
+      // Snapshot des champs bancaires exacts vus au moment de la
+      // verification -- sert a detecter une modification faite hors du
+      // workflow normal (cf. clinic_payment_info_drift), et on recupere
+      // au passage l'email du soumissionnaire + le nom du cabinet pour la
+      // notification.
+      const { data: row, error: rowErr } = await supabase
+        .from("clinic_payment_info")
+        .select(
+          "payment_method, bank_name, account_number, account_holder_name, mobile_money_provider, mobile_money_number, submitted_by_email, clinics:clinic_id(name)"
+        )
+        .eq("id", input.id)
+        .maybeSingle();
+      if (rowErr || !row) throw rowErr ?? new Error("Coordonnées introuvables");
+
+      const snapshot = {
+        payment_method: row.payment_method,
+        bank_name: row.bank_name,
+        account_number: row.account_number,
+        account_holder_name: row.account_holder_name,
+        mobile_money_provider: row.mobile_money_provider,
+        mobile_money_number: row.mobile_money_number,
+      };
 
       const { error } = await supabase
         .from("clinic_payment_info")
@@ -266,9 +328,27 @@ serve(async (req) => {
           verified_by_email: callerEmail,
           verified_at: new Date().toISOString(),
           rejection_reason: null,
+          verified_snapshot: snapshot,
         })
         .eq("id", input.id);
       if (error) throw error;
+
+      const clinicName = (row as any).clinics?.name ?? "votre cabinet";
+      await sendEmail(
+        row.submitted_by_email,
+        "[MediConnect+] Coordonnées de paiement vérifiées",
+        [
+          `Bonjour,`,
+          ``,
+          `Les coordonnées de paiement soumises pour ${clinicName} ont été vérifiées et sont désormais actives pour vos remboursements assureur.`,
+          row.payment_method === "bank_transfer"
+            ? `Virement bancaire — ${row.bank_name} — compte se terminant par ${maskAccountNumber(row.account_number)}`
+            : `Mobile money — ${row.mobile_money_provider} — ${maskAccountNumber(row.mobile_money_number)}`,
+          ``,
+          `Si vous n'êtes pas à l'origine de cette soumission, contactez immédiatement le support Mediconnect+.`,
+        ].join("\n")
+      );
+
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }
 
@@ -276,6 +356,13 @@ serve(async (req) => {
       if (!input.reason?.trim()) {
         return new Response(JSON.stringify({ error: "Motif de rejet requis" }), { status: 400, headers: cors });
       }
+
+      const { data: row } = await supabase
+        .from("clinic_payment_info")
+        .select("submitted_by_email, clinics:clinic_id(name)")
+        .eq("id", input.id)
+        .maybeSingle();
+
       const { error } = await supabase
         .from("clinic_payment_info")
         .update({
@@ -283,9 +370,25 @@ serve(async (req) => {
           rejection_reason: input.reason.trim(),
           verified_by_email: null,
           verified_at: null,
+          verified_snapshot: null,
         })
         .eq("id", input.id);
       if (error) throw error;
+
+      const clinicName = (row as any)?.clinics?.name ?? "votre cabinet";
+      await sendEmail(
+        row?.submitted_by_email ?? null,
+        "[MediConnect+] Coordonnées de paiement rejetées",
+        [
+          `Bonjour,`,
+          ``,
+          `Les coordonnées de paiement soumises pour ${clinicName} ont été rejetées.`,
+          `Motif : ${input.reason.trim()}`,
+          ``,
+          `Vous pouvez soumettre de nouvelles coordonnées depuis les paramètres du cabinet.`,
+        ].join("\n")
+      );
+
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }
 

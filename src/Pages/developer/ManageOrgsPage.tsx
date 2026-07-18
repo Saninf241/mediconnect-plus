@@ -52,6 +52,14 @@ type PaymentInfo = {
   clinics: { name: string } | null;
 };
 
+type DriftRow = {
+  id: string;
+  clinic_id: string;
+  verified_at: string;
+  verified_snapshot: Record<string, unknown>;
+  current_values: Record<string, unknown>;
+};
+
 type DirectoryMember = {
   id: string;
   full_name: string;
@@ -96,6 +104,7 @@ export default function ManageOrgsPage() {
 
   // Coordonnees de paiement (RIB / mobile money) en attente de verification.
   const [paymentInfoList, setPaymentInfoList] = useState<PaymentInfo[]>([]);
+  const [driftRows, setDriftRows] = useState<DriftRow[]>([]);
   const [paymentInfoFilter, setPaymentInfoFilter] = useState<"pending" | "all">("pending");
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [rejectingFor, setRejectingFor] = useState<string | null>(null);
@@ -116,16 +125,18 @@ export default function ManageOrgsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [c, i, cv, pi] = await Promise.all([
+      const [c, i, cv, pi, drift] = await Promise.all([
         call({ action: "list_clinics" }),
         call({ action: "list_insurers" }),
         call({ action: "list_conventions" }),
         call({ action: "list_pending_payment_info" }),
+        call({ action: "list_payment_info_drift" }),
       ]);
       setClinics(c.clinics ?? []);
       setInsurers(i.insurers ?? []);
       setConventions(cv.conventions ?? []);
       setPaymentInfoList(pi.payment_info ?? []);
+      setDriftRows(drift.drift ?? []);
     } catch (err: any) {
       toast.error(err.message || "Impossible de charger la liste");
     } finally {
@@ -312,6 +323,22 @@ export default function ManageOrgsPage() {
               </Card>
             ))}
           </section>
+
+          {driftRows.length > 0 && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-4 space-y-2">
+              <p className="font-semibold text-red-800">
+                ⚠️ {driftRows.length} coordonnée(s) de paiement "vérifiée(s)" ne correspond(ent) plus à ce qui a été
+                vérifié — modifiée(s) hors du workflow normal.
+              </p>
+              {driftRows.map((d) => (
+                <div key={d.id} className="text-xs text-red-700 border-t border-red-200 pt-2">
+                  <div>Ligne {d.id} — vérifiée le {new Date(d.verified_at).toLocaleString("fr-FR")}</div>
+                  <div>Au moment de la vérification : {JSON.stringify(d.verified_snapshot)}</div>
+                  <div>Actuellement : {JSON.stringify(d.current_values)}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <section className="space-y-3">
             <div className="flex items-center justify-between">
