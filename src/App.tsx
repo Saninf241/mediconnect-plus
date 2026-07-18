@@ -6,7 +6,7 @@ import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
 import DashboardPage from './Pages/doctor/DashboardPage';
-import { Building, Code, User, CheckCircle2, TrendingUp, ShieldCheck, Building2, Lock, KeyRound, ScrollText, Scale } from 'lucide-react';
+import { Building, Code, User, CheckCircle2, TrendingUp, ShieldCheck, Building2, Lock, KeyRound, ScrollText, Scale, UserCheck, Fingerprint, FileCheck2, Stethoscope, Inbox, ClipboardCheck, Wallet } from 'lucide-react';
 import PerformancePage from './Pages/doctor/PerformancePage';
 import MultispecialistDoctorLayout from './components/layouts/MultispecialistDoctorLayout';
 import MultispecialistAdminLayout from './components/layouts/MultispecialistAdminLayout';
@@ -287,8 +287,8 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-3">
-              Arrêtez la fraude à l’acte, vérifiez l’assurance en temps réel,<br className="hidden sm:block" />{" "}
-              et remboursez vos assurés en 48h au lieu de 3 semaines.
+              Stoppez la fraude à l’acte.<br className="hidden sm:block" />{" "}
+              Remboursez vos assurés en 48h, pas en 3 semaines.
             </h1>
             <p className="text-lg md:text-xl text-gray-600">
               Biométrie anti-fraude, vérification d’assurance instantanée et dossier patient unifié —
@@ -393,6 +393,7 @@ export default function App() {
               <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Enregistrement 2× plus rapide à l’accueil</li>
               <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Dossier patient unifié (consultations, ordonnances, factures)</li>
               <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Moins d’impayés grâce à la vérification d’assurance</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Plus besoin de se déplacer chez l’assureur : le dossier part automatiquement</li>
             </ul>
           </div>
         </div>
@@ -400,23 +401,57 @@ export default function App() {
 
       {/* COMMENT ÇA MARCHE */}
       <section id="comment-ca-marche" className="w-full py-6 scroll-mt-24">
-        <div className="max-w-7xl mx-auto px-4">
-          <h3 className="text-2xl font-bold mb-4 text-center">Comment ça marche ?</h3>
-          <div className="grid md:grid-cols-3 gap-6">
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">1</div>
-              <p className="mt-2 text-gray-900 font-medium">Enregistrement & identité</p>
-              <p className="text-gray-600 text-sm">Secrétaire ou patient crée le profil. Option biométrie (empreinte) selon la clinique.</p>
+        <div className="max-w-2xl mx-auto px-4">
+          <h3 className="text-2xl font-bold mb-6 text-center">Comment ça marche ?</h3>
+          <div className="space-y-3">
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">1</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><UserCheck className="h-4 w-4 text-indigo-600 shrink-0" /> Patient assuré</p>
+                <p className="text-gray-600 text-sm">Le patient s’identifie comme assuré à l’accueil (secrétaire ou lui-même).</p>
+              </div>
             </div>
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">2</div>
-              <p className="mt-2 text-gray-900 font-medium">Vérification assurance</p>
-              <p className="text-gray-600 text-sm">Contrôle des droits en temps réel : contrat, plan, plafond, co-pay.</p>
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">2</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><Fingerprint className="h-4 w-4 text-indigo-600 shrink-0" /> Biométrie</p>
+                <p className="text-gray-600 text-sm">Vérification d’identité par empreinte digitale, pour confirmer que c’est bien la bonne personne.</p>
+              </div>
             </div>
-            <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">3</div>
-              <p className="mt-2 text-gray-900 font-medium">Soin & facturation</p>
-              <p className="text-gray-600 text-sm">Consultation, ordonnance, délivrance en officine, facture & suivi paiement.</p>
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">3</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><FileCheck2 className="h-4 w-4 text-indigo-600 shrink-0" /> Vérification assurance</p>
+                <p className="text-gray-600 text-sm">Contrôle en temps réel des droits : contrat, plan, plafond, co-paiement.</p>
+              </div>
+            </div>
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">4</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><Stethoscope className="h-4 w-4 text-indigo-600 shrink-0" /> Soin</p>
+                <p className="text-gray-600 text-sm">Consultation, ordonnance, actes réalisés par le médecin.</p>
+              </div>
+            </div>
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">5</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><Inbox className="h-4 w-4 text-indigo-600 shrink-0" /> Réception documentation</p>
+                <p className="text-gray-600 text-sm">L’assureur reçoit automatiquement le dossier de consultation, avec la preuve d’empreinte.</p>
+              </div>
+            </div>
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">6</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-indigo-600 shrink-0" /> Vérification</p>
+                <p className="text-gray-600 text-sm">L’assureur vérifie le dossier reçu avant de valider le remboursement.</p>
+              </div>
+            </div>
+            <div className="rounded-xl border bg-white p-4 shadow-sm flex items-start gap-4">
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">7</div>
+              <div>
+                <p className="text-gray-900 font-medium flex items-center gap-2"><Wallet className="h-4 w-4 text-indigo-600 shrink-0" /> Remboursement</p>
+                <p className="text-gray-600 text-sm">Remboursement en 48h au lieu de 3 semaines, sans déplacement ni paperasse.</p>
+              </div>
             </div>
           </div>
         </div>
