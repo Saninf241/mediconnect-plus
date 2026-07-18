@@ -6,7 +6,7 @@ import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
 import DoctorLayout from './components/layouts/DoctorLayout';
 import AssureurLayout from './components/layouts/AssureurLayout';
 import DashboardPage from './Pages/doctor/DashboardPage';
-import { Building, Code, User } from 'lucide-react';
+import { Building, Code, User, CheckCircle2, TrendingUp, ShieldCheck, Building2, Lock, KeyRound, ScrollText, Scale } from 'lucide-react';
 import PerformancePage from './Pages/doctor/PerformancePage';
 import MultispecialistDoctorLayout from './components/layouts/MultispecialistDoctorLayout';
 import MultispecialistAdminLayout from './components/layouts/MultispecialistAdminLayout';
@@ -81,6 +81,7 @@ import TicketsPage from "./Pages/developer/TicketsPage";
 import ManageOrgsPage from "./Pages/developer/ManageOrgsPage";
 import MentionsLegales from "./Pages/legal/MentionsLegales";
 import Confidentialite from "./Pages/legal/Confidentialite";
+import ScrollToTop from "./components/ScrollToTop";
 
 function GlobalHeader() {
   const { pathname } = useLocation();
@@ -351,54 +352,69 @@ export default function App() {
       </section>
 
       {/* BÉNÉFICES — cartes alignées et centrées */}
-      <section id="benefices" className="w-full py-6">
+      <section id="benefices" className="w-full py-6 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 grid md:grid-cols-3 gap-6">
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold mb-3">Pour assureurs & courtiers</h3>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+                <TrendingUp className="h-5 w-5" />
+              </span>
+              <h3 className="text-xl font-semibold">Pour assureurs & courtiers</h3>
+            </div>
             <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Éligibilité en temps réel (droits, plafond, plan)</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Remboursements accélérés, moins de litiges avec les assurés</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Reporting consolidé multi-cliniques pour piloter le risque</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" /> Éligibilité en temps réel (droits, plafond, plan)</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" /> Remboursements accélérés, moins de litiges avec les assurés</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-indigo-600 shrink-0 mt-0.5" /> Reporting consolidé multi-cliniques pour piloter le risque</li>
             </ul>
           </div>
 
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold mb-3">Anti-fraude</h3>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-rose-50 text-rose-600 shrink-0">
+                <ShieldCheck className="h-5 w-5" />
+              </span>
+              <h3 className="text-xl font-semibold">Anti-fraude</h3>
+            </div>
             <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Anti-fraude biométrique à l’acte</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Détection des doublons et des abus en temps réel</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Traçabilité & preuves d’audit détaillées</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" /> Anti-fraude biométrique à l’acte</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" /> Détection des doublons et des abus en temps réel</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" /> Traçabilité & preuves d’audit détaillées</li>
             </ul>
           </div>
 
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
-            <h3 className="text-xl font-semibold mb-3">Pour cliniques & cabinets</h3>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                <Building2 className="h-5 w-5" />
+              </span>
+              <h3 className="text-xl font-semibold">Pour cliniques & cabinets</h3>
+            </div>
             <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Enregistrement 2× plus rapide à l’accueil</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Dossier patient unifié (consultations, ordonnances, factures)</li>
-              <li className="flex items-start gap-2"> - <span className="mt-1"></span> Moins d’impayés grâce à la vérification d’assurance</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Enregistrement 2× plus rapide à l’accueil</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Dossier patient unifié (consultations, ordonnances, factures)</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Moins d’impayés grâce à la vérification d’assurance</li>
             </ul>
           </div>
         </div>
       </section>
 
       {/* COMMENT ÇA MARCHE */}
-      <section id="comment-ca-marche" className="w-full py-6">
+      <section id="comment-ca-marche" className="w-full py-6 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4">
           <h3 className="text-2xl font-bold mb-4 text-center">Comment ça marche ?</h3>
           <div className="grid md:grid-cols-3 gap-6">
             <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="text-indigo-600 font-bold">1</div>
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">1</div>
               <p className="mt-2 text-gray-900 font-medium">Enregistrement & identité</p>
               <p className="text-gray-600 text-sm">Secrétaire ou patient crée le profil. Option biométrie (empreinte) selon la clinique.</p>
             </div>
             <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="text-indigo-600 font-bold">2</div>
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">2</div>
               <p className="mt-2 text-gray-900 font-medium">Vérification assurance</p>
               <p className="text-gray-600 text-sm">Contrôle des droits en temps réel : contrat, plan, plafond, co-pay.</p>
             </div>
             <div className="rounded-xl border bg-white p-6 shadow-sm">
-              <div className="text-indigo-600 font-bold">3</div>
+              <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">3</div>
               <p className="mt-2 text-gray-900 font-medium">Soin & facturation</p>
               <p className="text-gray-600 text-sm">Consultation, ordonnance, délivrance en officine, facture & suivi paiement.</p>
             </div>
@@ -407,14 +423,26 @@ export default function App() {
       </section>
 
       {/* SÉCURITÉ */}
-      <section id="securite" className="w-full py-6">
+      <section id="securite" className="w-full py-6 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 rounded-2xl bg-gray-50 p-6 border">
           <h3 className="text-2xl font-bold mb-3 text-center">Sécurité & conformité</h3>
           <div className="grid md:grid-cols-4 gap-4 text-sm">
-            <div className="rounded-lg bg-white p-4 border">Chiffrement en transit & au repos (HTTPS/TLS, AES-256)</div>
-            <div className="rounded-lg bg-white p-4 border">Rôles & autorisations granulaires </div>
-            <div className="rounded-lg bg-white p-4 border">Journalisation des accès & preuves anti-fraude</div>
-            <div className="rounded-lg bg-white p-4 border">Loi gabonaise n°001/2011 & bonnes pratiques RGPD</div>
+            <div className="rounded-lg bg-white p-4 border flex items-start gap-2">
+              <Lock className="h-5 w-5 text-gray-500 shrink-0 mt-0.5" />
+              Chiffrement en transit & au repos (HTTPS/TLS, AES-256)
+            </div>
+            <div className="rounded-lg bg-white p-4 border flex items-start gap-2">
+              <KeyRound className="h-5 w-5 text-gray-500 shrink-0 mt-0.5" />
+              Rôles & autorisations granulaires
+            </div>
+            <div className="rounded-lg bg-white p-4 border flex items-start gap-2">
+              <ScrollText className="h-5 w-5 text-gray-500 shrink-0 mt-0.5" />
+              Journalisation des accès & preuves anti-fraude
+            </div>
+            <div className="rounded-lg bg-white p-4 border flex items-start gap-2">
+              <Scale className="h-5 w-5 text-gray-500 shrink-0 mt-0.5" />
+              Loi gabonaise n°001/2011 & bonnes pratiques RGPD
+            </div>
           </div>
           <p className="mt-3 text-gray-600 text-sm text-center">
             Les données biométriques sont <b>hachées/templatisées</b> et sécurisés.
@@ -471,6 +499,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+    <ScrollToTop />
     {!isAppArea && <GlobalHeader />}
     <div className="flex-1 flex flex-col">
   <Routes>

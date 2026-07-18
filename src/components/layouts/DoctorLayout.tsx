@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
-import { useNavigate, NavLink, Outlet } from 'react-router-dom';
+import { useNavigate, NavLink, Outlet, Link } from 'react-router-dom';
 import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useDoctorContext } from '../../hooks/useDoctorContext';
@@ -78,8 +78,8 @@ export default function DoctorLayout() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-cyan-50">
-      <div className="bg-teal-700 text-white px-5 py-3 flex justify-between items-center shadow">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-teal-50 via-white to-cyan-50">
+      <div className="bg-teal-700 text-white px-5 py-3 flex justify-between items-center shadow shrink-0">
         <div className="text-lg font-semibold">{clinicName}</div>
         <div className="text-sm flex items-center gap-2">
           {user?.firstName && <>Dr. {user.firstName}</>}
@@ -91,8 +91,8 @@ export default function DoctorLayout() {
         </div>
       </div>
 
-      <div className="flex">
-        <aside className="w-72 bg-teal-800 text-white p-5 space-y-4 min-h-[calc(100vh-52px)]">
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-72 bg-teal-800 text-white p-5 space-y-4 shrink-0 overflow-y-auto flex flex-col">
           <div className="text-xl font-bold">Espace Médecin</div>
           <nav className="space-y-2">
             {Item('/doctor', UserRound, 'Dashboard')}
@@ -103,12 +103,17 @@ export default function DoctorLayout() {
             {Item('/doctor/support', LifeBuoy, 'Support')}
             {Item('/doctor/settings', Settings, 'Paramètres')}
           </nav>
-          <div className="pt-6">
+          <div className="pt-6 mt-auto">
             <LogoutButton />
+            <p className="text-xs text-teal-200/70 mt-3">
+              <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+              {" · "}
+              <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+            </p>
           </div>
         </aside>
 
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 overflow-y-auto">
           <Outlet />
         </main>
       </div>

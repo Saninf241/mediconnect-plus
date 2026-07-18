@@ -1,5 +1,5 @@
 // src/components/layouts/AssureurLayout.tsx
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, Link } from "react-router-dom";
 import {
   FileText,
   Users,
@@ -57,9 +57,9 @@ export default function AssureurLayout() {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-indigo-600 text-white p-6 flex flex-col shrink-0">
+      <aside className="w-64 bg-indigo-600 text-white p-6 flex flex-col shrink-0 overflow-y-auto">
         <h2 className="text-2xl font-bold mb-6">Assureur</h2>
 
         <nav className="space-y-1 flex-1">
@@ -81,6 +81,11 @@ export default function AssureurLayout() {
 
         <div className="mt-6">
           <LogoutButton />
+          <p className="text-xs text-indigo-100/70 mt-3">
+            <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+            {" · "}
+            <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+          </p>
         </div>
       </aside>
 

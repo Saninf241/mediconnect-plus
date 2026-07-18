@@ -1,5 +1,5 @@
 // src/components/layouts/MultispecialistAdminLayout.tsx
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, Link } from "react-router-dom";
 import LogoutButton from "../ui/LogoutButton";
 
 const NavItem = ({ to, children }: { to: string; children: React.ReactNode }) => (
@@ -28,8 +28,8 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 
 export default function MultispecialistAdminLayout() {
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      <aside className="w-72 bg-sky-800 text-white p-4 flex flex-col justify-between">
+    <div className="flex h-screen overflow-hidden bg-gray-100">
+      <aside className="w-72 bg-sky-800 text-white p-4 flex flex-col justify-between overflow-y-auto shrink-0">
         <div>
           <div className="mb-8">
             <h2 className="text-xl font-bold">Espace Dirigeant</h2>
@@ -62,6 +62,11 @@ export default function MultispecialistAdminLayout() {
 
         <div className="pt-6 border-t border-sky-700">
           <LogoutButton />
+          <p className="text-xs text-sky-100/60 mt-3">
+            <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+            {" · "}
+            <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+          </p>
         </div>
       </aside>
 

@@ -23,9 +23,9 @@ export default function DeveloperLayout() {
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-800 text-white p-6 space-y-4">
+      <aside className="w-64 bg-slate-800 text-white p-6 space-y-4 flex flex-col overflow-y-auto shrink-0">
         <h2 className="text-2xl font-bold mb-2">Développeur</h2>
         <p className="text-xs text-slate-300 mb-4">
           {user?.primaryEmailAddress?.emailAddress}
@@ -45,13 +45,18 @@ export default function DeveloperLayout() {
           ))}
         </nav>
 
-        <div className="mt-8">
+        <div className="mt-auto pt-8">
           <button
             onClick={handleLogout}
             className="text-sm text-red-300 hover:underline"
           >
             Se déconnecter
           </button>
+          <p className="text-xs text-slate-400 mt-3">
+            <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+            {" · "}
+            <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+          </p>
         </div>
       </aside>
 

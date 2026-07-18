@@ -1,7 +1,7 @@
 // src/components/layouts/MultispecialistDoctorLayout.tsx
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, Link } from "react-router-dom";
 import { Stethoscope, Users, PlusSquare, History, Gauge, Settings, LifeBuoy } from "lucide-react";
 import { toast } from "react-toastify";
 import { supabase } from "../../lib/supabase";
@@ -72,9 +72,9 @@ export default function MultispecialistDoctorLayout() {
   }, [doctorInfo, lastChecked]);
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-sky-50 to-white">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-sky-50 to-white">
       {/* Header simple */}
-      <header className="fixed top-0 left-0 right-0 h-14 bg-sky-700 text-white flex items-center justify-between px-4 shadow">
+      <header className="h-14 bg-sky-700 text-white flex items-center justify-between px-4 shadow shrink-0">
         <div className="font-semibold">Cabinet MultiSpécialiste</div>
         {isTrusted && (
           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
@@ -83,27 +83,34 @@ export default function MultispecialistDoctorLayout() {
         )}
       </header>
 
-      {/* Sidebar */}
-      <aside className="w-72 bg-sky-800 text-white pt-16 p-5 space-y-4">
-        <div className="text-xl font-bold mb-2">Espace Médecin</div>
-        <nav className="space-y-2">
-          <Item to="/multispecialist/doctor" icon={Gauge} label="Dashboard" exact />
-          <Item to="patients" icon={Users} label="Mes patients" />
-          <Item to="new-consultation" icon={PlusSquare} label="Nouvelle consultation" />
-          <Item to="consultation-follow-up" icon={History} label="Suivi des consultations" />
-          <Item to="performance" icon={Stethoscope} label="Performance" />
-          <Item to="support" icon={LifeBuoy} label="Support" />
-          <Item to="settings" icon={Settings} label="Paramètres" />
-        </nav>
-        <div className="mt-6">
-          <LogoutButton />
-        </div>
-      </aside>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <aside className="w-72 bg-sky-800 text-white p-5 space-y-4 shrink-0 overflow-y-auto flex flex-col">
+          <div className="text-xl font-bold mb-2">Espace Médecin</div>
+          <nav className="space-y-2">
+            <Item to="/multispecialist/doctor" icon={Gauge} label="Dashboard" exact />
+            <Item to="patients" icon={Users} label="Mes patients" />
+            <Item to="new-consultation" icon={PlusSquare} label="Nouvelle consultation" />
+            <Item to="consultation-follow-up" icon={History} label="Suivi des consultations" />
+            <Item to="performance" icon={Stethoscope} label="Performance" />
+            <Item to="support" icon={LifeBuoy} label="Support" />
+            <Item to="settings" icon={Settings} label="Paramètres" />
+          </nav>
+          <div className="mt-auto pt-6">
+            <LogoutButton />
+            <p className="text-xs text-white/60 mt-3">
+              <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+              {" · "}
+              <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+            </p>
+          </div>
+        </aside>
 
-      {/* Contenu */}
-      <main className="flex-1 pt-16 p-6">
-        <Outlet />
-      </main>
+        {/* Contenu */}
+        <main className="flex-1 p-6 overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

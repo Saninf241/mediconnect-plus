@@ -1,5 +1,5 @@
 // src/components/layouts/SpecialistSecretaryLayout.tsx
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, Link } from "react-router-dom";
 import LogoutButton from "../ui/LogoutButton";
 
 const linkBase =
@@ -9,8 +9,8 @@ const linkInactive = "text-teal-100";
 
 export default function SpecialistSecretaryLayout() {
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-64 bg-teal-800 text-white p-4">
+    <div className="flex h-screen overflow-hidden">
+      <aside className="w-64 bg-teal-800 text-white p-4 flex flex-col overflow-y-auto shrink-0">
         <h2 className="text-xl font-bold mb-4">Espace Secrétaire</h2>
 
         <nav className="space-y-2">
@@ -42,8 +42,13 @@ export default function SpecialistSecretaryLayout() {
           </NavLink>
         </nav>
 
-        <div className="mt-6">
+        <div className="mt-auto pt-6">
           <LogoutButton />
+          <p className="text-xs text-teal-100/60 mt-3">
+            <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+            {" · "}
+            <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+          </p>
         </div>
       </aside>
 
