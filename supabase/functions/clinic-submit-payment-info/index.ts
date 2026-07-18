@@ -15,6 +15,34 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+async function notifyDev(subject: string, text: string) {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  const from = Deno.env.get("RESEND_FROM_EMAIL");
+  const to = Deno.env.get("DEV_NOTIFICATION_EMAIL");
+  if (!apiKey || !from || !to) {
+    console.warn("[clinic-submit-payment-info] secrets manquants, notif dev ignoree");
+    return;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, subject, text }),
+    });
+    if (!res.ok) console.error("[clinic-submit-payment-info] Resend error:", await res.text());
+  } catch (e) {
+    // Ne doit jamais faire echouer la soumission cote cabinet.
+    console.error("[clinic-submit-payment-info] notifyDev failed:", e);
+  }
+}
+
+function maskAccountNumber(v: string | null | undefined) {
+  if (!v) return "—";
+  const trimmed = v.replace(/\s+/g, "");
+  if (trimmed.length <= 4) return trimmed;
+  return `${"•".repeat(trimmed.length - 4)}${trimmed.slice(-4)}`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -49,7 +77,7 @@ serve(async (req) => {
 
     const { data: clinic, error: clinicErr } = await supabase
       .from("clinics")
-      .select("type")
+      .select("type, name")
       .eq("id", staffRow.clinic_id)
       .maybeSingle();
 
@@ -109,6 +137,12 @@ serve(async (req) => {
       );
     }
 
+    const { data: existing } = await supabase
+      .from("clinic_payment_info")
+      .select("id")
+      .eq("clinic_id", staffRow.clinic_id)
+      .maybeSingle();
+
     const { error: upsertErr } = await supabase
       .from("clinic_payment_info")
       .upsert(
@@ -137,6 +171,19 @@ serve(async (req) => {
       );
 
     if (upsertErr) throw upsertErr;
+
+    await notifyDev(
+      `[MediConnect+] ${existing ? "Modification" : "Nouvelle soumission"} de coordonnées de paiement à vérifier`,
+      [
+        `${existing ? "Modification" : "Nouvelle soumission"} de coordonnées de paiement pour ${clinic.name ?? staffRow.clinic_id}.`,
+        `Soumis par : ${staffRow.name ?? "?"} (${staffRow.role})`,
+        payment_method === "bank_transfer"
+          ? `Virement — ${bank_name} — compte se terminant par ${maskAccountNumber(account_number)}`
+          : `Mobile money — ${mobile_money_provider} — ${maskAccountNumber(mobile_money_number)}`,
+        ``,
+        `À vérifier dans l'espace développeur (Gérer cabinets & assureurs).`,
+      ].join("\n")
+    );
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
