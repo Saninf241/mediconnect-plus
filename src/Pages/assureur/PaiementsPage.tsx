@@ -26,6 +26,7 @@ type Batch = {
   id: string;
   clinic_id: string | null;
   amount: number | null;
+  commission: number | null;
   total_paid: number | null;
   status: string | null;
   period_start: string | null;
@@ -65,7 +66,7 @@ export default function PaiementsPage() {
       supabase
         .from("payment_batches")
         .select(
-          "id, clinic_id, amount, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, clinic:clinic_id(name)"
+          "id, clinic_id, amount, commission, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, clinic:clinic_id(name)"
         )
         .order("created_at", { ascending: false }),
     ]);
@@ -97,17 +98,17 @@ export default function PaiementsPage() {
   const pendingByClinic = useMemo(() => {
     const map = new Map<
       string,
-      { clinicId: string; name: string; count: number; amount: number; notPriced: number }
+      { clinicId: string; name: string; count: number; amount: number; notPricedIds: string[] }
     >();
     for (const c of pending) {
       const key = c.clinic_id ?? "unknown";
       const entry =
-        map.get(key) ?? { clinicId: key, name: c.clinic?.name ?? "Clinique inconnue", count: 0, amount: 0, notPriced: 0 };
+        map.get(key) ?? { clinicId: key, name: c.clinic?.name ?? "Clinique inconnue", count: 0, amount: 0, notPricedIds: [] };
       if (c.pricing_status === "computed") {
         entry.count += 1;
         entry.amount += c.insurer_amount ?? 0;
       } else {
-        entry.notPriced += 1;
+        entry.notPricedIds.push(c.id);
       }
       map.set(key, entry);
     }
@@ -214,27 +215,43 @@ export default function PaiementsPage() {
         ) : (
           <div className="space-y-2">
             {pendingByClinic.map((c) => (
-              <Card key={c.clinicId} className="p-4 flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-medium">{c.name}</p>
-                  <p className="text-sm text-gray-500">
-                    {c.count} consultation{c.count > 1 ? "s" : ""} prête{c.count > 1 ? "s" : ""} •{" "}
-                    {c.amount.toLocaleString()} FCFA
-                    {c.notPriced > 0 && (
-                      <span className="text-orange-600">
-                        {" "}
-                        • {c.notPriced} en attente de tarification (à recalculer sur Rapports)
-                      </span>
-                    )}
-                  </p>
+              <Card key={c.clinicId} className="p-4 space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="font-medium">{c.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {c.count} consultation{c.count > 1 ? "s" : ""} prête{c.count > 1 ? "s" : ""} •{" "}
+                      {c.amount.toLocaleString()} FCFA
+                    </p>
+                  </div>
+                  <Button
+                    className="bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                    onClick={() => handleGenerate(c.clinicId)}
+                    disabled={c.count === 0 || generatingClinicId === c.clinicId}
+                  >
+                    {generatingClinicId === c.clinicId ? "..." : "Générer le lot"}
+                  </Button>
                 </div>
-                <Button
-                  className="bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                  onClick={() => handleGenerate(c.clinicId)}
-                  disabled={c.count === 0 || generatingClinicId === c.clinicId}
-                >
-                  {generatingClinicId === c.clinicId ? "..." : "Générer le lot"}
-                </Button>
+
+                {c.notPricedIds.length > 0 && (
+                  <div className="text-xs text-orange-700 bg-orange-50 rounded p-2 space-y-1">
+                    <p className="font-medium">
+                      {c.notPricedIds.length} consultation{c.notPricedIds.length > 1 ? "s" : ""} à tarifer avant de
+                      pouvoir les inclure dans un lot :
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {c.notPricedIds.map((cid) => (
+                        <button
+                          key={cid}
+                          className="underline hover:text-orange-900"
+                          onClick={() => window.open(`/assureur/consultations/${encodeURIComponent(cid)}`, "_blank")}
+                        >
+                          {cid.slice(0, 8)}…
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Card>
             ))}
           </div>
@@ -293,10 +310,14 @@ export default function PaiementsPage() {
                       <p className="font-medium">{b.clinic?.name ?? "—"}</p>
                       <p className="text-gray-500">
                         {b.consultation_count ?? "—"} consultation(s) •{" "}
-                        {(b.total_paid ?? b.amount ?? 0).toLocaleString()} FCFA
+                        {(b.amount ?? 0).toLocaleString()} FCFA
                         {b.period_start || b.period_end ? (
                           <> • Période {b.period_start ?? "—"} → {b.period_end ?? "—"}</>
                         ) : null}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Commission Mediconnect+ (1,5%) : {(b.commission ?? 0).toLocaleString()} FCFA • Net clinique :{" "}
+                        {(b.total_paid ?? 0).toLocaleString()} FCFA
                       </p>
                       <p className="text-xs text-gray-400">
                         Créé le {b.created_at ? new Date(b.created_at).toLocaleDateString("fr-FR") : "—"}

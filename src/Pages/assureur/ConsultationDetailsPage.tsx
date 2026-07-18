@@ -27,10 +27,7 @@ interface ConsultationRow {
     | { name: string | null }[]
     | null;
 
-  doctor:
-    | { id: string; name: string | null }
-    | { id: string; name: string | null }[]
-    | null;
+  doctor_id: string | null;
 
   diagnosis_code_text: string | null;
   diagnosis_code:
@@ -61,6 +58,7 @@ export default function AssureurConsultationDetailsPage() {
   const { getToken } = useAuth();
 
   const [consultation, setConsultation] = useState<ConsultationRow | null>(null);
+  const [doctorName, setDoctorName] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientRow | null>(null);
   const [membership, setMembership] = useState<MembershipRow | null>(null);
   const [insurerAgentId, setInsurerAgentId] = useState<string | null>(null);
@@ -105,7 +103,7 @@ export default function AssureurConsultationDetailsPage() {
         diagnosis_code_text,
         diagnosis_code:diagnosis_codes ( code, title ),
         clinic:clinics ( name ),
-        doctor:clinic_staff ( id, name )
+        doctor_id
       `
       )
       .eq("id", id)
@@ -118,6 +116,18 @@ export default function AssureurConsultationDetailsPage() {
     }
 
     setConsultation(consult as ConsultationRow);
+
+    // Nom du médecin via RPC dédiée -- un embed direct consultations+
+    // clinic_staff dans une même requête fonctionne, mais clinic_staff
+    // n'a plus de policy RLS générique pour l'assureur (supprimée : elle
+    // provoquait une récursion RLS sur TOUTE mise à jour de consultations,
+    // cf. migration 20260718110000).
+    const { data: doctorNameData, error: doctorNameError } = await supabase.rpc(
+      "insurer_get_doctor_name",
+      { p_consultation_id: id }
+    );
+    if (doctorNameError) console.error("[AssureurDetails] error doctor name:", doctorNameError);
+    else setDoctorName(doctorNameData ?? null);
 
     // 2) Patient
     if (consult.patient_id) {
@@ -248,17 +258,9 @@ export default function AssureurConsultationDetailsPage() {
       : consultation.clinic.name ?? "—"
     : "—";
 
-  const doctorName = consultation.doctor
-    ? Array.isArray(consultation.doctor)
-      ? consultation.doctor[0]?.name ?? "—"
-      : consultation.doctor.name ?? "—"
-    : "—";
+  const doctorLabel = doctorName ?? "—";
 
-  const doctorStaffId = consultation.doctor
-    ? Array.isArray(consultation.doctor)
-      ? consultation.doctor[0]?.id ?? null
-      : consultation.doctor.id ?? null
-    : null;
+  const doctorStaffId = consultation.doctor_id ?? null;
 
   const patientName = patient?.name ?? "—";
 
@@ -369,7 +371,7 @@ export default function AssureurConsultationDetailsPage() {
           <strong>Établissement :</strong> {clinicName}
         </p>
         <p>
-          <strong>Médecin :</strong> {doctorName}
+          <strong>Médecin :</strong> {doctorLabel}
         </p>
         <p>
           <strong>Patient :</strong> {patientName}

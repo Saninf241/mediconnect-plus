@@ -105,17 +105,20 @@ serve(async (req) => {
     for (const [gClinicId, items] of grouped.entries()) {
       const amount = items.reduce((sum, i) => sum + i.amount, 0);
 
-      // Pas de commission pour l'instant : le modele de facturation
-      // Mediconnect+ (commission, redistribution...) n'est pas encore
-      // decide -- on enregistre le montant brut, a affiner plus tard.
+      // Commission Mediconnect+ : 1,5% du montant de la transaction,
+      // retenue sur le versement a la clinique (la clinique recoit
+      // amount - commission, l'assureur voit le montant brut "amount").
+      const commission = Math.round(amount * 0.015);
+      const totalPaid = amount - commission;
+
       const { data: batch, error: batchError } = await supabase
         .from("payment_batches")
         .insert({
           insurer_id: insurerId,
           clinic_id: gClinicId,
           amount,
-          commission: 0,
-          total_paid: amount,
+          commission,
+          total_paid: totalPaid,
           status: "pending",
           period_start: periodStart ?? null,
           period_end: periodEnd ?? null,
@@ -133,7 +136,7 @@ serve(async (req) => {
 
       if (linkError) throw linkError;
 
-      batches.push({ batchId: batch.id, clinicId: gClinicId, count: items.length, amount });
+      batches.push({ batchId: batch.id, clinicId: gClinicId, count: items.length, amount, commission, totalPaid });
     }
 
     return new Response(

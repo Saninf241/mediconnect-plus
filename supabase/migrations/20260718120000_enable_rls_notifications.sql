@@ -1,0 +1,19 @@
+-- notifications avait 3 policies RLS (notifications_select_via_staff,
+-- notifications_update_via_staff, notifications_insert_by_staff) mais RLS
+-- lui-meme etait desactive sur la table (trouve via
+-- `supabase db advisors security --linked`, ERROR level) -- n'importe qui
+-- avec la cle anon pouvait donc lire/ecrire toutes les notifications de la
+-- plateforme (messages assureur<->medecin, decisions de consultation).
+--
+-- Les 3 policies existantes sont correctement scopees (verifie avant
+-- d'activer, pour ne pas transformer un simple "RLS off" en un blocage
+-- total qui casserait la messagerie) :
+-- - SELECT/UPDATE : limites aux notifications dont user_id = l'appelant
+--   (via insurer_staff/clinic_staff, matching sur clerk_user_id).
+-- - INSERT : ouvert a tout membre verifie (clinic_staff OU insurer_staff),
+--   sans contrainte sur user_id -- necessaire pour le pattern actuel
+--   (un medecin insere une notification pour l'assureur et vice-versa,
+--   cf. src/lib/queries/messages.ts:sendMessage). Pas un bug : la
+--   verification "l'appelant est bien un membre staff reel" suffit a
+--   empecher l'injection anonyme.
+alter table notifications enable row level security;
