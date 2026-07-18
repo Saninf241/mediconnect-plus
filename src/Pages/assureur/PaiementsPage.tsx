@@ -19,7 +19,9 @@ type PendingConsultation = {
   clinic_id: string | null;
   insurer_amount: number | null;
   pricing_status: string | null;
+  created_at: string | null;
   clinic: { name: string | null } | null;
+  patients: { name: string | null } | null;
 };
 
 type Batch = {
@@ -60,7 +62,7 @@ export default function PaiementsPage() {
     const [consultRes, batchesRes] = await Promise.all([
       supabase
         .from("consultations")
-        .select("id, clinic_id, insurer_amount, pricing_status, clinic:clinic_id(name)")
+        .select("id, clinic_id, insurer_amount, pricing_status, created_at, clinic:clinic_id(name), patients:patient_id(name)")
         .eq("insurer_id", ctx.insurerId)
         .eq("status", "accepted"),
       supabase
@@ -98,17 +100,27 @@ export default function PaiementsPage() {
   const pendingByClinic = useMemo(() => {
     const map = new Map<
       string,
-      { clinicId: string; name: string; count: number; amount: number; notPricedIds: string[] }
+      {
+        clinicId: string;
+        name: string;
+        count: number;
+        amount: number;
+        notPriced: { id: string; patientName: string; date: string }[];
+      }
     >();
     for (const c of pending) {
       const key = c.clinic_id ?? "unknown";
       const entry =
-        map.get(key) ?? { clinicId: key, name: c.clinic?.name ?? "Clinique inconnue", count: 0, amount: 0, notPricedIds: [] };
+        map.get(key) ?? { clinicId: key, name: c.clinic?.name ?? "Clinique inconnue", count: 0, amount: 0, notPriced: [] };
       if (c.pricing_status === "computed") {
         entry.count += 1;
         entry.amount += c.insurer_amount ?? 0;
       } else {
-        entry.notPricedIds.push(c.id);
+        entry.notPriced.push({
+          id: c.id,
+          patientName: c.patients?.name ?? "Patient inconnu",
+          date: c.created_at ? new Date(c.created_at).toLocaleDateString("fr-FR") : "—",
+        });
       }
       map.set(key, entry);
     }
@@ -233,20 +245,20 @@ export default function PaiementsPage() {
                   </Button>
                 </div>
 
-                {c.notPricedIds.length > 0 && (
+                {c.notPriced.length > 0 && (
                   <div className="text-xs text-orange-700 bg-orange-50 rounded p-2 space-y-1">
                     <p className="font-medium">
-                      {c.notPricedIds.length} consultation{c.notPricedIds.length > 1 ? "s" : ""} à tarifer avant de
+                      {c.notPriced.length} consultation{c.notPriced.length > 1 ? "s" : ""} à tarifer avant de
                       pouvoir les inclure dans un lot :
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {c.notPricedIds.map((cid) => (
+                    <div className="flex flex-col gap-1">
+                      {c.notPriced.map((nc) => (
                         <button
-                          key={cid}
-                          className="underline hover:text-orange-900"
-                          onClick={() => window.open(`/assureur/consultations/${encodeURIComponent(cid)}`, "_blank")}
+                          key={nc.id}
+                          className="text-left underline hover:text-orange-900"
+                          onClick={() => window.open(`/assureur/consultations/${encodeURIComponent(nc.id)}`, "_blank")}
                         >
-                          {cid.slice(0, 8)}…
+                          {nc.patientName} — {nc.date}
                         </button>
                       ))}
                     </div>
