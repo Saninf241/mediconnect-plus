@@ -20,9 +20,9 @@ export default function PharmacyLayout() {
         <div className="mt-auto pt-6">
           <LogoutButton />
           <p className="text-xs text-gray-500 mt-3">
-            <Link to="/mentions-legales" className="hover:text-indigo-600">Mentions légales</Link>
+            <Link to="/mentions-legales" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600">Mentions légales</Link>
             {" · "}
-            <Link to="/politique-confidentialite" className="hover:text-indigo-600">Confidentialité</Link>
+            <Link to="/politique-confidentialite" target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600">Confidentialité</Link>
           </p>
         </div>
       </aside>

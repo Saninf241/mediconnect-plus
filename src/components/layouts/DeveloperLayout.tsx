@@ -53,9 +53,9 @@ export default function DeveloperLayout() {
             Se déconnecter
           </button>
           <p className="text-xs text-slate-400 mt-3">
-            <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+            <Link to="/mentions-legales" target="_blank" rel="noopener noreferrer" className="hover:text-white">Mentions légales</Link>
             {" · "}
-            <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+            <Link to="/politique-confidentialite" target="_blank" rel="noopener noreferrer" className="hover:text-white">Confidentialité</Link>
           </p>
         </div>
       </aside>

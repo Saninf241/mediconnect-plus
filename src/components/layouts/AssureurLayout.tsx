@@ -82,9 +82,9 @@ export default function AssureurLayout() {
         <div className="mt-6">
           <LogoutButton />
           <p className="text-xs text-indigo-100/70 mt-3">
-            <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+            <Link to="/mentions-legales" target="_blank" rel="noopener noreferrer" className="hover:text-white">Mentions légales</Link>
             {" · "}
-            <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+            <Link to="/politique-confidentialite" target="_blank" rel="noopener noreferrer" className="hover:text-white">Confidentialité</Link>
           </p>
         </div>
       </aside>

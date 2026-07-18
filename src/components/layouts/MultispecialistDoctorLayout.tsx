@@ -99,9 +99,9 @@ export default function MultispecialistDoctorLayout() {
           <div className="mt-auto pt-6">
             <LogoutButton />
             <p className="text-xs text-white/60 mt-3">
-              <Link to="/mentions-legales" className="hover:text-white">Mentions légales</Link>
+              <Link to="/mentions-legales" target="_blank" rel="noopener noreferrer" className="hover:text-white">Mentions légales</Link>
               {" · "}
-              <Link to="/politique-confidentialite" className="hover:text-white">Confidentialité</Link>
+              <Link to="/politique-confidentialite" target="_blank" rel="noopener noreferrer" className="hover:text-white">Confidentialité</Link>
             </p>
           </div>
         </aside>
