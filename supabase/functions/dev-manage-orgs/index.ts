@@ -52,7 +52,10 @@ type Action =
       national_id?: string | null;
       member_no?: string | null;
       plan_code?: string | null;
-    };
+    }
+  | { action: "list_pending_payment_info" }
+  | { action: "verify_clinic_payment_info"; id: string }
+  | { action: "reject_clinic_payment_info"; id: string; reason: string };
 
 // Supprimer une ligne clinic_staff/insurer_staff cote Supabase ne libere
 // pas l'email cote Clerk : le compte (si l'invitation a ete acceptee) ou
@@ -236,6 +239,52 @@ serve(async (req) => {
         created_by_name: callerName,
         created_by_email: callerEmail,
       });
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_pending_payment_info") {
+      const { data, error } = await supabase
+        .from("clinic_payment_info")
+        .select(
+          "id, clinic_id, payment_method, bank_name, account_number, account_holder_name, mobile_money_provider, mobile_money_number, status, submitted_by_name, submitted_by_role, submitted_at, rejection_reason, clinics:clinic_id(name)"
+        )
+        .order("submitted_at", { ascending: false });
+      if (error) throw error;
+      return new Response(JSON.stringify({ payment_info: data }), { headers: cors });
+    }
+
+    if (input.action === "verify_clinic_payment_info") {
+      const callerEmail =
+        (caller?.email_addresses ?? []).find((e: any) => e.id === caller?.primary_email_address_id)
+          ?.email_address ?? caller?.email_addresses?.[0]?.email_address ?? null;
+
+      const { error } = await supabase
+        .from("clinic_payment_info")
+        .update({
+          status: "verified",
+          verified_by_email: callerEmail,
+          verified_at: new Date().toISOString(),
+          rejection_reason: null,
+        })
+        .eq("id", input.id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "reject_clinic_payment_info") {
+      if (!input.reason?.trim()) {
+        return new Response(JSON.stringify({ error: "Motif de rejet requis" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase
+        .from("clinic_payment_info")
+        .update({
+          status: "rejected",
+          rejection_reason: input.reason.trim(),
+          verified_by_email: null,
+          verified_at: null,
+        })
+        .eq("id", input.id);
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }

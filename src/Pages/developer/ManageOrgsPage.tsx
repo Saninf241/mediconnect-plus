@@ -35,6 +35,23 @@ type Convention = {
   insurers: { id: string; name: string } | null;
 };
 
+type PaymentInfo = {
+  id: string;
+  clinic_id: string;
+  payment_method: "bank_transfer" | "mobile_money";
+  bank_name: string | null;
+  account_number: string | null;
+  account_holder_name: string | null;
+  mobile_money_provider: string | null;
+  mobile_money_number: string | null;
+  status: "pending" | "verified" | "rejected";
+  submitted_by_name: string | null;
+  submitted_by_role: string | null;
+  submitted_at: string;
+  rejection_reason: string | null;
+  clinics: { name: string } | null;
+};
+
 type DirectoryMember = {
   id: string;
   full_name: string;
@@ -77,6 +94,13 @@ export default function ManageOrgsPage() {
   });
   const [addingDirectoryMember, setAddingDirectoryMember] = useState(false);
 
+  // Coordonnees de paiement (RIB / mobile money) en attente de verification.
+  const [paymentInfoList, setPaymentInfoList] = useState<PaymentInfo[]>([]);
+  const [paymentInfoFilter, setPaymentInfoFilter] = useState<"pending" | "all">("pending");
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [rejectingFor, setRejectingFor] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
   async function call(body: unknown) {
     const token = await getToken();
     const res = await fetch(`${FUNCTIONS_BASE}/dev-manage-orgs`, {
@@ -92,18 +116,46 @@ export default function ManageOrgsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [c, i, cv] = await Promise.all([
+      const [c, i, cv, pi] = await Promise.all([
         call({ action: "list_clinics" }),
         call({ action: "list_insurers" }),
         call({ action: "list_conventions" }),
+        call({ action: "list_pending_payment_info" }),
       ]);
       setClinics(c.clinics ?? []);
       setInsurers(i.insurers ?? []);
       setConventions(cv.conventions ?? []);
+      setPaymentInfoList(pi.payment_info ?? []);
     } catch (err: any) {
       toast.error(err.message || "Impossible de charger la liste");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function verifyPaymentInfo(id: string) {
+    setVerifyingId(id);
+    try {
+      await call({ action: "verify_clinic_payment_info", id });
+      toast.success("Coordonnées vérifiées");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la vérification");
+    } finally {
+      setVerifyingId(null);
+    }
+  }
+
+  async function rejectPaymentInfo() {
+    if (!rejectingFor || !rejectReason.trim()) return;
+    try {
+      await call({ action: "reject_clinic_payment_info", id: rejectingFor, reason: rejectReason.trim() });
+      toast.success("Coordonnées rejetées");
+      setRejectingFor(null);
+      setRejectReason("");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec du rejet");
     }
   }
 
@@ -259,6 +311,92 @@ export default function ManageOrgsPage() {
                 </button>
               </Card>
             ))}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Coordonnées de paiement à vérifier</h2>
+              <div className="flex gap-2 text-xs">
+                <button
+                  onClick={() => setPaymentInfoFilter("pending")}
+                  className={`px-2 py-1 rounded border ${paymentInfoFilter === "pending" ? "bg-gray-900 text-white" : ""}`}
+                >
+                  En attente
+                </button>
+                <button
+                  onClick={() => setPaymentInfoFilter("all")}
+                  className={`px-2 py-1 rounded border ${paymentInfoFilter === "all" ? "bg-gray-900 text-white" : ""}`}
+                >
+                  Toutes
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">
+              Toute soumission/modification par un cabinet repart en attente — ne devient la
+              destination active des virements qu'après vérification manuelle ici.
+            </p>
+            {paymentInfoList.filter((p) => paymentInfoFilter === "all" || p.status === "pending").length === 0 && (
+              <p className="text-sm text-gray-500">Aucune soumission à afficher.</p>
+            )}
+            {paymentInfoList
+              .filter((p) => paymentInfoFilter === "all" || p.status === "pending")
+              .map((p) => (
+                <Card key={p.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{p.clinics?.name ?? "—"}</div>
+                      <div className="text-xs text-gray-500">
+                        Soumis par {p.submitted_by_name ?? "?"} ({p.submitted_by_role ?? "?"}) le{" "}
+                        {new Date(p.submitted_at).toLocaleDateString("fr-FR")}
+                      </div>
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-1 rounded font-medium ${
+                        p.status === "verified"
+                          ? "bg-green-100 text-green-800"
+                          : p.status === "rejected"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-yellow-100 text-yellow-800"
+                      }`}
+                    >
+                      {p.status === "verified" ? "Vérifié" : p.status === "rejected" ? "Rejeté" : "En attente"}
+                    </span>
+                  </div>
+
+                  <div className="text-sm text-gray-700">
+                    {p.payment_method === "bank_transfer" ? (
+                      <>
+                        Virement — {p.bank_name} · {p.account_number} · titulaire : {p.account_holder_name}
+                      </>
+                    ) : (
+                      <>
+                        Mobile money — {p.mobile_money_provider} · {p.mobile_money_number}
+                      </>
+                    )}
+                  </div>
+
+                  {p.status === "rejected" && p.rejection_reason && (
+                    <p className="text-xs text-red-700">Motif : {p.rejection_reason}</p>
+                  )}
+
+                  {p.status !== "verified" && (
+                    <div className="flex gap-2">
+                      <Button onClick={() => verifyPaymentInfo(p.id)} disabled={verifyingId === p.id}>
+                        {verifyingId === p.id ? "..." : "Vérifier"}
+                      </Button>
+                      <button
+                        onClick={() => {
+                          setRejectingFor(p.id);
+                          setRejectReason("");
+                        }}
+                        className="text-red-600 text-sm hover:underline"
+                      >
+                        Rejeter
+                      </button>
+                    </div>
+                  )}
+                </Card>
+              ))}
           </section>
 
           <section className="space-y-3">
@@ -429,6 +567,30 @@ export default function ManageOrgsPage() {
             ))}
           </section>
         </>
+      )}
+
+      {rejectingFor && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <Card className="max-w-md w-full space-y-3">
+            <h3 className="font-semibold text-lg">Rejeter ces coordonnées de paiement</h3>
+            <textarea
+              className="w-full border rounded p-2 text-sm"
+              rows={3}
+              placeholder="Motif du rejet (visible par le cabinet)"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={() => setRejectingFor(null)} className="px-4 py-2 text-sm rounded border">
+                Annuler
+              </button>
+              <Button onClick={rejectPaymentInfo} disabled={!rejectReason.trim()}>
+                Rejeter
+              </Button>
+            </div>
+          </Card>
+        </div>
       )}
 
       {confirmTarget && (

@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import { useUser } from "@clerk/clerk-react";
 import { Input } from "../../../components/ui/input";
 import { Button } from "../../../components/ui/button";
+import ClinicPaymentInfoCard from "../../../components/ui/ClinicPaymentInfoCard";
 import { toast } from "react-toastify";
 
 export default function SettingsPage() {
@@ -91,6 +92,8 @@ export default function SettingsPage() {
           Enregistrer
         </Button>
       </div>
+
+      <ClinicPaymentInfoCard />
 
       {/* 👇 Onboarding Vidéo Express */}
       <div className="mt-10 space-y-4">

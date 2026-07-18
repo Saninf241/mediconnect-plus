@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useClinicId } from "../../../hooks/useClinicId";
 import { Card, CardContent } from "../../../components/ui/card";
+import ClinicPaymentInfoCard from "../../../components/ui/ClinicPaymentInfoCard";
 
 interface ClinicRow {
   id: string;
@@ -285,6 +286,8 @@ export default function AdminSettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ClinicPaymentInfoCard />
 
       {/* Règles d'accès */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
