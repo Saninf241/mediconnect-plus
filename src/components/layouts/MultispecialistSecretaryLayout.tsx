@@ -34,6 +34,15 @@ export default function MultispecialistSecretaryLayout() {
           </NavLink>
 
           <NavLink
+            to="/multispecialist/secretary/appointments"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            Rendez-vous
+          </NavLink>
+
+          <NavLink
             to="/multispecialist/secretary/support"
             className={({ isActive }) =>
               `${linkBase} ${isActive ? linkActive : linkInactive}`

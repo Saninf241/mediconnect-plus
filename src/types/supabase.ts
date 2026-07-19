@@ -276,7 +276,7 @@ export type Database = {
       appointments: {
         Row: {
           appointment_date: string
-          clinic_id: string | null
+          clinic_id: string
           created_at: string | null
           doctor_id: string | null
           id: string
@@ -286,7 +286,7 @@ export type Database = {
         }
         Insert: {
           appointment_date: string
-          clinic_id?: string | null
+          clinic_id: string
           created_at?: string | null
           doctor_id?: string | null
           id?: string

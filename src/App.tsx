@@ -15,6 +15,7 @@ import SpecialistSecretaryLayout from './components/layouts/SpecialistSecretaryL
 import DoctorDashboardPage from './Pages/multispecialist/doctor/DoctorDashboardPage';
 import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage';
 import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
+import SecretaryAppointmentsPage from './Pages/multispecialist/secretary/SecretaryAppointmentsPage';
 import SupportPage from './Pages/multispecialist/secretary/SupportPage';
 import DoctorSupportPage from './Pages/doctor/SupportPage';
 import MultiDoctorSupportPage from './Pages/multispecialist/doctor/SupportPage';
@@ -658,6 +659,7 @@ export default function App() {
       <Route index element={<SecretaryPatientsPage />} />
       <Route path="patients" element={<SecretaryPatientsPage />} />
       <Route path="new" element={<NewPatientWizard />} />
+      <Route path="appointments" element={<SecretaryAppointmentsPage />} />
       <Route path="support" element={<SupportPage />} />
     </Route>
 
@@ -673,6 +675,7 @@ export default function App() {
       <Route index element={<SecretaryPatientsPage />} />
       <Route path="patients" element={<SecretaryPatientsPage />} />
       <Route path="new" element={<NewPatientWizard />} />
+      <Route path="appointments" element={<SecretaryAppointmentsPage />} />
       <Route path="support" element={<SupportPage />} />
     </Route>
 

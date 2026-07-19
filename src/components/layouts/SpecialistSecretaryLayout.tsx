@@ -33,6 +33,15 @@ export default function SpecialistSecretaryLayout() {
           </NavLink>
 
           <NavLink
+            to="/specialist/secretary/appointments"
+            className={({ isActive }) =>
+              `${linkBase} ${isActive ? linkActive : linkInactive}`
+            }
+          >
+            Rendez-vous
+          </NavLink>
+
+          <NavLink
             to="/specialist/secretary/support"
             className={({ isActive }) =>
               `${linkBase} ${isActive ? linkActive : linkInactive}`
