@@ -23,6 +23,23 @@ interface ConsultationRow {
   created_at: string | null;
   updated_at?: string | null;
   patients?: { name?: string | null } | null;
+  insurer_amount: number | null;
+  payment_status: string | null;
+  payment_date: string | null;
+  pricing_status: string | null;
+}
+
+interface BatchRow {
+  id: string;
+  amount: number | null;
+  commission: number | null;
+  total_paid: number | null;
+  status: string | null;
+  consultation_count: number | null;
+  period_start: string | null;
+  period_end: string | null;
+  created_at: string | null;
+  paid_at: string | null;
 }
 
 interface DoctorFinanceRow {
@@ -66,6 +83,15 @@ function getStartDate(period: PeriodFilter): string | null {
   return null;
 }
 
+// Le statut "paid" n'est jamais ecrit sur consultations.status (le
+// workflow de remboursement par lots ne touche que payment_status/
+// payment_date, status reste "accepted") -- le statut financier reel
+// prend en compte les deux.
+function effectiveFinanceStatus(row: { status: string | null; payment_status: string | null }) {
+  if ((row.payment_status ?? "").toLowerCase() === "paid") return "paid";
+  return (row.status ?? "").toLowerCase();
+}
+
 function statusLabel(status: string | null) {
   const s = (status ?? "").toLowerCase();
   if (s === "sent") return "En attente assureur";
@@ -101,6 +127,7 @@ export default function AdminPaymentsPage() {
 
   const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
   const [consultations, setConsultations] = useState<ConsultationRow[]>([]);
+  const [batches, setBatches] = useState<BatchRow[]>([]);
 
   const [page, setPage] = useState(1);
   const pageSize = 12;
@@ -136,7 +163,9 @@ export default function AdminPaymentsPage() {
 
         let query = supabase
           .from("consultations")
-          .select("id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name )")
+          .select(
+            "id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name ), insurer_amount, payment_status, payment_date, pricing_status"
+          )
           .eq("clinic_id", clinicId)
           .order("created_at", { ascending: false });
 
@@ -152,6 +181,21 @@ export default function AdminPaymentsPage() {
           setNote("Erreur lors du chargement des données financières.");
         } else {
           setConsultations((consultationsRes.data ?? []) as ConsultationRow[]);
+        }
+
+        // Lots de remboursement assureur pour ce cabinet (montant net apres
+        // commission Mediconnect+, statut, date de paiement).
+        const batchesRes = await supabase
+          .from("payment_batches")
+          .select("id, amount, commission, total_paid, status, consultation_count, period_start, period_end, created_at, paid_at")
+          .eq("clinic_id", clinicId)
+          .order("created_at", { ascending: false });
+
+        if (batchesRes.error) {
+          console.error("[AdminPaymentsPage] payment_batches error:", batchesRes.error);
+          setBatches([]);
+        } else {
+          setBatches((batchesRes.data ?? []) as BatchRow[]);
         }
       } catch (error) {
         console.error("[AdminPaymentsPage] unexpected error:", error);
@@ -180,14 +224,14 @@ export default function AdminPaymentsPage() {
 
   const financeBase = useMemo(() => {
     return consultations.filter((c) => {
-      const status = (c.status ?? "").toLowerCase();
+      const status = effectiveFinanceStatus(c);
       return ["sent", "accepted", "paid", "rejected"].includes(status);
     });
   }, [consultations]);
 
   const filteredRows = useMemo(() => {
     return financeBase.filter((c) => {
-      const status = (c.status ?? "").toLowerCase();
+      const status = effectiveFinanceStatus(c);
       const doctorId = c.doctor_id ?? "";
       const q = searchTerm.trim().toLowerCase();
 
@@ -226,8 +270,11 @@ export default function AdminPaymentsPage() {
     let rejectedCount = 0;
 
     filteredRows.forEach((row) => {
-      const status = (row.status ?? "").toLowerCase();
-      const amount = Number(row.amount) || 0;
+      const status = effectiveFinanceStatus(row);
+      // Une fois calcule/approuve par l'assureur, insurer_amount est le
+      // montant qui compte reellement -- le montant declare (amount)
+      // n'est plus qu'indicatif a ce stade.
+      const amount = Number(row.insurer_amount ?? row.amount) || 0;
 
       totalAmount += amount;
 
@@ -288,8 +335,8 @@ export default function AdminPaymentsPage() {
       if (!doctorId || !map.has(doctorId)) return;
 
       const row = map.get(doctorId)!;
-      const status = (c.status ?? "").toLowerCase();
-      const amount = Number(c.amount) || 0;
+      const status = effectiveFinanceStatus(c);
+      const amount = Number(c.insurer_amount ?? c.amount) || 0;
 
       row.totalCount += 1;
       row.totalAmount += amount;
@@ -487,6 +534,59 @@ export default function AdminPaymentsPage() {
         </Card>
       </div>
 
+      {/* Lots de remboursement assureur */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Lots de remboursement assureur</h2>
+            <p className="text-sm text-gray-500">
+              Regroupements de consultations que l'assureur a validés puis mis en lot pour paiement. Le montant net
+              tient compte de la commission Mediconnect+ (1,5%).
+            </p>
+          </div>
+
+          {batches.length === 0 ? (
+            <p className="text-sm text-gray-500">Aucun lot de remboursement pour le moment.</p>
+          ) : (
+            <div className="space-y-2">
+              {batches.map((b) => {
+                const isPaid = (b.status ?? "").toLowerCase() === "paid";
+                return (
+                  <div
+                    key={b.id}
+                    className={`rounded-xl border px-4 py-3 ${isPaid ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-sm">
+                        <p className="font-medium text-gray-900">
+                          {b.consultation_count ?? "—"} consultation(s) • Brut {formatMoney(b.amount ?? 0)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Commission Mediconnect+ : {formatMoney(b.commission ?? 0)} • Net à recevoir :{" "}
+                          <span className="font-semibold">{formatMoney(b.total_paid ?? 0)}</span>
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Créé le {b.created_at ? new Date(b.created_at).toLocaleDateString("fr-FR") : "—"}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-1 rounded font-medium ${
+                          isPaid ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {isPaid
+                          ? `Payé${b.paid_at ? ` le ${new Date(b.paid_at).toLocaleDateString("fr-FR")}` : ""}`
+                          : "En attente de paiement"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* À surveiller + performance financière médecins */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
@@ -622,37 +722,49 @@ export default function AdminPaymentsPage() {
                       <th className="py-3 pr-4">Médecin</th>
                       <th className="py-3 pr-4">Patient</th>
                       <th className="py-3 pr-4">Statut</th>
-                      <th className="py-3 pr-4">Montant</th>
+                      <th className="py-3 pr-4">Déclaré</th>
+                      <th className="py-3 pr-4">Approuvé assureur</th>
                       <th className="py-3 pr-4">ID dossier</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedRows.map((row) => (
-                      <tr key={row.id} className="border-b last:border-b-0">
-                        <td className="py-3 pr-4">
-                          {row.created_at
-                            ? new Date(row.created_at).toLocaleString("fr-FR")
-                            : "-"}
-                        </td>
-                        <td className="py-3 pr-4 font-medium text-gray-900">
-                          {doctorMap.get(row.doctor_id ?? "") || "Médecin inconnu"}
-                        </td>
-                        <td className="py-3 pr-4 text-gray-700">{row.patients?.name || row.patient_id || "-"}</td>
-                        <td className="py-3 pr-4">
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass(
-                              row.status
-                            )}`}
-                          >
-                            {statusLabel(row.status)}
-                          </span>
-                        </td>
-                        <td className="py-3 pr-4 font-medium">
-                          {formatMoney(Number(row.amount) || 0)}
-                        </td>
-                        <td className="py-3 pr-4 text-xs text-gray-500">{row.id}</td>
-                      </tr>
-                    ))}
+                    {paginatedRows.map((row) => {
+                      const finStatus = effectiveFinanceStatus(row);
+                      return (
+                        <tr key={row.id} className="border-b last:border-b-0">
+                          <td className="py-3 pr-4">
+                            {row.created_at
+                              ? new Date(row.created_at).toLocaleString("fr-FR")
+                              : "-"}
+                          </td>
+                          <td className="py-3 pr-4 font-medium text-gray-900">
+                            {doctorMap.get(row.doctor_id ?? "") || "Médecin inconnu"}
+                          </td>
+                          <td className="py-3 pr-4 text-gray-700">{row.patients?.name || row.patient_id || "-"}</td>
+                          <td className="py-3 pr-4">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass(
+                                finStatus
+                              )}`}
+                            >
+                              {statusLabel(finStatus)}
+                            </span>
+                            {finStatus === "paid" && row.payment_date && (
+                              <span className="ml-1 text-xs text-gray-400">
+                                le {new Date(row.payment_date).toLocaleDateString("fr-FR")}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4">
+                            {formatMoney(Number(row.amount) || 0)}
+                          </td>
+                          <td className="py-3 pr-4 font-medium">
+                            {row.insurer_amount != null ? formatMoney(row.insurer_amount) : "—"}
+                          </td>
+                          <td className="py-3 pr-4 text-xs text-gray-500">{row.id}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
