@@ -36,7 +36,7 @@ serve(async (req) => {
 
     const { data: staffRow, error: staffErr } = await supabase
       .from("insurer_staff")
-      .select("id, insurer_id, role, name")
+      .select("id, insurer_id, role, email")
       .eq("clerk_user_id", callerId)
       .maybeSingle();
 
@@ -90,10 +90,10 @@ serve(async (req) => {
           // decision precedente (approuvee ou rejetee).
           status: "pending",
           proposed_by_staff_id: staffRow.id,
-          proposed_by_name: staffRow.name,
+          proposed_by_email: staffRow.email,
           proposed_at: new Date().toISOString(),
           approved_by_staff_id: null,
-          approved_by_name: null,
+          approved_by_email: null,
           approved_at: null,
           rejection_reason: null,
           updated_at: new Date().toISOString(),

@@ -36,7 +36,7 @@ serve(async (req) => {
 
     const { data: staffRow, error: staffErr } = await supabase
       .from("insurer_staff")
-      .select("id, insurer_id, role, name")
+      .select("id, insurer_id, role, email")
       .eq("clerk_user_id", callerId)
       .maybeSingle();
 
@@ -119,7 +119,7 @@ serve(async (req) => {
       .update({
         status: "approved",
         approved_by_staff_id: staffRow.id,
-        approved_by_name: staffRow.name,
+        approved_by_email: staffRow.email,
         approved_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

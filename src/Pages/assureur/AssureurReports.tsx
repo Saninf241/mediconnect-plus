@@ -195,6 +195,8 @@ export default function AssureurReports() {
         .update({
           status: "accepted",
           insurer_decision_at: new Date().toISOString(),
+          insurer_decision_by_staff_id: ctx?.staffId ?? null,
+          insurer_decision_by_email: ctx?.email ?? null,
           insurer_comment: null,
         })
         .eq("id", id);
@@ -226,6 +228,8 @@ export default function AssureurReports() {
           status: "rejected",
           insurer_comment: reason,
           insurer_decision_at: new Date().toISOString(),
+          insurer_decision_by_staff_id: ctx?.staffId ?? null,
+          insurer_decision_by_email: ctx?.email ?? null,
         })
         .eq("id", id);
 

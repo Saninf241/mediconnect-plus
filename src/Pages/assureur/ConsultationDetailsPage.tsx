@@ -15,6 +15,7 @@ interface ConsultationRow {
   patient_id: string | null;
   insurer_comment: string | null;
   insurer_decision_at: string | null;
+  insurer_decision_by_email: string | null;
   pricing_status: string | null;
   pricing_total: number | null;
   amount_delta: number | null;
@@ -56,9 +57,9 @@ interface ManualPricingRow {
   proposed_amount: number;
   justification: string | null;
   status: "pending" | "approved" | "rejected";
-  proposed_by_name: string | null;
+  proposed_by_email: string | null;
   proposed_at: string | null;
-  approved_by_name: string | null;
+  approved_by_email: string | null;
   approved_at: string | null;
   rejection_reason: string | null;
 }
@@ -125,6 +126,7 @@ export default function AssureurConsultationDetailsPage() {
         patient_id,
         insurer_comment,
         insurer_decision_at,
+        insurer_decision_by_email,
         diagnosis_code_text,
         diagnosis_code:diagnosis_codes ( code, title ),
         clinic:clinics ( name ),
@@ -210,7 +212,7 @@ export default function AssureurConsultationDetailsPage() {
     const { data: manualRow, error: manualErr } = await supabase
       .from("consultation_manual_pricing")
       .select(
-        "id, proposed_amount, justification, status, proposed_by_name, proposed_at, approved_by_name, approved_at, rejection_reason"
+        "id, proposed_amount, justification, status, proposed_by_email, proposed_at, approved_by_email, approved_at, rejection_reason"
       )
       .eq("consultation_id", id)
       .maybeSingle();
@@ -544,7 +546,7 @@ export default function AssureurConsultationDetailsPage() {
                 <p className="text-gray-700">Justification : {manualPricing.justification}</p>
               )}
               <p className="text-xs text-gray-500">
-                Proposé par {manualPricing.proposed_by_name ?? "?"}
+                Proposé par {manualPricing.proposed_by_email ?? "?"}
                 {manualPricing.proposed_at ? ` le ${new Date(manualPricing.proposed_at).toLocaleDateString("fr-FR")}` : ""}
               </p>
 
@@ -596,7 +598,7 @@ export default function AssureurConsultationDetailsPage() {
 
               {manualPricing.status === "approved" && (
                 <span className="inline-block text-xs px-2 py-1 rounded bg-green-100 text-green-800 font-medium">
-                  Approuvé par {manualPricing.approved_by_name ?? "?"}
+                  Approuvé par {manualPricing.approved_by_email ?? "?"}
                   {manualPricing.approved_at ? ` le ${new Date(manualPricing.approved_at).toLocaleDateString("fr-FR")}` : ""}
                 </span>
               )}
@@ -627,6 +629,7 @@ export default function AssureurConsultationDetailsPage() {
         </p>
         <p>
           <strong>Date de décision :</strong> {decisionDate}
+          {consultation.insurer_decision_by_email ? ` (par ${consultation.insurer_decision_by_email})` : ""}
         </p>
         <p>
           <strong>Commentaire saisi :</strong>{" "}

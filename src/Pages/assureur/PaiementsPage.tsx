@@ -36,6 +36,7 @@ type Batch = {
   consultation_count: number | null;
   created_at: string | null;
   paid_at: string | null;
+  paid_by_email: string | null;
   clinic: { name: string | null } | null;
 };
 
@@ -68,7 +69,7 @@ export default function PaiementsPage() {
       supabase
         .from("payment_batches")
         .select(
-          "id, clinic_id, amount, commission, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, clinic:clinic_id(name)"
+          "id, clinic_id, amount, commission, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, paid_by_email, clinic:clinic_id(name)"
         )
         .order("created_at", { ascending: false }),
     ]);
@@ -333,7 +334,13 @@ export default function PaiementsPage() {
                       </p>
                       <p className="text-xs text-gray-400">
                         Créé le {b.created_at ? new Date(b.created_at).toLocaleDateString("fr-FR") : "—"}
-                        {isPaid && b.paid_at ? <> • Payé le {new Date(b.paid_at).toLocaleDateString("fr-FR")}</> : null}
+                        {isPaid && b.paid_at ? (
+                          <>
+                            {" "}
+                            • Payé le {new Date(b.paid_at).toLocaleDateString("fr-FR")}
+                            {b.paid_by_email ? ` par ${b.paid_by_email}` : ""}
+                          </>
+                        ) : null}
                       </p>
                     </div>
 

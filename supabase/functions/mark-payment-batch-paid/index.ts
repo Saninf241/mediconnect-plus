@@ -33,7 +33,7 @@ serve(async (req) => {
 
     const { data: staffRow, error: staffErr } = await supabase
       .from("insurer_staff")
-      .select("id, insurer_id, role")
+      .select("id, insurer_id, role, email")
       .eq("clerk_user_id", callerId)
       .maybeSingle();
 
@@ -84,7 +84,12 @@ serve(async (req) => {
 
     const { error: updateBatchErr } = await supabase
       .from("payment_batches")
-      .update({ status: "paid", paid_at: now })
+      .update({
+        status: "paid",
+        paid_at: now,
+        paid_by_staff_id: staffRow.id,
+        paid_by_email: staffRow.email,
+      })
       .eq("id", batchId);
 
     if (updateBatchErr) throw updateBatchErr;
