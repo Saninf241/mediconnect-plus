@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
+import TodayAppointmentsCard from "../../../components/ui/TodayAppointmentsCard";
 
 type KPIs = {
   today: number;
@@ -80,6 +81,10 @@ export default function DoctorDashboardPage() {
           <div className="text-3xl font-semibold">{kpis.revenue_today.toLocaleString()} FCFA</div>
         </div>
       </div>
+
+      {doctorInfo && (
+        <TodayAppointmentsCard clinicId={doctorInfo.clinic_id} doctorId={doctorInfo.doctor_id} />
+      )}
     </div>
   );
 }

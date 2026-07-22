@@ -17,6 +17,7 @@ interface Patient {
   date_of_birth: string | null;
   national_id: string | null;
   is_assured: boolean | null;
+  fingerprint_enrolled: boolean | null;
   status: string | null;
 }
 
@@ -49,6 +50,7 @@ export default function SecretaryPatientsPage() {
 
   const [editingPatientId, setEditingPatientId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({ name: "", phone: "", date_of_birth: "" });
+  const [nameLocked, setNameLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -57,7 +59,7 @@ export default function SecretaryPatientsPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("patients")
-      .select("id, name, phone, email, date_of_birth, national_id, is_assured, status")
+      .select("id, name, phone, email, date_of_birth, national_id, is_assured, fingerprint_enrolled, status")
       .eq("clinic_id", clinicId)
       .order("name", { ascending: true });
 
@@ -111,6 +113,11 @@ export default function SecretaryPatientsPage() {
       phone: patient.phone || "",
       date_of_birth: patient.date_of_birth || "",
     });
+    // Une fois l'identité vérifiée (empreinte enregistrée) ou liée à un
+    // assureur, le nom ne doit plus pouvoir être changé en un clic : ça
+    // ouvrirait une porte à la fraude (rattacher une fiche à une autre
+    // identité assurée) sur une app dont le métier est justement d'empêcher ça.
+    setNameLocked(!!patient.is_assured || !!patient.fingerprint_enrolled);
     setEditingPatientId(patient.id);
     setIsModalOpen(true);
   };
@@ -130,7 +137,7 @@ export default function SecretaryPatientsPage() {
     const { error } = await supabase
       .from("patients")
       .update({
-        name: editForm.name.trim(),
+        ...(nameLocked ? {} : { name: editForm.name.trim() }),
         phone: editForm.phone.trim() || null,
         date_of_birth: editForm.date_of_birth,
       })
@@ -303,11 +310,23 @@ export default function SecretaryPatientsPage() {
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Modifier le patient">
         <div className="space-y-3">
-          <Input
-            placeholder="Nom"
-            value={editForm.name}
-            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-          />
+          {nameLocked ? (
+            <div>
+              <div className="rounded border bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                {editForm.name}
+              </div>
+              <p className="mt-1 text-xs text-amber-700">
+                Nom verrouillé : identité déjà vérifiée (empreinte et/ou assurance liée). Contactez
+                l'administrateur du cabinet pour une correction.
+              </p>
+            </div>
+          ) : (
+            <Input
+              placeholder="Nom"
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+            />
+          )}
           <Input
             placeholder="Téléphone"
             value={editForm.phone}

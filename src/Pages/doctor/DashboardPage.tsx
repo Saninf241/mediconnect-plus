@@ -7,6 +7,7 @@ import html2canvas from 'html2canvas';
 import { XCircle, Clock3, PartyPopper } from 'lucide-react';
 import { useDoctorContext } from '../../hooks/useDoctorContext';
 import { useDoctorScope } from '../../hooks/useDoctorScope';
+import TodayAppointmentsCard from '../../components/ui/TodayAppointmentsCard';
 
 interface Consultation {
   id: string;
@@ -91,6 +92,10 @@ export default function DashboardPage() {
       </div>
 
       <div ref={reportRef} className="space-y-6">
+        {doctorInfo && (
+          <TodayAppointmentsCard clinicId={doctorInfo.clinic_id} doctorId={doctorInfo.doctor_id} />
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-4 rounded shadow">
             <h3 className="text-lg font-semibold">Tarif standard non assuré</h3>
