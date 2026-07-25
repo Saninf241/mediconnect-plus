@@ -10,8 +10,8 @@ const linkInactive = "text-sky-100";
 
 export default function MultispecialistSecretaryLayout() {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <aside className="w-64 bg-sky-800 text-white p-4 flex flex-col overflow-y-auto shrink-0">
+    <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible">
+      <aside className="w-64 bg-sky-800 text-white p-4 flex flex-col overflow-y-auto shrink-0 print:hidden">
         <h2 className="text-xl font-bold mb-4">Espace Secrétaire</h2>
 
         <nav className="space-y-2">
@@ -62,7 +62,7 @@ export default function MultispecialistSecretaryLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 bg-gray-100 p-6 overflow-y-auto">
+      <main className="flex-1 bg-gray-100 p-6 overflow-y-auto print:h-auto print:overflow-visible print:bg-white print:p-0">
         <Outlet />
       </main>
     </div>

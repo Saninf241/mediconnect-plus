@@ -8,7 +8,8 @@ import { toast } from "react-toastify";
 import { useClinicId } from "../../../hooks/useClinicId";
 
 type ViewFilter = "today" | "upcoming" | "all";
-type AppointmentStatus = "planned" | "done" | "no_show" | "cancelled";
+type AppointmentStatus = "planned" | "waiting" | "done" | "no_show" | "cancelled";
+type CreateMode = "planned" | "walkin";
 
 interface PatientOption {
   id: string;
@@ -25,6 +26,7 @@ interface DoctorOption {
 interface AppointmentRow {
   id: string;
   appointment_date: string;
+  checked_in_at: string | null;
   reason: string | null;
   status: AppointmentStatus | null;
   patient: PatientOption | null;
@@ -33,6 +35,7 @@ interface AppointmentRow {
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   planned: "Prévu",
+  waiting: "En attente",
   done: "Venu",
   no_show: "Non venu",
   cancelled: "Annulé",
@@ -40,6 +43,7 @@ const STATUS_LABEL: Record<AppointmentStatus, string> = {
 
 const STATUS_BADGE: Record<AppointmentStatus, string> = {
   planned: "bg-blue-100 text-blue-700",
+  waiting: "bg-amber-100 text-amber-700",
   done: "bg-green-100 text-green-700",
   no_show: "bg-red-100 text-red-700",
   cancelled: "bg-slate-100 text-slate-500",
@@ -89,6 +93,23 @@ function endOfToday() {
   return d;
 }
 
+// Format naïf "YYYY-MM-DDTHH:MM:SS" (pas de conversion UTC) : la colonne
+// appointment_date est un `timestamp without time zone`, l'heure du Gabon
+// (UTC+1, pas de changement d'heure) doit être stockée telle quelle.
+function nowNaive() {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function waitingSince(checkedInAt: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(checkedInAt).getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}h${String(m).padStart(2, "0")}`;
+}
+
 export default function SecretaryAppointmentsPage() {
   const { clinicId, loadingClinic } = useClinicId();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -102,6 +123,7 @@ export default function SecretaryAppointmentsPage() {
   const [viewFilter, setViewFilter] = useState<ViewFilter>("today");
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateMode>("planned");
   const [saving, setSaving] = useState(false);
   const [patientQuery, setPatientQuery] = useState("");
   const [selectedPatient, setSelectedPatient] = useState<PatientOption | null>(null);
@@ -117,7 +139,7 @@ export default function SecretaryAppointmentsPage() {
     const [appointmentsRes, patientsRes, doctorsRes, clinicRes] = await Promise.all([
       supabase
         .from("appointments")
-        .select("id, appointment_date, reason, status, patient:patients(id,name,phone), doctor:clinic_staff(id,name)")
+        .select("id, appointment_date, checked_in_at, reason, status, patient:patients(id,name,phone), doctor:clinic_staff(id,name)")
         .eq("clinic_id", clinicId)
         .order("appointment_date", { ascending: true }),
       supabase.from("patients").select("id, name, phone").eq("clinic_id", clinicId),
@@ -156,12 +178,19 @@ export default function SecretaryAppointmentsPage() {
     const match = patients.find((p) => p.id === patientId);
     if (match) {
       setSelectedPatient(match);
+      setCreateMode("planned");
       setIsModalOpen(true);
       searchParams.delete("patient");
       setSearchParams(searchParams, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patients]);
+
+  const queue = useMemo(() => {
+    return appointments
+      .filter((a) => (a.status || "planned") === "waiting" && a.checked_in_at)
+      .sort((a, b) => new Date(a.checked_in_at!).getTime() - new Date(b.checked_in_at!).getTime());
+  }, [appointments]);
 
   const filteredAppointments = useMemo(() => {
     const todayStart = startOfToday();
@@ -181,13 +210,14 @@ export default function SecretaryAppointmentsPage() {
     return patients.filter((p) => normalize(p.name).includes(q)).slice(0, 8);
   }, [patients, patientQuery]);
 
-  const openNewAppointment = () => {
+  const openModal = (mode: CreateMode) => {
     setSelectedPatient(null);
     setPatientQuery("");
     setDoctorId("");
     setDate("");
     setTime("");
     setReason("");
+    setCreateMode(mode);
     setIsModalOpen(true);
   };
 
@@ -197,9 +227,22 @@ export default function SecretaryAppointmentsPage() {
       toast.error("Sélectionnez un patient.");
       return;
     }
-    if (!date || !time) {
-      toast.error("Date et heure obligatoires.");
-      return;
+
+    let appointment_date: string;
+    let status: AppointmentStatus;
+    let checked_in_at: string | null = null;
+
+    if (createMode === "walkin") {
+      appointment_date = nowNaive();
+      checked_in_at = appointment_date;
+      status = "waiting";
+    } else {
+      if (!date || !time) {
+        toast.error("Date et heure obligatoires.");
+        return;
+      }
+      appointment_date = `${date}T${time}:00`;
+      status = "planned";
     }
 
     setSaving(true);
@@ -207,9 +250,10 @@ export default function SecretaryAppointmentsPage() {
       clinic_id: clinicId,
       patient_id: selectedPatient.id,
       doctor_id: doctorId || null,
-      appointment_date: `${date}T${time}:00`,
+      appointment_date,
+      checked_in_at,
       reason: reason.trim() || null,
-      status: "planned",
+      status,
     });
     setSaving(false);
 
@@ -219,19 +263,27 @@ export default function SecretaryAppointmentsPage() {
       return;
     }
 
-    toast.success("Rendez-vous créé.");
+    toast.success(createMode === "walkin" ? "Patient ajouté à la file d'attente." : "Rendez-vous créé.");
     setIsModalOpen(false);
     await fetchAll();
   };
 
-  const updateStatus = async (id: string, status: AppointmentStatus) => {
-    const { error } = await supabase.from("appointments").update({ status }).eq("id", id);
+  const updateStatus = async (id: string, status: AppointmentStatus, extra?: { checked_in_at?: string }) => {
+    const { error } = await supabase.from("appointments").update({ status, ...extra }).eq("id", id);
     if (error) {
       console.error("[SecretaryAppointmentsPage] status update error:", error);
       toast.error("Erreur lors de la mise à jour du statut.");
       return;
     }
-    setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
+    setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status, ...extra } : a)));
+  };
+
+  const markArrived = (id: string) => updateStatus(id, "waiting", { checked_in_at: nowNaive() });
+
+  const handlePrintToday = () => {
+    setViewFilter("today");
+    // Laisse React re-rendre le tableau filtré sur "Aujourd'hui" avant d'imprimer.
+    setTimeout(() => window.print(), 50);
   };
 
   if (loadingClinic || loading) {
@@ -240,20 +292,95 @@ export default function SecretaryAppointmentsPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="hidden print:block">
+        <h1 className="text-xl font-bold">
+          Liste des rendez-vous du jour{clinicName ? ` — ${clinicName}` : ""}
+        </h1>
+        <p className="text-sm text-gray-600">
+          {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Rendez-vous</h1>
           <p className="text-sm text-gray-500">{filteredAppointments.length} rendez-vous</p>
         </div>
-        <button
-          onClick={openNewAppointment}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-        >
-          Nouveau rendez-vous
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handlePrintToday}
+            className="rounded border px-4 py-2 text-gray-700 hover:bg-gray-50 transition"
+          >
+            Imprimer la liste du jour
+          </button>
+          <button
+            onClick={() => openModal("walkin")}
+            className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 transition"
+          >
+            Arrivée sans RDV
+          </button>
+          <button
+            onClick={() => openModal("planned")}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+          >
+            Nouveau rendez-vous
+          </button>
+        </div>
       </div>
 
-      <div className="flex gap-2">
+      <Card className="print:hidden">
+        <CardContent className="p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">File d'attente</h2>
+            <span className="text-sm text-gray-400">{queue.length} en attente</span>
+          </div>
+
+          {queue.length === 0 ? (
+            <p className="text-sm text-gray-500">Personne en attente.</p>
+          ) : (
+            <div className="space-y-2">
+              {queue.map((a, i) => (
+                <div
+                  key={a.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-amber-50/50 p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-600 text-sm font-semibold text-white">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {a.patient?.name || "Patient supprimé"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        En attente depuis {waitingSince(a.checked_in_at!)}
+                        {a.doctor?.name ? ` — ${a.doctor.name}` : ""}
+                        {a.reason ? ` — ${a.reason}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => updateStatus(a.id, "done")}
+                      className="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-white"
+                    >
+                      Marquer vu
+                    </button>
+                    <button
+                      onClick={() => updateStatus(a.id, "cancelled")}
+                      className="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-white"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="flex gap-2 print:hidden">
         {(["today", "upcoming", "all"] as ViewFilter[]).map((f) => (
           <button
             key={f}
@@ -281,7 +408,7 @@ export default function SecretaryAppointmentsPage() {
                     <th className="py-3 pr-4">Médecin</th>
                     <th className="py-3 pr-4">Motif</th>
                     <th className="py-3 pr-4">Statut</th>
-                    <th className="py-3 pr-4">Actions</th>
+                    <th className="py-3 pr-4 print:hidden">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -313,7 +440,7 @@ export default function SecretaryAppointmentsPage() {
                             {STATUS_LABEL[status]}
                           </span>
                         </td>
-                        <td className="py-3 pr-4">
+                        <td className="py-3 pr-4 print:hidden">
                           <div className="flex flex-wrap gap-1.5">
                             {phone && status === "planned" && (
                               <>
@@ -333,6 +460,14 @@ export default function SecretaryAppointmentsPage() {
                                 </a>
                               </>
                             )}
+                            {status === "planned" && (
+                              <button
+                                onClick={() => markArrived(a.id)}
+                                className="rounded-lg border px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+                              >
+                                Marquer arrivé
+                              </button>
+                            )}
                             {status !== "done" && status !== "cancelled" && (
                               <button
                                 onClick={() => updateStatus(a.id, "done")}
@@ -341,7 +476,7 @@ export default function SecretaryAppointmentsPage() {
                                 Venu
                               </button>
                             )}
-                            {status !== "no_show" && status !== "cancelled" && status !== "done" && (
+                            {status === "planned" && (
                               <button
                                 onClick={() => updateStatus(a.id, "no_show")}
                                 className="rounded-lg border px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
@@ -369,8 +504,31 @@ export default function SecretaryAppointmentsPage() {
         </CardContent>
       </Card>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Nouveau rendez-vous">
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={createMode === "walkin" ? "Arrivée sans RDV" : "Nouveau rendez-vous"}
+      >
         <div className="space-y-3">
+          <div className="flex gap-2 rounded-lg bg-gray-100 p-1">
+            <button
+              onClick={() => setCreateMode("planned")}
+              className={`flex-1 rounded-md py-1.5 text-sm ${
+                createMode === "planned" ? "bg-white shadow font-medium" : "text-gray-600"
+              }`}
+            >
+              RDV planifié
+            </button>
+            <button
+              onClick={() => setCreateMode("walkin")}
+              className={`flex-1 rounded-md py-1.5 text-sm ${
+                createMode === "walkin" ? "bg-white shadow font-medium" : "text-gray-600"
+              }`}
+            >
+              Arrivée immédiate
+            </button>
+          </div>
+
           <div>
             <label className="text-sm font-medium text-gray-700">Patient</label>
             {selectedPatient ? (
@@ -431,16 +589,18 @@ export default function SecretaryAppointmentsPage() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Date</label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          {createMode === "planned" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700">Date</label>
+                <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Heure</label>
+                <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Heure</label>
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-          </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-gray-700">Motif (optionnel)</label>
@@ -456,7 +616,11 @@ export default function SecretaryAppointmentsPage() {
             disabled={saving}
             className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition disabled:opacity-50"
           >
-            {saving ? "Enregistrement..." : "Créer le rendez-vous"}
+            {saving
+              ? "Enregistrement..."
+              : createMode === "walkin"
+                ? "Ajouter à la file d'attente"
+                : "Créer le rendez-vous"}
           </button>
         </div>
       </Modal>

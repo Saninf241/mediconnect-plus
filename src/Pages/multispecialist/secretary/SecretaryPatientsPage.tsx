@@ -41,10 +41,12 @@ export default function SecretaryPatientsPage() {
     : "/multispecialist/secretary/appointments";
 
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [membershipPatientIds, setMembershipPatientIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
   const [assuranceFilter, setAssuranceFilter] = useState<AssuranceFilter>("all");
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
 
@@ -65,11 +67,30 @@ export default function SecretaryPatientsPage() {
 
     // Filtré côté client : ".neq('status', 'merged')" exclurait aussi les patients
     // dont le statut est NULL (le cas normal, cf. NULL <> 'merged' -> NULL en SQL).
-    if (!error && data) setPatients(data.filter((p) => p.status !== "merged"));
+    const activePatients = !error && data ? data.filter((p) => p.status !== "merged") : [];
+    if (!error && data) setPatients(activePatients);
     if (error) {
       console.error("[SecretaryPatientsPage] fetch error:", error);
       toast.error("Erreur lors du chargement des patients.");
     }
+
+    // Un patient marqué "assuré" sans ligne insurer_memberships correspondante
+    // est un dossier incomplet (carte/vérification jamais finalisée) — signal
+    // beaucoup plus fiable que fingerprint_missing, qui est vrai pour la
+    // quasi-totalité des patients et n'aide donc pas la secrétaire à prioriser.
+    const assuredIds = activePatients.filter((p) => p.is_assured).map((p) => p.id);
+    if (assuredIds.length > 0) {
+      const { data: memberships, error: membershipError } = await supabase
+        .from("insurer_memberships")
+        .select("patient_id")
+        .in("patient_id", assuredIds);
+      if (!membershipError && memberships) {
+        setMembershipPatientIds(new Set(memberships.map((m) => m.patient_id)));
+      }
+    } else {
+      setMembershipPatientIds(new Set());
+    }
+
     setLoading(false);
   };
 
@@ -79,12 +100,20 @@ export default function SecretaryPatientsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId, loadingClinic]);
 
+  const dossierIssues = (p: Patient) => {
+    const issues: string[] = [];
+    if (!p.phone) issues.push("Sans téléphone");
+    if (p.is_assured && !membershipPatientIds.has(p.id)) issues.push("Assuré sans dossier");
+    return issues;
+  };
+
   const filteredPatients = useMemo(() => {
     const q = normalize(search.trim());
 
     return patients.filter((p) => {
       if (assuranceFilter === "assured" && !p.is_assured) return false;
       if (assuranceFilter === "uninsured" && p.is_assured) return false;
+      if (incompleteOnly && dossierIssues(p).length === 0) return false;
 
       if (!q) return true;
 
@@ -95,11 +124,12 @@ export default function SecretaryPatientsPage() {
         normalize(p.national_id || "").includes(q)
       );
     });
-  }, [patients, search, assuranceFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patients, search, assuranceFilter, incompleteOnly, membershipPatientIds]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, assuranceFilter, pageSize]);
+  }, [search, assuranceFilter, incompleteOnly, pageSize]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / pageSize));
   const paginatedPatients = useMemo(() => {
@@ -214,6 +244,15 @@ export default function SecretaryPatientsPage() {
               </select>
             </div>
           </div>
+
+          <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={incompleteOnly}
+              onChange={(e) => setIncompleteOnly(e.target.checked)}
+            />
+            Dossiers incomplets uniquement (sans téléphone, ou assuré sans dossier assureur)
+          </label>
         </CardContent>
       </Card>
 
@@ -231,11 +270,14 @@ export default function SecretaryPatientsPage() {
                       <th className="py-3 pr-4">Contact</th>
                       <th className="py-3 pr-4">Naissance</th>
                       <th className="py-3 pr-4">Assurance</th>
+                      <th className="py-3 pr-4">Dossier</th>
                       <th className="py-3 pr-4">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedPatients.map((p) => (
+                    {paginatedPatients.map((p) => {
+                      const issues = dossierIssues(p);
+                      return (
                       <tr key={p.id} className="border-b last:border-b-0">
                         <td className="py-3 pr-4 font-medium text-gray-900">{p.name}</td>
                         <td className="py-3 pr-4 text-gray-700">
@@ -261,6 +303,22 @@ export default function SecretaryPatientsPage() {
                           )}
                         </td>
                         <td className="py-3 pr-4">
+                          {issues.length === 0 ? (
+                            <span className="text-xs text-gray-400">-</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {issues.map((issue) => (
+                                <span
+                                  key={issue}
+                                  className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+                                >
+                                  {issue}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
                           <div className="flex gap-1.5">
                             <button
                               onClick={() => openEdit(p)}
@@ -277,7 +335,8 @@ export default function SecretaryPatientsPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
