@@ -71,6 +71,7 @@ export default function PaiementsPage() {
         .select(
           "id, clinic_id, amount, commission, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, paid_by_email, clinic:clinic_id(name)"
         )
+        .eq("insurer_id", ctx.insurerId)
         .order("created_at", { ascending: false }),
     ]);
 
