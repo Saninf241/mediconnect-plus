@@ -15,13 +15,14 @@ import { generateConsultationPdf } from "../../../lib/api/generateConsultationPd
 import DiagnosisSelector, { type SelectedItem } from "../../../components/ui/uidoctor/DiagnosisSelector";
 import ActSelector, { SelectedAct } from "../../../components/ui/uidoctor/ActSelector";
 import { getInsurerCoveredKeyLetters } from "../../../lib/queries/tariffCoverage";
+import PatientRecordModal from "../../../components/ui/uidoctor/PatientRecordModal";
 
 
 export default function NewConsultationPage() {
   const { user } = useUser();
   const { getToken } = useAuth();
   const location = useLocation();
-  const { basePath, fingerprintScope } = useDoctorScope();
+  const { fingerprintScope } = useDoctorScope();
 
   // ✅ types explicites (corrige erreurs 4 et 5)
   const [step, setStep] = useState<"biometry" | "consultation" | "done">("biometry");
@@ -42,6 +43,7 @@ export default function NewConsultationPage() {
 
   const [provisional, setProvisional] = useState<boolean>(false);
   const [isCheckingRights, setIsCheckingRights] = useState<boolean>(false);
+  const [patientRecordOpen, setPatientRecordOpen] = useState<boolean>(false);
 
   const [symptomsType, setSymptomsType] = useState<"text" | "drawn">("text");
   const [diagnosisType, setDiagnosisType] = useState<"text" | "drawn">("text");
@@ -606,6 +608,8 @@ const createConsultation = async () => {
     setFingerprintMissing(false);
     setDiagnosisCodeId(null);
     setDiagnosisCodeText("");
+    // Le dossier patient ne doit jamais rester affiché après soumission.
+    setPatientRecordOpen(false);
   } catch (e) {
     console.error("[createConsultation] unexpected error:", e);
     toast.error("Erreur inattendue lors de l'enregistrement.");
@@ -684,12 +688,7 @@ const createConsultation = async () => {
 
           {patientId && (
             <div>
-              <Button
-                onClick={() => {
-                  const url = `${basePath}/patients/${encodeURIComponent(patientId)}`;
-                  window.open(url, "_blank", "noreferrer");
-                }}
-              >
+              <Button onClick={() => setPatientRecordOpen(true)}>
                 Voir dossier patient
               </Button>
               {membershipConfidence && (
@@ -939,6 +938,12 @@ const createConsultation = async () => {
           <Button onClick={() => setStep("biometry")}>Nouvelle consultation</Button>
         </div>
       )}
+
+      <PatientRecordModal
+        patientId={patientId}
+        isOpen={patientRecordOpen}
+        onClose={() => setPatientRecordOpen(false)}
+      />
     </div>
   );
 }
