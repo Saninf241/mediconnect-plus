@@ -102,6 +102,20 @@ function nowNaive() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+// Best-effort : la secrétaire n'a pas besoin d'attendre / de savoir si la
+// notification échoue, ce n'est pas bloquant pour la prise de RDV.
+async function notifyDoctor(doctorId: string, title: string, content: string, appointmentId: string) {
+  const { error } = await supabase.from("notifications").insert({
+    user_id: doctorId,
+    type: "appointment",
+    title,
+    content,
+    read: false,
+    metadata: { appointment_id: appointmentId },
+  });
+  if (error) console.error("[SecretaryAppointmentsPage] notification insert error:", error);
+}
+
 function waitingSince(checkedInAt: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(checkedInAt).getTime()) / 60000));
   if (minutes < 60) return `${minutes} min`;
@@ -246,21 +260,43 @@ export default function SecretaryAppointmentsPage() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("appointments").insert({
-      clinic_id: clinicId,
-      patient_id: selectedPatient.id,
-      doctor_id: doctorId || null,
-      appointment_date,
-      checked_in_at,
-      reason: reason.trim() || null,
-      status,
-    });
+    const { data: created, error } = await supabase
+      .from("appointments")
+      .insert({
+        clinic_id: clinicId,
+        patient_id: selectedPatient.id,
+        doctor_id: doctorId || null,
+        appointment_date,
+        checked_in_at,
+        reason: reason.trim() || null,
+        status,
+      })
+      .select("id")
+      .single();
     setSaving(false);
 
     if (error) {
       console.error("[SecretaryAppointmentsPage] create error:", error);
       toast.error("Erreur lors de la création du rendez-vous.");
       return;
+    }
+
+    if (doctorId && created) {
+      if (createMode === "walkin") {
+        notifyDoctor(
+          doctorId,
+          "Patient en salle d'attente",
+          `${selectedPatient.name} est arrivé(e) sans rendez-vous.`,
+          created.id
+        );
+      } else {
+        notifyDoctor(
+          doctorId,
+          "Nouveau rendez-vous",
+          `${selectedPatient.name} — ${new Date(appointment_date).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${reason.trim() ? ` (${reason.trim()})` : ""}`,
+          created.id
+        );
+      }
     }
 
     toast.success(createMode === "walkin" ? "Patient ajouté à la file d'attente." : "Rendez-vous créé.");
@@ -278,7 +314,18 @@ export default function SecretaryAppointmentsPage() {
     setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status, ...extra } : a)));
   };
 
-  const markArrived = (id: string) => updateStatus(id, "waiting", { checked_in_at: nowNaive() });
+  const markArrived = async (id: string) => {
+    await updateStatus(id, "waiting", { checked_in_at: nowNaive() });
+    const appointment = appointments.find((a) => a.id === id);
+    if (appointment?.doctor?.id) {
+      notifyDoctor(
+        appointment.doctor.id,
+        "Patient arrivé",
+        `${appointment.patient?.name || "Un patient"} est arrivé et attend.`,
+        id
+      );
+    }
+  };
 
   const handlePrintToday = () => {
     setViewFilter("today");

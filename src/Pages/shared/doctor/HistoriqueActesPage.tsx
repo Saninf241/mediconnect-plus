@@ -37,6 +37,7 @@ export default function HistoriqueActesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [coverageFilter, setCoverageFilter] = useState<string>("");
   const [unreadByConsultation, setUnreadByConsultation] = useState<UnreadByConsultation>({});
+  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -86,6 +87,21 @@ export default function HistoriqueActesPage() {
 
     fetchConsultations();
   }, [doctorInfo]);
+
+  // Flag "en revue" atténué (anti-fraude) : pas de detail de regle, juste
+  // l'id des consultations concernées, deja restreint au médecin appelant
+  // côté fonction SQL (doctor_flagged_consultation_ids).
+  useEffect(() => {
+    if (!doctorInfo?.doctor_id) return;
+
+    supabase.rpc("doctor_flagged_consultation_ids").then(({ data, error }) => {
+      if (error) {
+        console.error("[HistoriqueActesPage] flagged ids error:", error);
+        return;
+      }
+      setFlaggedIds(new Set((data ?? []) as string[]));
+    });
+  }, [doctorInfo?.doctor_id]);
 
   // 2. Realtime + compteurs de messages non lus
   useEffect(() => {
@@ -285,7 +301,17 @@ export default function HistoriqueActesPage() {
                   <td className="p-3 text-right">
                     {c.amount != null ? `${c.amount.toLocaleString("fr-FR")} FCFA` : "—"}
                   </td>
-                  <td className="p-3 capitalize">{c.status}</td>
+                  <td className="p-3 capitalize">
+                    {c.status}
+                    {flaggedIds.has(c.id) && (
+                      <span
+                        title="Cette consultation fait l'objet d'une revue interne."
+                        className="ml-2 inline-flex items-center rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700"
+                      >
+                        En revue
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${c.isAssured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
                       {c.isAssured ? "Assuré" : "Non assuré"}

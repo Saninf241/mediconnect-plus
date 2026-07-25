@@ -7,6 +7,7 @@ import { toast } from "react-toastify";
 import { supabase } from "../../lib/supabase";
 import { useDoctorContext } from "../../hooks/useDoctorContext";
 import LogoutButton from "../ui/LogoutButton";
+import DoctorNotificationsBell from "../ui/uidoctor/DoctorNotificationsBell";
 
 const Item = ({
   to,
@@ -76,11 +77,14 @@ export default function MultispecialistDoctorLayout() {
       {/* Header simple */}
       <header className="h-14 bg-sky-700 text-white flex items-center justify-between px-4 shadow shrink-0">
         <div className="font-semibold">Cabinet MultiSpécialiste</div>
-        {isTrusted && (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
-            ✅ Médecin fiable
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isTrusted && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-800">
+              ✅ Médecin fiable
+            </span>
+          )}
+          {doctorInfo?.doctor_id && <DoctorNotificationsBell doctorId={doctorInfo.doctor_id} basePath="/multispecialist/doctor" />}
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

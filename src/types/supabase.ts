@@ -2799,6 +2799,7 @@ export type Database = {
         Args: { actor_email: string; p: Json }
         Returns: string
       }
+      doctor_flagged_consultation_ids: { Args: never; Returns: string[] }
       finalize_patient_uninsured: {
         Args: {
           actor_email: string

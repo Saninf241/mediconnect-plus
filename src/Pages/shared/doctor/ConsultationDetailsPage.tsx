@@ -58,6 +58,20 @@ export default function ConsultationDetailsPage() {
   const [record, setRecord] = useState<ConsultationRecord | null>(null);
   const [manualPricing, setManualPricing] = useState<ManualPricing | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isFlagged, setIsFlagged] = useState(false);
+
+  // Flag "en revue" atténué (anti-fraude) : signal générique, sans détail de
+  // règle ni de seuil — voir doctor_flagged_consultation_ids() côté SQL.
+  useEffect(() => {
+    if (!id) return;
+    supabase.rpc("doctor_flagged_consultation_ids").then(({ data, error }) => {
+      if (error) {
+        console.error("[DoctorDetails] flagged ids error:", error);
+        return;
+      }
+      setIsFlagged(((data ?? []) as string[]).includes(id));
+    });
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -179,6 +193,12 @@ export default function ConsultationDetailsPage() {
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold mb-4">Détails de la consultation</h1>
+
+      {isFlagged && (
+        <div className="rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-sm text-purple-800">
+          Cette consultation fait l'objet d'une revue interne. Aucune action n'est requise de votre part pour le moment.
+        </div>
+      )}
 
       {/* Bloc infos générales */}
       <section className="bg-white rounded-xl shadow-sm p-4 space-y-1">

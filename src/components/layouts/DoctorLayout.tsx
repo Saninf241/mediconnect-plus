@@ -7,6 +7,7 @@ import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy,
 import { toast } from 'react-toastify';
 import { useDoctorContext } from '../../hooks/useDoctorContext';
 import LogoutButton from '../ui/LogoutButton';
+import DoctorNotificationsBell from '../ui/uidoctor/DoctorNotificationsBell';
 
 export default function DoctorLayout() {
   const { user, isLoaded, isSignedIn } = useUser();
@@ -88,6 +89,7 @@ export default function DoctorLayout() {
               ✅ Médecin fiable
             </span>
           )}
+          {doctorInfo?.doctor_id && <DoctorNotificationsBell doctorId={doctorInfo.doctor_id} basePath="/doctor" />}
         </div>
       </div>
 
