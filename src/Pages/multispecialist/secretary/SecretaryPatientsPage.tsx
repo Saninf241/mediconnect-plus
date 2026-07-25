@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
 import { Input } from "../../../components/ui/input";
 import Modal from "../../../components/ui/dialog";
@@ -31,8 +32,35 @@ interface EditForm {
 const normalize = (v: string) =>
   v.normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase();
 
+interface ActiveMembership {
+  id: string;
+  insurer_id: string;
+  insurer_name: string;
+  member_no: string | null;
+  plan_code: string | null;
+  coverage_start: string | null;
+  coverage_end: string | null;
+}
+
+interface AttachForm {
+  insurer_id: string;
+  member_no: string;
+  plan_code: string;
+  coverage_start: string;
+  coverage_end: string;
+}
+
+const defaultAttachForm: AttachForm = {
+  insurer_id: "",
+  member_no: "",
+  plan_code: "",
+  coverage_start: "",
+  coverage_end: "",
+};
+
 export default function SecretaryPatientsPage() {
   const { clinicId, loadingClinic } = useClinicId();
+  const { user } = useUser();
   const location = useLocation();
   const isSpecialist = location.pathname.startsWith("/specialist/secretary");
   const newPatientPath = isSpecialist ? "/specialist/secretary/new" : "/multispecialist/secretary/new";
@@ -55,6 +83,15 @@ export default function SecretaryPatientsPage() {
   const [nameLocked, setNameLocked] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Gestion assurance (lier / suspendre) — étape 3 & 4 du plan anti-doublon
+  const [insurers, setInsurers] = useState<{ id: string; name: string; level?: "N1" | "N2" | "N3" }[]>([]);
+  const [insuranceModalOpen, setInsuranceModalOpen] = useState(false);
+  const [insurancePatient, setInsurancePatient] = useState<Patient | null>(null);
+  const [activeMembership, setActiveMembership] = useState<ActiveMembership | null>(null);
+  const [membershipLoading, setMembershipLoading] = useState(false);
+  const [attachForm, setAttachForm] = useState<AttachForm>({ ...defaultAttachForm });
+  const [insuranceSaving, setInsuranceSaving] = useState(false);
 
   const fetchPatients = async () => {
     if (!clinicId) return;
@@ -99,6 +136,159 @@ export default function SecretaryPatientsPage() {
     fetchPatients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId, loadingClinic]);
+
+  // Assureurs conventionnés avec ce cabinet (même restriction que le wizard
+  // de création : on ne propose que des assureurs avec une convention réelle).
+  useEffect(() => {
+    if (!clinicId) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("clinic_insurer_conventions")
+        .select("insurers:insurer_id(id, name, verification_level)")
+        .eq("clinic_id", clinicId)
+        .eq("active", true);
+
+      if (error) {
+        console.error("[SecretaryPatientsPage] chargement conventions assureur:", error);
+        setInsurers([]);
+        return;
+      }
+
+      setInsurers(
+        (data ?? [])
+          .map((row: any) => row.insurers)
+          .filter(Boolean)
+          .map((x: any) => ({
+            id: x.id,
+            name: x.name,
+            level: (x.verification_level as "N1" | "N2" | "N3") ?? "N3",
+          }))
+      );
+    })();
+  }, [clinicId]);
+
+  const openInsuranceModal = async (patient: Patient) => {
+    setInsurancePatient(patient);
+    setAttachForm({ ...defaultAttachForm });
+    setInsuranceModalOpen(true);
+    setMembershipLoading(true);
+
+    const { data, error } = await supabase
+      .from("insurer_memberships")
+      .select("id, insurer_id, member_no, plan_code, coverage_start, coverage_end, insurers:insurer_id(name)")
+      .eq("patient_id", patient.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("[SecretaryPatientsPage] chargement adhésion:", error);
+      setActiveMembership(null);
+    } else if (data) {
+      setActiveMembership({
+        id: data.id,
+        insurer_id: data.insurer_id,
+        insurer_name: (data as any).insurers?.name ?? "Assureur",
+        member_no: data.member_no,
+        plan_code: data.plan_code,
+        coverage_start: data.coverage_start,
+        coverage_end: data.coverage_end,
+      });
+    } else {
+      setActiveMembership(null);
+    }
+    setMembershipLoading(false);
+  };
+
+  const closeInsuranceModal = () => {
+    setInsuranceModalOpen(false);
+    setInsurancePatient(null);
+    setActiveMembership(null);
+    setAttachForm({ ...defaultAttachForm });
+  };
+
+  const handleAttachInsurance = async () => {
+    if (!insurancePatient) return;
+    if (!attachForm.insurer_id) {
+      toast.error("Sélectionne un assureur conventionné avec ce cabinet.");
+      return;
+    }
+
+    setInsuranceSaving(true);
+    const found = insurers.find((i) => i.id === attachForm.insurer_id);
+
+    const { error: memErr } = await supabase.from("insurer_memberships").insert({
+      patient_id: insurancePatient.id,
+      insurer_id: attachForm.insurer_id,
+      member_no: attachForm.member_no || "",
+      plan_code: attachForm.plan_code || null,
+      coverage_start: attachForm.coverage_start || null,
+      coverage_end: attachForm.coverage_end || null,
+      last_verified_at: new Date().toISOString(),
+      verification_level: found?.level ?? "N3",
+      confidence: "declarative",
+      source: { method: "convention_declarative" },
+      is_active: true,
+      status: "active",
+      created_by_clerk_user_id: user?.id ?? null,
+      created_by_role: "secretary",
+      created_by_name: user?.fullName || user?.primaryEmailAddress?.emailAddress || null,
+      created_by_email: user?.primaryEmailAddress?.emailAddress ?? null,
+    });
+
+    if (memErr) {
+      console.error("[SecretaryPatientsPage] attach insurance error:", memErr);
+      toast.error("Erreur lors du rattachement de l'assurance.");
+      setInsuranceSaving(false);
+      return;
+    }
+
+    const { error: patErr } = await supabase
+      .from("patients")
+      .update({ is_assured: true, status: "verified" })
+      .eq("id", insurancePatient.id);
+
+    if (patErr) {
+      console.error("[SecretaryPatientsPage] patient update after attach:", patErr);
+    }
+
+    toast.success("Assurance rattachée au patient.");
+    setInsuranceSaving(false);
+    closeInsuranceModal();
+    await fetchPatients();
+  };
+
+  const handleSuspendInsurance = async () => {
+    if (!insurancePatient || !activeMembership) return;
+
+    setInsuranceSaving(true);
+    const { error: memErr } = await supabase
+      .from("insurer_memberships")
+      .update({ is_active: false, status: "suspended" })
+      .eq("id", activeMembership.id);
+
+    if (memErr) {
+      console.error("[SecretaryPatientsPage] suspend insurance error:", memErr);
+      toast.error("Erreur lors de la suspension de l'adhésion.");
+      setInsuranceSaving(false);
+      return;
+    }
+
+    const { error: patErr } = await supabase
+      .from("patients")
+      .update({ is_assured: false })
+      .eq("id", insurancePatient.id);
+
+    if (patErr) {
+      console.error("[SecretaryPatientsPage] patient update after suspend:", patErr);
+    }
+
+    toast.success("Adhésion suspendue.");
+    setInsuranceSaving(false);
+    closeInsuranceModal();
+    await fetchPatients();
+  };
 
   const dossierIssues = (p: Patient) => {
     const issues: string[] = [];
@@ -326,6 +516,12 @@ export default function SecretaryPatientsPage() {
                             >
                               Modifier
                             </button>
+                            <button
+                              onClick={() => openInsuranceModal(p)}
+                              className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
+                            >
+                              Assurance
+                            </button>
                             <Link
                               to={`${appointmentsPath}?patient=${p.id}`}
                               className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
@@ -404,6 +600,99 @@ export default function SecretaryPatientsPage() {
             {saving ? "Enregistrement..." : "Mettre à jour"}
           </button>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={insuranceModalOpen}
+        onClose={closeInsuranceModal}
+        title={`Assurance — ${insurancePatient?.name ?? ""}`}
+      >
+        {membershipLoading ? (
+          <p className="text-sm text-gray-500">Chargement...</p>
+        ) : activeMembership ? (
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-gray-50 p-3 text-sm">
+              <p className="font-medium text-gray-900">{activeMembership.insurer_name}</p>
+              <p className="text-gray-600">N° d'adhérent : {activeMembership.member_no || "-"}</p>
+              {activeMembership.plan_code && (
+                <p className="text-gray-600">Plan : {activeMembership.plan_code}</p>
+              )}
+              {(activeMembership.coverage_start || activeMembership.coverage_end) && (
+                <p className="text-gray-600">
+                  Couverture : {activeMembership.coverage_start || "-"} → {activeMembership.coverage_end || "-"}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={handleSuspendInsurance}
+              disabled={insuranceSaving}
+              className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              {insuranceSaving ? "Suspension..." : "Suspendre l'adhésion"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Aucune assurance active pour ce patient. Rattacher une couverture :
+            </p>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Assureur</label>
+              <select
+                value={attachForm.insurer_id}
+                onChange={(e) => setAttachForm((f) => ({ ...f, insurer_id: e.target.value }))}
+                className="mt-1 w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="">— choisir —</option>
+                {insurers.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                  </option>
+                ))}
+              </select>
+              {insurers.length === 0 && (
+                <p className="mt-1 text-xs text-amber-700">
+                  Aucun assureur conventionné avec ce cabinet.
+                </p>
+              )}
+            </div>
+            <Input
+              placeholder="N° d'adhérent"
+              value={attachForm.member_no}
+              onChange={(e) => setAttachForm((f) => ({ ...f, member_no: e.target.value }))}
+            />
+            <Input
+              placeholder="Code plan"
+              value={attachForm.plan_code}
+              onChange={(e) => setAttachForm((f) => ({ ...f, plan_code: e.target.value }))}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500">Début de couverture</label>
+                <Input
+                  type="date"
+                  value={attachForm.coverage_start}
+                  onChange={(e) => setAttachForm((f) => ({ ...f, coverage_start: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Fin de couverture</label>
+                <Input
+                  type="date"
+                  value={attachForm.coverage_end}
+                  onChange={(e) => setAttachForm((f) => ({ ...f, coverage_end: e.target.value }))}
+                />
+              </div>
+            </div>
+            <button
+              onClick={handleAttachInsurance}
+              disabled={insuranceSaving}
+              className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition disabled:opacity-50"
+            >
+              {insuranceSaving ? "Enregistrement..." : "Attacher l'assurance"}
+            </button>
+          </div>
+        )}
       </Modal>
     </div>
   );

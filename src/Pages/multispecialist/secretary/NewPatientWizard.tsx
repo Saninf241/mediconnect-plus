@@ -77,19 +77,21 @@ export default function NewPatientWizard() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
 
-  const [step, setStep] = useState<number>(1);
+  // Étape 0 = vérification préalable (scan anti-doublon avant toute création)
+  const [step, setStep] = useState<number>(0);
   const [ptype, setPtype] = useState<PatientType | null>(null);
   const [form, setForm] = useState<PatientForm>({ ...defaultForm });
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
   const [accessCode, setAccessCode] = useState<string | null>(null);
+  const [existingMatch, setExistingMatch] = useState<{ id: string; name: string } | null>(null);
 
   // Restaurer l’étape si on revient du scanner
   useEffect(() => {
     const saved = sessionStorage.getItem("wizard:returnStep");
     if (saved) {
       const n = Number(saved);
-      if (!Number.isNaN(n) && n >= 1 && n <= 4) setStep(n);
+      if (!Number.isNaN(n) && n >= 0 && n <= 4) setStep(n);
       sessionStorage.removeItem("wizard:returnStep");
     }
   }, []);
@@ -147,6 +149,79 @@ export default function NewPatientWizard() {
     }
     sessionStorage.removeItem("fp:last");
   }, []);
+
+  // Retour du scan anti-doublon (étape 0, mode identify) : id_found -> on
+  // reprend le dossier existant sans rien créer ; id_not_found -> on
+  // enchaîne sur la création classique (étape 1).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const idFound = params.get("id_found");
+    const idNotFound = params.get("id_not_found");
+
+    if (idFound) {
+      setPatientId(idFound);
+      (async () => {
+        const { data } = await supabase
+          .from("patients")
+          .select("id, name")
+          .eq("id", idFound)
+          .maybeSingle();
+        setExistingMatch({ id: idFound, name: data?.name ?? "Patient" });
+      })();
+    } else if (idNotFound) {
+      setStep(1);
+    }
+
+    if (idFound || idNotFound) {
+      const clean = window.location.pathname + window.location.hash;
+      window.history.replaceState(null, "", clean);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const secretaryPatientsPath = window.location.pathname.startsWith("/specialist/secretary")
+    ? "/specialist/secretary/patients"
+    : "/multispecialist/secretary/patients";
+
+  async function runPrecheckScan() {
+    try {
+      setLoading(true);
+      setMessage("");
+      const c = ctx ?? (await resolveSecretaryContext());
+      setCtx(c);
+
+      sessionStorage.setItem("wizard:returnStep", "0");
+      sessionStorage.setItem(
+        "fp:return",
+        window.location.pathname + window.location.search + window.location.hash
+      );
+
+      const { deeplink, intentUri } = buildZKDeeplink({
+        mode: "identify",
+        clinicId: c.clinicId,
+        operatorId: c.staffId,
+        redirectOriginForPhone: getOriginForPhone(),
+        redirectPath: "/fp-callback?scope=secretary",
+      });
+
+      try {
+        window.location.href = deeplink;
+        setTimeout(() => {
+          window.location.href = intentUri;
+        }, 900);
+      } catch {
+        window.location.href = intentUri;
+      }
+
+      setMessage(
+        "Vérification lancée sur la tablette. Revenez ici après la lecture de l’empreinte."
+      );
+    } catch (e: any) {
+      setMessage(e.message || "Échec du lancement de la vérification.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // token de session Clerk natif : requis par les edge functions de ce
   // wizard (resolve-existing-patient, generate-patient-access-code), qui
@@ -468,11 +543,59 @@ export default function NewPatientWizard() {
     <div className="space-y-6">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Ajouter un patient</h1>
-        <div className="text-sm text-gray-500">Étape {step} / 4</div>
+        {step >= 1 && !existingMatch && (
+          <div className="text-sm text-gray-500">Étape {step} / 4</div>
+        )}
       </header>
 
+      {/* Étape 0 – Vérification anti-doublon (scan avant toute création) */}
+      {step === 0 && !existingMatch && (
+        <section className={`${card} space-y-4`}>
+          <h3 className="font-semibold">Vérification préalable</h3>
+          <p className="text-sm text-gray-600">
+            Avant de créer une fiche, on vérifie si ce patient est déjà enregistré
+            (dans ce cabinet ou dans un cabinet du même réseau assureur) pour éviter
+            les doublons.
+          </p>
+          <div className="flex items-center gap-3">
+            <button className={button} onClick={runPrecheckScan} disabled={loading}>
+              {loading ? "Lancement..." : "Scanner l’empreinte"}
+            </button>
+            <button className={ghostBtn} onClick={() => setStep(1)}>
+              Pas de lecteur disponible — continuer sans vérifier
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Patient déjà trouvé par le scan anti-doublon : on ne crée rien */}
+      {existingMatch && (
+        <section className={`${card} space-y-4 border-emerald-300 bg-emerald-50`}>
+          <h3 className="font-semibold text-emerald-900">Patient déjà enregistré</h3>
+          <p className="text-sm text-emerald-900">
+            <b>{existingMatch.name}</b> a été retrouvé par empreinte — aucune nouvelle
+            fiche n’a été créée.
+          </p>
+          <div className="flex items-center gap-3">
+            <a href={secretaryPatientsPath} className={button}>
+              Voir la liste des patients
+            </a>
+            <button
+              className={ghostBtn}
+              onClick={() => {
+                setExistingMatch(null);
+                setPatientId(null);
+                setStep(1);
+              }}
+            >
+              Ce n’est pas le bon patient — créer quand même une nouvelle fiche
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* Étape 1 – Choix du type */}
-      {step === 1 && (
+      {step === 1 && !existingMatch && (
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             className={`${card} text-left hover:shadow-md`}

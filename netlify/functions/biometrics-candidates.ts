@@ -26,34 +26,16 @@ export const handler: Handler = async (event) => {
     }
 
     const clinicId = event.queryStringParameters?.clinic_id || null;
-    const scope = event.queryStringParameters?.scope || "clinic";
+    const scope = event.queryStringParameters?.scope || "network";
 
     if (!clinicId) {
       return json(400, { error: "Missing clinic_id" });
     }
 
-    // =========================
-    // 1) Mode actuel : intra-clinique uniquement
-    // =========================
-    if (scope === "clinic") {
-      const { data, error } = await supabase
-        .from("patient_biometrics")
-        .select("patient_id, template_b64")
-        .eq("revoked", false)
-        .eq("clinic_id", clinicId)
-        .limit(2000);
-
-      if (error) {
-        console.error("[biometrics-candidates] clinic DB error:", error);
-        return json(500, { error: "DB error" });
-      }
-
-      return json(200, data ?? []);
-    }
-
-    // =========================
-    // 2) Nouveau mode : réseau assureur autorisé
-    // =========================
+    // Seul mode utilisé par l'appli : fusionne réseau assureur + patients
+    // enrôlés directement dans ce cabinet (cf. section C ci-dessous). Un
+    // ancien mode "clinic" strict existait ici mais n'était appelé par
+    // personne — supprimé, sa logique est maintenant incluse dans "network".
     if (scope === "network") {
       // A. Assureurs conventionnés avec cette clinique/cabinet
       const { data: networks, error: networkErr } = await supabase
@@ -70,30 +52,48 @@ export const handler: Handler = async (event) => {
 
       const insurerIds = [...new Set((networks ?? []).map((n: any) => n.insurer_id).filter(Boolean))];
 
-      if (insurerIds.length === 0) {
-        return json(200, []);
+      let networkPatientIds: string[] = [];
+      if (insurerIds.length > 0) {
+        // B. Patients actifs chez ces assureurs
+        const { data: memberships, error: membershipErr } = await supabase
+          .from("insurer_memberships")
+          .select("patient_id")
+          .in("insurer_id", insurerIds)
+          .eq("is_active", true)
+          .eq("status", "active");
+
+        if (membershipErr) {
+          console.error("[biometrics-candidates] memberships DB error:", membershipErr);
+          return json(500, { error: "Membership DB error" });
+        }
+
+        networkPatientIds = (memberships ?? []).map((m: any) => m.patient_id).filter(Boolean);
       }
 
-      // B. Patients actifs chez ces assureurs
-      const { data: memberships, error: membershipErr } = await supabase
-        .from("insurer_memberships")
+      // C. Patients enrôlés directement dans ce cabinet, assurés ou non.
+      // L'identification intra-cabinet ne doit jamais dépendre d'une
+      // couverture assurance : un cabinet doit toujours retrouver les
+      // patients qu'il a lui-même enrôlés, même sans réseau assureur actif.
+      const { data: localBiometrics, error: localErr } = await supabase
+        .from("patient_biometrics")
         .select("patient_id")
-        .in("insurer_id", insurerIds)
-        .eq("is_active", true)
-        .eq("status", "active");
+        .eq("clinic_id", clinicId)
+        .eq("revoked", false);
 
-      if (membershipErr) {
-        console.error("[biometrics-candidates] memberships DB error:", membershipErr);
-        return json(500, { error: "Membership DB error" });
+      if (localErr) {
+        console.error("[biometrics-candidates] local clinic DB error:", localErr);
+        return json(500, { error: "Local clinic DB error" });
       }
 
-      const patientIds = [...new Set((memberships ?? []).map((m: any) => m.patient_id).filter(Boolean))];
+      const localPatientIds = (localBiometrics ?? []).map((r: any) => r.patient_id).filter(Boolean);
+
+      const patientIds = [...new Set([...networkPatientIds, ...localPatientIds])];
 
       if (patientIds.length === 0) {
         return json(200, []);
       }
 
-      // C. Templates biométriques de ces patients
+      // D. Templates biométriques de ces patients
       const { data, error } = await supabase
         .from("patient_biometrics")
         .select("patient_id, template_b64")

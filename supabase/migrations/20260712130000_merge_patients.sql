@@ -88,9 +88,6 @@ begin
   update appointments set patient_id = p_survivor_id where patient_id = p_loser_id;
   get diagnostics v_count = row_count; v_summary := v_summary || jsonb_build_object('appointments', v_count);
 
-  update biometric_captures set patient_id = p_survivor_id where patient_id = p_loser_id;
-  get diagnostics v_count = row_count; v_summary := v_summary || jsonb_build_object('biometric_captures', v_count);
-
   update consultations set patient_id = p_survivor_id where patient_id = p_loser_id;
   get diagnostics v_count = row_count; v_summary := v_summary || jsonb_build_object('consultations', v_count);
 

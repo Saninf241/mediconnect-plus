@@ -41,6 +41,27 @@ export default function NewConsultationPage() {
 
   const [fingerprintMissing, setFingerprintMissing] = useState<boolean>(false);
 
+  // Patient attendu si on arrive depuis sa fiche (PatientDetailsPage, lien
+  // "Nouvelle consultation ?patient_id=..."). Le scan reste obligatoire —
+  // ce n'est pas un raccourci d'identification — mais sert à détecter un
+  // scan qui identifierait une personne différente de celle attendue.
+  const [expectedPatientId, setExpectedPatientId] = useState<string | null>(null);
+
+  // Justificatif imprimable pour le cas extrême : lecteur en panne / pas de
+  // réseau, identification biométrique impossible. Snapshot pris juste avant
+  // la remise à zéro du formulaire, pour permettre une régularisation
+  // manuelle (papier) plutôt que de perdre l'acte sans aucune trace.
+  const [printFallback, setPrintFallback] = useState<{
+    consultationId: string;
+    clinicName: string;
+    doctorName: string;
+    createdAt: string;
+    symptoms: string;
+    diagnosis: string;
+    acts: string[];
+    amount: string;
+  } | null>(null);
+
   const [provisional, setProvisional] = useState<boolean>(false);
   const [isCheckingRights, setIsCheckingRights] = useState<boolean>(false);
   const [patientRecordOpen, setPatientRecordOpen] = useState<boolean>(false);
@@ -226,6 +247,18 @@ export default function NewConsultationPage() {
   // 🔹 Callback biométrie + nettoyage
 const [searchParams] = useSearchParams();
 
+  // Capture du patient attendu (arrivée depuis sa fiche) avant que l'appli
+  // ne redirige vers le scanner puis revienne — sessionStorage survit à cet
+  // aller-retour, contrairement au param d'URL qui sera nettoyé.
+  useEffect(() => {
+    const expected = searchParams.get("patient_id");
+    if (expected) {
+      setExpectedPatientId(expected);
+      sessionStorage.setItem("consult:expectedPatientId", expected);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     (async () => {
       const urlCid     = searchParams.get("consultation_id");
@@ -262,6 +295,15 @@ const [searchParams] = useSearchParams();
           setFingerprintMissing(false);
           setStep("consultation");
 
+          const expected =
+            expectedPatientId || sessionStorage.getItem("consult:expectedPatientId");
+          if (expected && expected !== finalPatientId) {
+            toast.error(
+              "Attention : l'empreinte scannée correspond à un patient différent de celui attendu. Vérifiez l'identité avant de continuer.",
+              { autoClose: false }
+            );
+          }
+
           if (finalCid) { // Changé ici
             try {
               await markBiometryVerified({
@@ -278,6 +320,11 @@ const [searchParams] = useSearchParams();
         setFingerprintMissing(true);
         setStep("consultation");
         toast.warn("Aucun patient correspondant.");
+      }
+
+      if (finalPatientId || urlIdNot === "1") {
+        sessionStorage.removeItem("consult:expectedPatientId");
+        setExpectedPatientId(null);
       }
 
       // 🔹 Nettoyage de l'URL (on garde au pire consultation_id)
@@ -585,6 +632,34 @@ const createConsultation = async () => {
         finalId,
         ")"
       );
+    }
+
+    // 9bis) Cas extrême : pas de patient identifié (panne lecteur, coupure
+    // réseau...). Pas de recherche manuelle (ça romprait la preuve
+    // biométrique), mais on ne doit pas perdre l'acte sans aucune trace :
+    // un justificatif imprimable permet une régularisation manuelle.
+    if (!patientId) {
+      const { data: clinicRow } = await supabase
+        .from("clinics")
+        .select("name")
+        .eq("id", ctx.clinicId)
+        .maybeSingle();
+
+      setPrintFallback({
+        consultationId: finalId,
+        clinicName: clinicRow?.name ?? "—",
+        doctorName: user?.fullName || user?.primaryEmailAddress?.emailAddress || "—",
+        createdAt: new Date().toLocaleString("fr-FR"),
+        symptoms: symptomsType === "text" ? symptoms.trim() : "(schéma dessiné)",
+        diagnosis: diagnosisType === "text" ? diagnosis.trim() : "(schéma dessiné)",
+        acts: [
+          ...selectedActs.map((a) => [a.code, a.title].filter(Boolean).join(" — ")),
+          ...acts,
+        ].filter(Boolean),
+        amount,
+      });
+    } else {
+      setPrintFallback(null);
     }
 
     // 10) Feedback UI + reset
@@ -933,9 +1008,53 @@ const createConsultation = async () => {
       )}
 
       {step === "done" && (
-        <div className="text-center space-y-4">
+        <div className="text-center space-y-4 print:hidden">
           <p>Consultation enregistrée</p>
+          {printFallback && (
+            <div className="mx-auto max-w-md rounded border border-orange-300 bg-orange-50 p-4 text-left text-sm text-orange-900">
+              <p className="font-semibold">
+                Identification biométrique indisponible pour cet acte.
+              </p>
+              <p className="mt-1">
+                Imprimez ce justificatif pour régularisation manuelle (rattachement au bon
+                patient dès que l'équipement est de nouveau disponible).
+              </p>
+              <button
+                onClick={() => window.print()}
+                className="mt-3 rounded bg-orange-600 px-4 py-2 text-white hover:bg-orange-700"
+              >
+                Imprimer le justificatif
+              </button>
+            </div>
+          )}
           <Button onClick={() => setStep("biometry")}>Nouvelle consultation</Button>
+        </div>
+      )}
+
+      {printFallback && (
+        <div className="hidden print:block p-6 text-sm">
+          <h1 className="text-lg font-bold">Justificatif de consultation — identité non vérifiée biométriquement</h1>
+          <p className="mt-2 text-xs">
+            Panne ou indisponibilité de l'équipement d'identification. Ce document doit être
+            rapproché manuellement du dossier patient dès que possible.
+          </p>
+          <div className="mt-4 space-y-1">
+            <p><b>Cabinet :</b> {printFallback.clinicName}</p>
+            <p><b>Médecin :</b> {printFallback.doctorName}</p>
+            <p><b>Date :</b> {printFallback.createdAt}</p>
+            <p><b>Référence consultation :</b> {printFallback.consultationId}</p>
+          </div>
+          <div className="mt-4 space-y-1">
+            <p><b>Symptômes :</b> {printFallback.symptoms || "—"}</p>
+            <p><b>Diagnostic :</b> {printFallback.diagnosis || "—"}</p>
+            <p><b>Actes :</b> {printFallback.acts.join(", ") || "—"}</p>
+            <p><b>Montant :</b> {printFallback.amount || "—"}</p>
+          </div>
+          <div className="mt-8 space-y-4">
+            <p>Nom du patient (à écrire à la main) : ____________________________</p>
+            <p>N° d'identification / n° d'adhérent (le cas échéant) : ____________________________</p>
+            <p>Signature du patient : ____________________________</p>
+          </div>
         </div>
       )}
 
