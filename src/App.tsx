@@ -1,89 +1,102 @@
 // src/App.tsx
 import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { SignUp } from '@clerk/clerk-react';
 import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
-import DoctorLayout from './components/layouts/DoctorLayout';
-import AssureurLayout from './components/layouts/AssureurLayout';
-import DashboardPage from './Pages/doctor/DashboardPage';
 import { Building, Code, User, CheckCircle2, TrendingUp, ShieldCheck, Building2, Lock, KeyRound, ScrollText, Scale, UserCheck, Fingerprint, FileCheck2, Stethoscope, Inbox, ClipboardCheck, Wallet } from 'lucide-react';
-import PerformancePage from './Pages/doctor/PerformancePage';
-import MultispecialistDoctorLayout from './components/layouts/MultispecialistDoctorLayout';
-import MultispecialistAdminLayout from './components/layouts/MultispecialistAdminLayout';
-import MultispecialistSecretaryLayout from './components/layouts/MultispecialistSecretaryLayout';
-import SpecialistSecretaryLayout from './components/layouts/SpecialistSecretaryLayout';
-import DoctorDashboardPage from './Pages/multispecialist/doctor/DoctorDashboardPage';
-import SecretaryPatientsPage  from './Pages/multispecialist/secretary/SecretaryPatientsPage';
-import NewPatientWizard from './Pages/multispecialist/secretary/NewPatientWizard';
-import SecretaryAppointmentsPage from './Pages/multispecialist/secretary/SecretaryAppointmentsPage';
-import SupportPage from './Pages/multispecialist/secretary/SupportPage';
-import DoctorSupportPage from './Pages/doctor/SupportPage';
-import MultiDoctorSupportPage from './Pages/multispecialist/doctor/SupportPage';
-import AssureurSupportPage from './Pages/assureur/SupportPage';
 import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
-import PerformanceDoctorPage from './Pages/multispecialist/doctor/PerformanceDoctorPage';
-// Pages partagées entre cabinet spécialiste solo (/doctor/*) et multi-spécialiste (/multispecialist/doctor/*)
-import PatientDetailsPage from './Pages/shared/doctor/PatientDetailsPage';
-import DoctorConsultationDetailsPage from './Pages/shared/doctor/ConsultationDetailsPage';
-import NewConsultationPage from './Pages/shared/doctor/NewConsultationPage';
-import SettingsPage from './Pages/shared/doctor/SettingsPage';
-import HistoriqueActesPage from './Pages/shared/doctor/HistoriqueActesPage';
-import PatientsPage from './Pages/shared/doctor/PatientsPage';
-import NewPatientPage from './Pages/shared/doctor/NewPatientPage';
-import DoctorPaymentsPage from './Pages/shared/doctor/PaymentsPage';
-import PharmacyLayout from "./components/layouts/PharmacyLayout";
-import PharmacyDashboard from "./Pages/pharmacy/PharmacyDashboard";
-import PharmacyOrders from "./Pages/pharmacy/Orders";
-import PharmacyHistory from "./Pages/pharmacy/History";
-import PharmacySettings from "./Pages/pharmacy/Settings";
-import AssureurReports from './Pages/assureur/AssureurReports';
-import AssureurAnomalies from './Pages/assureur/AssureurAnomalies';
-import FingerprintAlertsPage from './Pages/assureur/FingerprintAlertsPage';
-import AssureurPaiements from './Pages/assureur/PaiementsPage';
-import StatistiquesPage from './Pages/assureur/StatistiquesPage';
-import CliniquesPage from './Pages/assureur/CliniquesPage';
-import ConsultationDetailsPage from './Pages/assureur/ConsultationDetailsPage';
-import MembersDirectoryPage from './Pages/assureur/MembersDirectoryPage';
-import AssureurSettingsPage from './Pages/assureur/AssureurSettingsPage';
-import AdminDashboardPage from "./Pages/multispecialist/admin/AdminDashboardPage";
-import AdminConsultationsPage from "./Pages/multispecialist/admin/AdminConsultationsPage";
-import AdminPerformancePage from "./Pages/multispecialist/admin/AdminPerformancePage";
-import AdminPaymentsPage from './Pages/multispecialist/admin/AdminPaymentsPage';
-import AdminAlertsPage from './Pages/multispecialist/admin/AdminAlertsPage';
-import AdminPatientsPage from './Pages/multispecialist/admin/AdminPatientsPage';
-import AdminTeamPage from './Pages/multispecialist/admin/AdminTeamPage';
-import AdminSupportInboxPage from './Pages/multispecialist/admin/AdminSupportInboxPage';
-import AdminSettingsPage from './Pages/multispecialist/admin/AdminSettingsPage';
 import { useAuth } from "@clerk/clerk-react";
 import { attachClerkToken } from "./lib/supabase";
 import FingerprintCallback from "./Pages/FingerprintCallback";
 import RoleRedirect from "./components/auth/RoleRedirect";
 import SignInPage from "./components/auth/SignInPage";
 import PatientPrivateRoute from "./components/auth/PatientPrivateRoute";
-import PatientLayout from "./components/layouts/PatientLayout";
-import PatientLoginPage from "./Pages/patient/Login";
-import PatientDashboard from "./Pages/patient/Dashboard";
-import PatientIdentite from "./Pages/patient/Identite";
-import PatientConsultations from "./Pages/patient/Consultations";
-import PatientOrdonnances from "./Pages/patient/Ordonnances";
-import PatientTraitements from "./Pages/patient/Traitements";
-import PatientPharmacie from "./Pages/patient/Pharmacie";
-import PatientRemboursements from "./Pages/patient/Remboursements";
-import PatientSettings from "./Pages/patient/Settings";
 import { useLocation } from "react-router-dom";
 import { Facebook, Linkedin, Mail, MessageCircle } from "lucide-react";
 import DebugReset from './Pages/DebugReset';
 import RequireDeveloper from "./components/auth/RequireDeveloper";
-import DeveloperLayout from "./components/layouts/DeveloperLayout";
-import DeveloperHome from "./Pages/developer/DeveloperHome";
-import NewClinicPage from "./Pages/developer/NewClinicPage";
-import NewInsurerPage from "./Pages/developer/NewInsurerPage";
-import TicketsPage from "./Pages/developer/TicketsPage";
-import ManageOrgsPage from "./Pages/developer/ManageOrgsPage";
-import MentionsLegales from "./Pages/legal/MentionsLegales";
-import Confidentialite from "./Pages/legal/Confidentialite";
 import ScrollToTop from "./components/ScrollToTop";
+
+// Chargement à la demande : chaque espace (médecin, secrétaire, admin,
+// assureur, pharmacie, patient, développeur) ne télécharge son code que
+// lorsqu'on y accède, au lieu d'un unique bundle de ~1,8 Mo chargé en entier
+// dès la page d'accueil quel que soit l'espace visité.
+const DoctorLayout = lazy(() => import('./components/layouts/DoctorLayout'));
+const AssureurLayout = lazy(() => import('./components/layouts/AssureurLayout'));
+const DashboardPage = lazy(() => import('./Pages/doctor/DashboardPage'));
+const PerformancePage = lazy(() => import('./Pages/doctor/PerformancePage'));
+const MultispecialistDoctorLayout = lazy(() => import('./components/layouts/MultispecialistDoctorLayout'));
+const MultispecialistAdminLayout = lazy(() => import('./components/layouts/MultispecialistAdminLayout'));
+const MultispecialistSecretaryLayout = lazy(() => import('./components/layouts/MultispecialistSecretaryLayout'));
+const SpecialistSecretaryLayout = lazy(() => import('./components/layouts/SpecialistSecretaryLayout'));
+const DoctorDashboardPage = lazy(() => import('./Pages/multispecialist/doctor/DoctorDashboardPage'));
+const SecretaryPatientsPage = lazy(() => import('./Pages/multispecialist/secretary/SecretaryPatientsPage'));
+const NewPatientWizard = lazy(() => import('./Pages/multispecialist/secretary/NewPatientWizard'));
+const SecretaryAppointmentsPage = lazy(() => import('./Pages/multispecialist/secretary/SecretaryAppointmentsPage'));
+const SupportPage = lazy(() => import('./Pages/multispecialist/secretary/SupportPage'));
+const DoctorSupportPage = lazy(() => import('./Pages/doctor/SupportPage'));
+const MultiDoctorSupportPage = lazy(() => import('./Pages/multispecialist/doctor/SupportPage'));
+const AssureurSupportPage = lazy(() => import('./Pages/assureur/SupportPage'));
+const PerformanceDoctorPage = lazy(() => import('./Pages/multispecialist/doctor/PerformanceDoctorPage'));
+// Pages partagées entre cabinet spécialiste solo (/doctor/*) et multi-spécialiste (/multispecialist/doctor/*)
+const PatientDetailsPage = lazy(() => import('./Pages/shared/doctor/PatientDetailsPage'));
+const DoctorConsultationDetailsPage = lazy(() => import('./Pages/shared/doctor/ConsultationDetailsPage'));
+const NewConsultationPage = lazy(() => import('./Pages/shared/doctor/NewConsultationPage'));
+const SettingsPage = lazy(() => import('./Pages/shared/doctor/SettingsPage'));
+const HistoriqueActesPage = lazy(() => import('./Pages/shared/doctor/HistoriqueActesPage'));
+const PatientsPage = lazy(() => import('./Pages/shared/doctor/PatientsPage'));
+const NewPatientPage = lazy(() => import('./Pages/shared/doctor/NewPatientPage'));
+const DoctorPaymentsPage = lazy(() => import('./Pages/shared/doctor/PaymentsPage'));
+const PharmacyLayout = lazy(() => import("./components/layouts/PharmacyLayout"));
+const PharmacyDashboard = lazy(() => import("./Pages/pharmacy/PharmacyDashboard"));
+const PharmacyOrders = lazy(() => import("./Pages/pharmacy/Orders"));
+const PharmacyHistory = lazy(() => import("./Pages/pharmacy/History"));
+const PharmacySettings = lazy(() => import("./Pages/pharmacy/Settings"));
+const AssureurReports = lazy(() => import('./Pages/assureur/AssureurReports'));
+const AssureurAnomalies = lazy(() => import('./Pages/assureur/AssureurAnomalies'));
+const FingerprintAlertsPage = lazy(() => import('./Pages/assureur/FingerprintAlertsPage'));
+const AssureurPaiements = lazy(() => import('./Pages/assureur/PaiementsPage'));
+const StatistiquesPage = lazy(() => import('./Pages/assureur/StatistiquesPage'));
+const CliniquesPage = lazy(() => import('./Pages/assureur/CliniquesPage'));
+const ConsultationDetailsPage = lazy(() => import('./Pages/assureur/ConsultationDetailsPage'));
+const MembersDirectoryPage = lazy(() => import('./Pages/assureur/MembersDirectoryPage'));
+const AssureurSettingsPage = lazy(() => import('./Pages/assureur/AssureurSettingsPage'));
+const AdminDashboardPage = lazy(() => import("./Pages/multispecialist/admin/AdminDashboardPage"));
+const AdminConsultationsPage = lazy(() => import("./Pages/multispecialist/admin/AdminConsultationsPage"));
+const AdminPerformancePage = lazy(() => import("./Pages/multispecialist/admin/AdminPerformancePage"));
+const AdminPaymentsPage = lazy(() => import('./Pages/multispecialist/admin/AdminPaymentsPage'));
+const AdminAlertsPage = lazy(() => import('./Pages/multispecialist/admin/AdminAlertsPage'));
+const AdminPatientsPage = lazy(() => import('./Pages/multispecialist/admin/AdminPatientsPage'));
+const AdminTeamPage = lazy(() => import('./Pages/multispecialist/admin/AdminTeamPage'));
+const AdminSupportInboxPage = lazy(() => import('./Pages/multispecialist/admin/AdminSupportInboxPage'));
+const AdminSettingsPage = lazy(() => import('./Pages/multispecialist/admin/AdminSettingsPage'));
+const PatientLayout = lazy(() => import("./components/layouts/PatientLayout"));
+const PatientLoginPage = lazy(() => import("./Pages/patient/Login"));
+const PatientDashboard = lazy(() => import("./Pages/patient/Dashboard"));
+const PatientIdentite = lazy(() => import("./Pages/patient/Identite"));
+const PatientConsultations = lazy(() => import("./Pages/patient/Consultations"));
+const PatientOrdonnances = lazy(() => import("./Pages/patient/Ordonnances"));
+const PatientTraitements = lazy(() => import("./Pages/patient/Traitements"));
+const PatientPharmacie = lazy(() => import("./Pages/patient/Pharmacie"));
+const PatientRemboursements = lazy(() => import("./Pages/patient/Remboursements"));
+const PatientSettings = lazy(() => import("./Pages/patient/Settings"));
+const DeveloperLayout = lazy(() => import("./components/layouts/DeveloperLayout"));
+const DeveloperHome = lazy(() => import("./Pages/developer/DeveloperHome"));
+const NewClinicPage = lazy(() => import("./Pages/developer/NewClinicPage"));
+const NewInsurerPage = lazy(() => import("./Pages/developer/NewInsurerPage"));
+const TicketsPage = lazy(() => import("./Pages/developer/TicketsPage"));
+const ManageOrgsPage = lazy(() => import("./Pages/developer/ManageOrgsPage"));
+const MentionsLegales = lazy(() => import("./Pages/legal/MentionsLegales"));
+const Confidentialite = lazy(() => import("./Pages/legal/Confidentialite"));
+
+function RouteLoadingFallback() {
+  return (
+    <div className="flex min-h-[40vh] w-full items-center justify-center">
+      <p className="text-sm text-gray-500">Chargement…</p>
+    </div>
+  );
+}
 
 function GlobalHeader() {
   const { pathname } = useLocation();
@@ -550,6 +563,7 @@ export default function App() {
     <ScrollToTop />
     {!isAppArea && <GlobalHeader />}
     <div className="flex-1 flex flex-col">
+  <Suspense fallback={<RouteLoadingFallback />}>
   <Routes>
     {/* PUBLIC */}
     <Route path="/" element={renderLandingPage()} />
@@ -738,6 +752,7 @@ export default function App() {
 
     <Route path="*" element={<Navigate to="/" />} />
   </Routes>
+  </Suspense>
     </div>
     {!isAppArea && <SiteFooter />}
     </div>
