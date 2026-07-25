@@ -70,10 +70,8 @@ export default function ConsultationChatDoctor({
       alert("Impossible d'envoyer : clinic_staff.id introuvable.");
       return;
     }
-    if (!receiverId) {
-      alert("Impossible d'envoyer : insurer_staff.id introuvable.");
-      return;
-    }
+    // receiverId (insurer_agent_id) n'est renseigné sur aucune consultation aujourd'hui :
+    // le message doit pouvoir partir quand même, seule la notification à l'assureur est sautée.
 
     const trimmed = newMessage.trim();
     if (!trimmed) return;

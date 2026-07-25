@@ -901,6 +901,7 @@ export type Database = {
           amount: number | null
           amount_delta: number | null
           amount_expected: number | null
+          appointment_id: string | null
           attachments: Json | null
           billing_details: Json | null
           biometric_clinic_id: string | null
@@ -962,6 +963,7 @@ export type Database = {
           amount?: number | null
           amount_delta?: number | null
           amount_expected?: number | null
+          appointment_id?: string | null
           attachments?: Json | null
           billing_details?: Json | null
           biometric_clinic_id?: string | null
@@ -1023,6 +1025,7 @@ export type Database = {
           amount?: number | null
           amount_delta?: number | null
           amount_expected?: number | null
+          appointment_id?: string | null
           attachments?: Json | null
           billing_details?: Json | null
           biometric_clinic_id?: string | null
@@ -1079,6 +1082,13 @@ export type Database = {
           vital_signs?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "consultations_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "consultations_clinic_id_fkey"
             columns: ["clinic_id"]

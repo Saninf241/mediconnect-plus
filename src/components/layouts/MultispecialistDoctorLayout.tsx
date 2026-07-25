@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { Outlet, NavLink, Link } from "react-router-dom";
-import { Stethoscope, Users, PlusSquare, History, Gauge, Settings, LifeBuoy } from "lucide-react";
+import { Stethoscope, Users, PlusSquare, History, Gauge, Settings, LifeBuoy, Wallet } from "lucide-react";
 import { toast } from "react-toastify";
 import { supabase } from "../../lib/supabase";
 import { useDoctorContext } from "../../hooks/useDoctorContext";
@@ -93,6 +93,7 @@ export default function MultispecialistDoctorLayout() {
             <Item to="new-consultation" icon={PlusSquare} label="Nouvelle consultation" />
             <Item to="consultation-follow-up" icon={History} label="Suivi des consultations" />
             <Item to="performance" icon={Stethoscope} label="Performance" />
+            <Item to="payments" icon={Wallet} label="Mes paiements" />
             <Item to="support" icon={LifeBuoy} label="Support" />
             <Item to="settings" icon={Settings} label="Paramètres" />
           </nav>

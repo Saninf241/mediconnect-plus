@@ -11,6 +11,13 @@ interface Act {
   title?: string | null;
 }
 
+interface ManualPricing {
+  proposed_amount: number;
+  justification: string | null;
+  status: string;
+  rejection_reason: string | null;
+}
+
 interface ConsultationRecord {
   id: string;
   created_at: string;
@@ -27,6 +34,8 @@ interface ConsultationRecord {
   symptoms: string | null;
   acts: Act[] | null;
   diagnosis_code_text: string | null;
+  pricing_status: string | null;
+  insurer_amount: number | null;
 
   // jointures
   patients?: {
@@ -47,6 +56,7 @@ interface ConsultationRecord {
 export default function ConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [record, setRecord] = useState<ConsultationRecord | null>(null);
+  const [manualPricing, setManualPricing] = useState<ManualPricing | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -73,6 +83,8 @@ export default function ConsultationDetailsPage() {
           symptoms,
           acts,
           diagnosis_code_text,
+          pricing_status,
+          insurer_amount,
           patients ( name, phone, date_of_birth ),
           clinics ( name ),
           clinic_staff:clinic_staff!consultations_doctor_id_fkey ( name )
@@ -86,6 +98,24 @@ export default function ConsultationDetailsPage() {
       } else if (data) {
         setRecord(data as ConsultationRecord);
       }
+
+      const needsManualPricingDetail =
+        data && (data as ConsultationRecord).pricing_status !== "computed";
+
+      if (needsManualPricingDetail) {
+        const { data: pricing, error: pricingError } = await supabase
+          .from("consultation_manual_pricing")
+          .select("proposed_amount, justification, status, rejection_reason")
+          .eq("consultation_id", id)
+          .maybeSingle();
+
+        if (pricingError) {
+          console.error("[DoctorDetails] error fetching manual pricing:", pricingError);
+        } else {
+          setManualPricing((pricing as ManualPricing) ?? null);
+        }
+      }
+
       setLoading(false);
     };
 
@@ -205,6 +235,52 @@ export default function ConsultationDetailsPage() {
           )}
         </div>
       </section>
+
+      {/* Bloc tarification -- ne s'affiche que si le calcul automatique n'a pas
+          suffi (compute_consultation_pricing bloqué / contesté par l'assureur) */}
+      {record.pricing_status && record.pricing_status !== "computed" && (
+        <section className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold">Tarification</h2>
+
+          {record.pricing_status === "manual_approved" ? (
+            <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
+              <p className="text-sm font-semibold text-purple-800">
+                Tarif ajusté manuellement et validé par l’assureur
+              </p>
+              <p className="text-sm text-purple-700 mt-1">
+                Montant retenu : {record.insurer_amount != null ? `${record.insurer_amount.toLocaleString("fr-FR")} FCFA` : "—"}
+              </p>
+              {manualPricing?.justification && (
+                <p className="text-xs text-purple-700 mt-2">Justification : {manualPricing.justification}</p>
+              )}
+            </div>
+          ) : manualPricing ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-800">
+                Tarification manuelle en attente de validation assureur
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                Montant proposé : {manualPricing.proposed_amount.toLocaleString("fr-FR")} FCFA
+              </p>
+              {manualPricing.justification && (
+                <p className="text-xs text-amber-700 mt-2">Justification : {manualPricing.justification}</p>
+              )}
+              {manualPricing.status === "rejected" && (
+                <p className="text-xs text-red-700 mt-2">
+                  Proposition rejetée{manualPricing.rejection_reason ? ` : ${manualPricing.rejection_reason}` : "."}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-sm text-gray-700">
+                Le calcul automatique du tarif n’a pas abouti pour cette consultation ; elle est en attente de
+                tarification manuelle par l’assureur.
+              </p>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Bloc statut assureur */}
       <section className="bg-white rounded-xl shadow-sm p-4 space-y-4">

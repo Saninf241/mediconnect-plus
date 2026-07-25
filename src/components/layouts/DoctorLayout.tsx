@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, NavLink, Outlet, Link } from 'react-router-dom';
-import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy } from 'lucide-react';
+import { UserRound, Users, Stethoscope, FileText, Settings, LineChart, LifeBuoy, Wallet } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { useDoctorContext } from '../../hooks/useDoctorContext';
 import LogoutButton from '../ui/LogoutButton';
@@ -100,6 +100,7 @@ export default function DoctorLayout() {
             {Item('/doctor/new-act', Stethoscope, 'Démarrer consultation')}
             {Item('/doctor/consultation-follow-up', FileText, 'Suivi des consultations')}
             {Item('/doctor/performance', LineChart, 'Performance')}
+            {Item('/doctor/payments', Wallet, 'Mes paiements')}
             {Item('/doctor/support', LifeBuoy, 'Support')}
             {Item('/doctor/settings', Settings, 'Paramètres')}
           </nav>

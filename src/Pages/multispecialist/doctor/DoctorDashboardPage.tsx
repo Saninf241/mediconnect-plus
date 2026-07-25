@@ -33,7 +33,7 @@ export default function DoctorDashboardPage() {
           .gte("created_at", `${todayStr} 00:00:00`).lte("created_at", `${todayStr} 23:59:59`),
 
         base()
-          .eq("status", "pending_rights"),
+          .eq("status", "draft").is("rights_checked_at", null),
 
         base()
           .eq("status", "validated"),

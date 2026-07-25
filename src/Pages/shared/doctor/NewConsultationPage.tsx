@@ -515,6 +515,42 @@ const createConsultation = async () => {
       return;
     }
 
+    // Si un RDV du jour (planned/waiting) existe pour ce patient chez ce
+    // médecin, on referme la boucle secrétaire → médecin : la consultation
+    // qui vient d'être enregistrée EST la preuve que le patient est venu.
+    // Best-effort, ne doit jamais faire échouer l'enregistrement principal.
+    if (patientId) {
+      try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const { data: matchingAppointment } = await supabase
+          .from("appointments")
+          .select("id, checked_in_at")
+          .eq("clinic_id", ctx.clinicId)
+          .eq("doctor_id", ctx.doctorId)
+          .eq("patient_id", patientId)
+          .in("status", ["planned", "waiting"])
+          .gte("appointment_date", todayStart.toISOString())
+          .lte("appointment_date", todayEnd.toISOString())
+          .order("appointment_date", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (matchingAppointment) {
+          await supabase.from("consultations").update({ appointment_id: matchingAppointment.id }).eq("id", cid);
+          await supabase
+            .from("appointments")
+            .update({ status: "done", checked_in_at: matchingAppointment.checked_in_at ?? new Date().toISOString() })
+            .eq("id", matchingAppointment.id);
+        }
+      } catch (e) {
+        console.error("[createConsultation] appointment linking failed (non-blocking):", e);
+      }
+    }
+
     const { data: check, error: checkErr } = await supabase
     .from("consultations")
     .select("id, medications")

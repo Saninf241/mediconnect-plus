@@ -31,6 +31,7 @@ import SettingsPage from './Pages/shared/doctor/SettingsPage';
 import HistoriqueActesPage from './Pages/shared/doctor/HistoriqueActesPage';
 import PatientsPage from './Pages/shared/doctor/PatientsPage';
 import NewPatientPage from './Pages/shared/doctor/NewPatientPage';
+import DoctorPaymentsPage from './Pages/shared/doctor/PaymentsPage';
 import PharmacyLayout from "./components/layouts/PharmacyLayout";
 import PharmacyDashboard from "./Pages/pharmacy/PharmacyDashboard";
 import PharmacyOrders from "./Pages/pharmacy/Orders";
@@ -580,6 +581,7 @@ export default function App() {
       <Route path="consultation-follow-up" element={<HistoriqueActesPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="performance" element={<PerformancePage />} />
+      <Route path="payments" element={<DoctorPaymentsPage />} />
       <Route path="patients/:id" element={<PatientDetailsPage />} />
       <Route path="consultations/:id" element={<DoctorConsultationDetailsPage />} />
       <Route path="support" element={<DoctorSupportPage />} />
@@ -621,6 +623,7 @@ export default function App() {
       <Route path="new-consultation" element={<NewConsultationPage />} />
       <Route path="consultation-follow-up" element={<HistoriqueActesPage />} />
       <Route path="performance" element={<PerformanceDoctorPage />} />
+      <Route path="payments" element={<DoctorPaymentsPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="patients/:id" element={<PatientDetailsPage />} />
       <Route path="consultations/:id" element={<DoctorConsultationDetailsPage />} />

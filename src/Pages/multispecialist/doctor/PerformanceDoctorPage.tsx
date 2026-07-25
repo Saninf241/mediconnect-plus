@@ -1,6 +1,6 @@
 // src/Pages/multispecialist/doctor/PerformanceDoctorPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { getDoctorPerformance } from "../../../lib/queries/doctors";
 import {
   LineChart,
@@ -112,7 +112,7 @@ function StatusCard({
 }
 
 export default function PerformanceDoctorPage() {
-  const { user } = useUser();
+  const doctorInfo = useDoctorContext();
   const [period, setPeriod] = useState<PeriodValue>("6m");
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,13 +120,13 @@ export default function PerformanceDoctorPage() {
   useEffect(() => {
     const fetchPerformance = async () => {
       try {
-        if (!user?.id) {
+        if (!doctorInfo?.doctor_id) {
           setLoading(false);
           return;
         }
 
         setLoading(true);
-        const data = await getDoctorPerformance(user.id, period);
+        const data = await getDoctorPerformance(doctorInfo.doctor_id, period);
         setPerformance(data ?? null);
       } catch (error) {
         console.error("Erreur chargement performance:", error);
@@ -136,7 +136,7 @@ export default function PerformanceDoctorPage() {
     };
 
     fetchPerformance();
-  }, [user, period]);
+  }, [doctorInfo, period]);
 
   const metrics = useMemo(() => {
     const p = performance || {};
