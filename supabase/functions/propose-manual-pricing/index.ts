@@ -63,7 +63,7 @@ serve(async (req) => {
 
     const { data: consultation, error: consultErr } = await supabase
       .from("consultations")
-      .select("id, insurer_id")
+      .select("id, insurer_id, pricing_status")
       .eq("id", consultation_id)
       .maybeSingle();
 
@@ -102,6 +102,20 @@ serve(async (req) => {
       );
 
     if (upsertErr) throw upsertErr;
+
+    // Une nouvelle proposition invalide une approbation precedente : sans
+    // ca, consultations.pricing_status resterait "manual_approved" avec
+    // l'ancien montant pendant que la nouvelle proposition attend sa
+    // propre decision -- generate-payment-batch la considererait "prete"
+    // et pourrait la regrouper/payer sur la base du montant perime avant
+    // meme que l'admin ait tranche sur la correction.
+    if (consultation.pricing_status === "manual_approved") {
+      const { error: resetErr } = await supabase
+        .from("consultations")
+        .update({ pricing_status: null, insurer_amount: null })
+        .eq("id", consultation_id);
+      if (resetErr) throw resetErr;
+    }
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,

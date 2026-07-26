@@ -70,7 +70,7 @@ serve(async (req) => {
 
     const { data: proposal, error: proposalErr } = await supabase
       .from("consultation_manual_pricing")
-      .select("id, consultation_id, insurer_id, proposed_amount, status")
+      .select("id, consultation_id, insurer_id, proposed_amount, status, consultations(payment_status)")
       .eq("id", manual_pricing_id)
       .maybeSingle();
 
@@ -114,6 +114,24 @@ serve(async (req) => {
     }
 
     // decision === "approve"
+    // Une consultation deja payee ne doit jamais voir son montant change
+    // silencieusement : le lot de paiement correspondant a deja ete verse
+    // sur l'ancien montant, et rien ici ne sait faire un ajustement/
+    // remboursement. On refuse plutot que de laisser consultations
+    // diverger de ce qui a reellement ete paye.
+    const alreadyPaid = (proposal as any).consultations?.payment_status === "paid";
+    if (alreadyPaid) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Cette consultation a déjà été payée sur la base d'un montant précédent. " +
+            "Une approbation changerait le montant sans ajuster le paiement déjà versé — " +
+            "à traiter manuellement (pas de processus de régularisation automatique pour l'instant).",
+        }),
+        { status: 409, headers: cors }
+      );
+    }
+
     const { error: updateProposalErr } = await supabase
       .from("consultation_manual_pricing")
       .update({
