@@ -81,6 +81,7 @@ const PatientTraitements = lazy(() => import("./Pages/patient/Traitements"));
 const PatientPharmacie = lazy(() => import("./Pages/patient/Pharmacie"));
 const PatientRemboursements = lazy(() => import("./Pages/patient/Remboursements"));
 const PatientSettings = lazy(() => import("./Pages/patient/Settings"));
+const PatientSupport = lazy(() => import("./Pages/patient/Support"));
 const DeveloperLayout = lazy(() => import("./components/layouts/DeveloperLayout"));
 const DeveloperHome = lazy(() => import("./Pages/developer/DeveloperHome"));
 const NewClinicPage = lazy(() => import("./Pages/developer/NewClinicPage"));
@@ -729,6 +730,7 @@ export default function App() {
       <Route path="Pharmacie" element={<PatientPharmacie />} />
       <Route path="Remboursements" element={<PatientRemboursements />} />
       <Route path="Settings" element={<PatientSettings />} />
+      <Route path="Support" element={<PatientSupport />} />
     </Route>
 
     <Route path="/fp-callback" element={<FingerprintCallback />} />

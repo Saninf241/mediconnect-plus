@@ -1,5 +1,5 @@
 // src/Pages/patient/Settings.tsx
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { supabasePatient } from "../../lib/supabasePatient";
 import { usePatientPortalData } from "../../hooks/usePatientPortalData";
 
@@ -27,12 +27,14 @@ export default function SettingsPage() {
       <div className="space-y-2 bg-white p-4 shadow rounded">
         <h2 className="font-semibold">Besoin d'aide ?</h2>
         <p className="text-sm text-gray-600">
-          Pour toute question sur votre espace santé, écrivez-nous à{" "}
-          <a href="mailto:contact@ndoungconsulting.com" className="text-emerald-700 underline">
-            contact@ndoungconsulting.com
-          </a>
-          .
+          Une question, un problème avec votre espace santé ?
         </p>
+        <Link
+          to="/patient/Support"
+          className="inline-block px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+        >
+          Contacter le support
+        </Link>
       </div>
 
       <div className="space-y-2 bg-white p-4 shadow rounded">

@@ -182,12 +182,25 @@ export default function PatientLoginPage() {
           </div>
         )}
 
-        <p className="text-xs text-gray-400 text-center border-t pt-3">
-          Besoin d'aide ? Écrivez-nous à{" "}
-          <a href="mailto:contact@ndoungconsulting.com" className="underline">
-            contact@ndoungconsulting.com
-          </a>
-        </p>
+        <div className="text-xs text-gray-400 text-center border-t pt-3 space-y-1">
+          <p>Besoin d'aide ?</p>
+          <p>
+            <a
+              href={`https://wa.me/33782525687?text=${encodeURIComponent(
+                "Bonjour, j'ai besoin d'aide pour me connecter à mon espace santé MediConnect+."
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+              className="underline text-green-700"
+            >
+              WhatsApp
+            </a>
+            {" · "}
+            <a href="mailto:contact@ndoungconsulting.com" className="underline">
+              contact@ndoungconsulting.com
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );

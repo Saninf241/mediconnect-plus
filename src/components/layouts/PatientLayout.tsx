@@ -13,6 +13,7 @@ export default function PatientLayout() {
           <NavLink to="/patient/Traitements">Traitements</NavLink>
           <NavLink to="/patient/Pharmacie">Pharmacie</NavLink>
           <NavLink to="/patient/Remboursements">Remboursements</NavLink>
+          <NavLink to="/patient/Support">Besoin d'aide</NavLink>
           <NavLink to="/patient/Settings">Paramètres</NavLink>
         </nav>
       </aside>
