@@ -9,6 +9,7 @@ const navItems = [
   { name: "Nouvel assureur", path: "/developer/insurers/new" },
   { name: "Tickets support", path: "/developer/tickets" },
   { name: "Gérer cabinets & assureurs", path: "/developer/manage" },
+  { name: "Fusionner des patients", path: "/developer/merge-patients" },
 ];
 
 export default function DeveloperLayout() {

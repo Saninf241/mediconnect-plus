@@ -69,6 +69,22 @@ type Action =
   | { action: "remove_convention"; id: string }
   | { action: "update_insurer_verification_level"; insurer_id: string; verification_level: string }
   | {
+      action: "add_clinic_staff";
+      clinic_id: string;
+      name: string;
+      email: string;
+      role: "doctor" | "secretary" | "admin";
+    }
+  | { action: "add_insurer_staff"; insurer_id: string; email: string; role: string }
+  | { action: "list_clinic_insurer_networks" }
+  | { action: "add_clinic_insurer_network"; clinic_id: string; insurer_id: string }
+  | {
+      action: "toggle_clinic_insurer_network";
+      id: string;
+      can_identify_network: boolean;
+    }
+  | { action: "remove_clinic_insurer_network"; id: string }
+  | {
       action: "list_directory_members";
       insurer_id: string;
     }
@@ -222,6 +238,136 @@ serve(async (req) => {
         .from("insurers")
         .update({ verification_level: input.verification_level })
         .eq("id", input.insurer_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "add_clinic_staff") {
+      if (
+        !input.clinic_id ||
+        !input.name?.trim() ||
+        !input.email?.trim() ||
+        !["doctor", "secretary", "admin"].includes(input.role)
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Cabinet, nom, email et rôle valide requis" }),
+          { status: 400, headers: cors }
+        );
+      }
+
+      // Meme convention que dev-create-clinic : invitation Clerk (la
+      // personne choisit son mot de passe en acceptant), clerk_user_id
+      // reste vide jusqu'a l'acceptation (backfill par
+      // clerk-webhook-user-created), l'app matche deja par email en
+      // repli entre-temps.
+      try {
+        await clerkFetch(
+          "/invitations",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email_address: input.email.trim(),
+              public_metadata: { role: input.role },
+              notify: true,
+            }),
+          },
+          clerkSecret
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Échec de l'invitation Clerk : ${(e as Error).message}` }),
+          { status: 400, headers: cors }
+        );
+      }
+
+      const { error } = await supabase.from("clinic_staff").insert({
+        clinic_id: input.clinic_id,
+        clerk_user_id: null,
+        name: input.name.trim(),
+        role: input.role,
+        email: input.email.trim(),
+        status: "active",
+      });
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "add_insurer_staff") {
+      if (!input.insurer_id || !input.email?.trim() || !input.role?.trim()) {
+        return new Response(
+          JSON.stringify({ error: "Assureur, email et rôle requis" }),
+          { status: 400, headers: cors }
+        );
+      }
+
+      try {
+        await clerkFetch(
+          "/invitations",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email_address: input.email.trim(),
+              public_metadata: { role: "assurer" },
+              notify: true,
+            }),
+          },
+          clerkSecret
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Échec de l'invitation Clerk : ${(e as Error).message}` }),
+          { status: 400, headers: cors }
+        );
+      }
+
+      // insurer_staff n'a pas de colonne "name" (verifie sur le schema) --
+      // seul email + role sont stockes, comme dans dev-create-insurer.
+      const { error } = await supabase.from("insurer_staff").insert({
+        insurer_id: input.insurer_id,
+        clerk_user_id: null,
+        email: input.email.trim(),
+        role: input.role.trim(),
+      });
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_clinic_insurer_networks") {
+      const { data, error } = await supabase
+        .from("clinic_insurer_networks")
+        .select("id, clinic_id, insurer_id, status, can_identify_network, created_at, clinics:clinic_id(name), insurers:insurer_id(name)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return new Response(JSON.stringify({ networks: data }), { headers: cors });
+    }
+
+    if (input.action === "add_clinic_insurer_network") {
+      if (!input.clinic_id || !input.insurer_id) {
+        return new Response(JSON.stringify({ error: "Cabinet et assureur requis" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase
+        .from("clinic_insurer_networks")
+        .upsert(
+          { clinic_id: input.clinic_id, insurer_id: input.insurer_id, status: "active", can_identify_network: true },
+          { onConflict: "clinic_id,insurer_id" }
+        );
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "toggle_clinic_insurer_network") {
+      const { error } = await supabase
+        .from("clinic_insurer_networks")
+        .update({ can_identify_network: input.can_identify_network })
+        .eq("id", input.id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "remove_clinic_insurer_network") {
+      const { error } = await supabase.from("clinic_insurer_networks").delete().eq("id", input.id);
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }

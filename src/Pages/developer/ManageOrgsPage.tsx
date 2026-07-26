@@ -35,6 +35,17 @@ type Convention = {
   insurers: { id: string; name: string } | null;
 };
 
+type ClinicInsurerNetwork = {
+  id: string;
+  clinic_id: string;
+  insurer_id: string;
+  status: string;
+  can_identify_network: boolean;
+  created_at: string;
+  clinics: { name: string } | null;
+  insurers: { name: string } | null;
+};
+
 type PaymentInfo = {
   id: string;
   clinic_id: string;
@@ -77,7 +88,22 @@ export default function ManageOrgsPage() {
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [insurers, setInsurers] = useState<Insurer[]>([]);
   const [conventions, setConventions] = useState<Convention[]>([]);
+  const [networks, setNetworks] = useState<ClinicInsurerNetwork[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Ajouter un membre à un cabinet ou un assureur existant.
+  const [addStaffForClinic, setAddStaffForClinic] = useState<string | null>(null);
+  const [clinicStaffForm, setClinicStaffForm] = useState({ name: "", email: "", role: "secretary" as "doctor" | "secretary" | "admin" });
+  const [addingClinicStaff, setAddingClinicStaff] = useState(false);
+
+  const [addStaffForInsurer, setAddStaffForInsurer] = useState<string | null>(null);
+  const [insurerStaffForm, setInsurerStaffForm] = useState({ email: "", role: "agent" });
+  const [addingInsurerStaff, setAddingInsurerStaff] = useState(false);
+
+  // Réseau d'identification biométrique inter-cabinet.
+  const [newNetworkClinic, setNewNetworkClinic] = useState("");
+  const [newNetworkInsurer, setNewNetworkInsurer] = useState("");
+  const [addingNetwork, setAddingNetwork] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<
     { kind: "clinic" | "insurer"; id: string; name: string } | null
   >(null);
@@ -125,22 +151,108 @@ export default function ManageOrgsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [c, i, cv, pi, drift] = await Promise.all([
+      const [c, i, cv, nw, pi, drift] = await Promise.all([
         call({ action: "list_clinics" }),
         call({ action: "list_insurers" }),
         call({ action: "list_conventions" }),
+        call({ action: "list_clinic_insurer_networks" }),
         call({ action: "list_pending_payment_info" }),
         call({ action: "list_payment_info_drift" }),
       ]);
       setClinics(c.clinics ?? []);
       setInsurers(i.insurers ?? []);
       setConventions(cv.conventions ?? []);
+      setNetworks(nw.networks ?? []);
       setPaymentInfoList(pi.payment_info ?? []);
       setDriftRows(drift.drift ?? []);
     } catch (err: any) {
       toast.error(err.message || "Impossible de charger la liste");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function addClinicStaff(clinicId: string) {
+    if (!clinicStaffForm.name.trim() || !clinicStaffForm.email.trim()) {
+      toast.error("Nom et email requis.");
+      return;
+    }
+    setAddingClinicStaff(true);
+    try {
+      await call({
+        action: "add_clinic_staff",
+        clinic_id: clinicId,
+        name: clinicStaffForm.name.trim(),
+        email: clinicStaffForm.email.trim(),
+        role: clinicStaffForm.role,
+      });
+      toast.success("Invitation envoyée.");
+      setAddStaffForClinic(null);
+      setClinicStaffForm({ name: "", email: "", role: "secretary" });
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de l'ajout");
+    } finally {
+      setAddingClinicStaff(false);
+    }
+  }
+
+  async function addInsurerStaff(insurerId: string) {
+    if (!insurerStaffForm.email.trim()) {
+      toast.error("Email requis.");
+      return;
+    }
+    setAddingInsurerStaff(true);
+    try {
+      await call({
+        action: "add_insurer_staff",
+        insurer_id: insurerId,
+        email: insurerStaffForm.email.trim(),
+        role: insurerStaffForm.role,
+      });
+      toast.success("Invitation envoyée.");
+      setAddStaffForInsurer(null);
+      setInsurerStaffForm({ email: "", role: "agent" });
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de l'ajout");
+    } finally {
+      setAddingInsurerStaff(false);
+    }
+  }
+
+  async function addNetwork() {
+    if (!newNetworkClinic || !newNetworkInsurer) return;
+    setAddingNetwork(true);
+    try {
+      await call({ action: "add_clinic_insurer_network", clinic_id: newNetworkClinic, insurer_id: newNetworkInsurer });
+      toast.success("Réseau ajouté");
+      setNewNetworkClinic("");
+      setNewNetworkInsurer("");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de l'ajout");
+    } finally {
+      setAddingNetwork(false);
+    }
+  }
+
+  async function toggleNetwork(id: string, current: boolean) {
+    try {
+      await call({ action: "toggle_clinic_insurer_network", id, can_identify_network: !current });
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    }
+  }
+
+  async function removeNetwork(id: string) {
+    try {
+      await call({ action: "remove_clinic_insurer_network", id });
+      toast.success("Réseau retiré");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la suppression");
     }
   }
 
@@ -301,25 +413,65 @@ export default function ManageOrgsPage() {
             <h2 className="text-lg font-semibold">Cabinets ({clinics.length})</h2>
             {clinics.length === 0 && <p className="text-sm text-gray-500">Aucun cabinet.</p>}
             {clinics.map((c) => (
-              <Card key={c.id} className="flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{c.name}</div>
-                  <div className="text-xs text-gray-500">
-                    {c.type === "multi_specialist" ? "Multi-spécialiste" : "Spécialiste"} ·{" "}
-                    {c.clinic_staff?.[0]?.count ?? 0} membre(s) ·{" "}
-                    {c.consultations?.[0]?.count ?? 0} consultation(s) ·{" "}
-                    {new Date(c.created_at).toLocaleDateString("fr-FR")}
+              <Card key={c.id} className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium">{c.name}</div>
+                    <div className="text-xs text-gray-500">
+                      {c.type === "multi_specialist" ? "Multi-spécialiste" : "Spécialiste"} ·{" "}
+                      {c.clinic_staff?.[0]?.count ?? 0} membre(s) ·{" "}
+                      {c.consultations?.[0]?.count ?? 0} consultation(s) ·{" "}
+                      {new Date(c.created_at).toLocaleDateString("fr-FR")}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        setAddStaffForClinic(addStaffForClinic === c.id ? null : c.id);
+                        setClinicStaffForm({ name: "", email: "", role: "secretary" });
+                      }}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {addStaffForClinic === c.id ? "Fermer" : "Ajouter un membre"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmTarget({ kind: "clinic", id: c.id, name: c.name });
+                        setConfirmText("");
+                      }}
+                      className="text-red-600 text-sm hover:underline"
+                    >
+                      Supprimer
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setConfirmTarget({ kind: "clinic", id: c.id, name: c.name });
-                    setConfirmText("");
-                  }}
-                  className="text-red-600 text-sm hover:underline"
-                >
-                  Supprimer
-                </button>
+
+                {addStaffForClinic === c.id && (
+                  <div className="border-t pt-3 grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <Input
+                      placeholder="Nom complet"
+                      value={clinicStaffForm.name}
+                      onChange={(e) => setClinicStaffForm({ ...clinicStaffForm, name: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Email"
+                      value={clinicStaffForm.email}
+                      onChange={(e) => setClinicStaffForm({ ...clinicStaffForm, email: e.target.value })}
+                    />
+                    <select
+                      className="border rounded p-2 text-sm"
+                      value={clinicStaffForm.role}
+                      onChange={(e) => setClinicStaffForm({ ...clinicStaffForm, role: e.target.value as any })}
+                    >
+                      <option value="doctor">Médecin</option>
+                      <option value="secretary">Secrétaire</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <Button onClick={() => addClinicStaff(c.id)} disabled={addingClinicStaff}>
+                      {addingClinicStaff ? "…" : "Inviter"}
+                    </Button>
+                  </div>
+                )}
               </Card>
             ))}
           </section>
@@ -459,6 +611,15 @@ export default function ManageOrgsPage() {
                     </button>
                     <button
                       onClick={() => {
+                        setAddStaffForInsurer(addStaffForInsurer === i.id ? null : i.id);
+                        setInsurerStaffForm({ email: "", role: "agent" });
+                      }}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {addStaffForInsurer === i.id ? "Fermer" : "Ajouter un membre"}
+                    </button>
+                    <button
+                      onClick={() => {
                         setConfirmTarget({ kind: "insurer", id: i.id, name: i.name });
                         setConfirmText("");
                       }}
@@ -468,6 +629,27 @@ export default function ManageOrgsPage() {
                     </button>
                   </div>
                 </div>
+
+                {addStaffForInsurer === i.id && (
+                  <div className="border-t pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <Input
+                      placeholder="Email"
+                      value={insurerStaffForm.email}
+                      onChange={(e) => setInsurerStaffForm({ ...insurerStaffForm, email: e.target.value })}
+                    />
+                    <select
+                      className="border rounded p-2 text-sm"
+                      value={insurerStaffForm.role}
+                      onChange={(e) => setInsurerStaffForm({ ...insurerStaffForm, role: e.target.value })}
+                    >
+                      <option value="agent">Agent</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <Button onClick={() => addInsurerStaff(i.id)} disabled={addingInsurerStaff}>
+                      {addingInsurerStaff ? "…" : "Inviter"}
+                    </Button>
+                  </div>
+                )}
 
                 {directoryFor === i.id && (
                   <div className="border-t pt-3 space-y-3">
@@ -590,6 +772,83 @@ export default function ManageOrgsPage() {
                 >
                   Retirer
                 </button>
+              </Card>
+            ))}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">
+              Réseau d'identification biométrique ({networks.length})
+            </h2>
+            <p className="text-sm text-gray-500">
+              Permet à un cabinet de retrouver par empreinte un patient assuré chez un assureur
+              avec lequel il n'a pas forcément lui-même enrôlé le patient (identification
+              inter-cabinet). Sans ligne ici, un cabinet ne voit que ses propres patients.
+            </p>
+
+            <Card className="flex flex-wrap items-end gap-3">
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-xs text-gray-500">Cabinet</label>
+                <select
+                  className="w-full border rounded p-2 text-sm"
+                  value={newNetworkClinic}
+                  onChange={(e) => setNewNetworkClinic(e.target.value)}
+                >
+                  <option value="">— choisir —</option>
+                  {clinics.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[180px]">
+                <label className="text-xs text-gray-500">Assureur</label>
+                <select
+                  className="w-full border rounded p-2 text-sm"
+                  value={newNetworkInsurer}
+                  onChange={(e) => setNewNetworkInsurer(e.target.value)}
+                >
+                  <option value="">— choisir —</option>
+                  {insurers.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button onClick={addNetwork} disabled={addingNetwork || !newNetworkClinic || !newNetworkInsurer}>
+                {addingNetwork ? "Ajout…" : "Ajouter"}
+              </Button>
+            </Card>
+
+            {networks.length === 0 && (
+              <p className="text-sm text-gray-500">Aucun réseau pour l'instant.</p>
+            )}
+            {networks.map((nw) => (
+              <Card key={nw.id} className="flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="font-medium">{nw.clinics?.name ?? "—"}</span>
+                  <span className="text-gray-400 mx-2">↔</span>
+                  <span className="font-medium">{nw.insurers?.name ?? "—"}</span>
+                  <span className="text-xs text-gray-400 ml-2">({nw.status})</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={nw.can_identify_network}
+                      onChange={() => toggleNetwork(nw.id, nw.can_identify_network)}
+                    />
+                    Identification activée
+                  </label>
+                  <button
+                    onClick={() => removeNetwork(nw.id)}
+                    className="text-red-600 text-sm hover:underline"
+                  >
+                    Retirer
+                  </button>
+                </div>
               </Card>
             ))}
           </section>

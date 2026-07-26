@@ -88,6 +88,7 @@ const NewClinicPage = lazy(() => import("./Pages/developer/NewClinicPage"));
 const NewInsurerPage = lazy(() => import("./Pages/developer/NewInsurerPage"));
 const TicketsPage = lazy(() => import("./Pages/developer/TicketsPage"));
 const ManageOrgsPage = lazy(() => import("./Pages/developer/ManageOrgsPage"));
+const MergePatientsPage = lazy(() => import("./Pages/developer/MergePatientsPage"));
 const MentionsLegales = lazy(() => import("./Pages/legal/MentionsLegales"));
 const Confidentialite = lazy(() => import("./Pages/legal/Confidentialite"));
 
@@ -750,6 +751,7 @@ export default function App() {
       <Route path="insurers/new" element={<NewInsurerPage />} />
       <Route path="tickets" element={<TicketsPage />} />
       <Route path="manage" element={<ManageOrgsPage />} />
+      <Route path="merge-patients" element={<MergePatientsPage />} />
     </Route>
 
     <Route path="*" element={<Navigate to="/" />} />
