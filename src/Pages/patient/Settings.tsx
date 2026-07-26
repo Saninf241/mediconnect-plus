@@ -25,6 +25,17 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-2 bg-white p-4 shadow rounded">
+        <h2 className="font-semibold">Besoin d'aide ?</h2>
+        <p className="text-sm text-gray-600">
+          Pour toute question sur votre espace santé, écrivez-nous à{" "}
+          <a href="mailto:contact@ndoungconsulting.com" className="text-emerald-700 underline">
+            contact@ndoungconsulting.com
+          </a>
+          .
+        </p>
+      </div>
+
+      <div className="space-y-2 bg-white p-4 shadow rounded">
         <h2 className="font-semibold">Déconnexion</h2>
         <button
           onClick={handleSignOut}

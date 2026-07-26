@@ -100,6 +100,11 @@ serve(async (req) => {
       next_visit_date: c.next_visit_date,
     }));
 
+    // rejection_reason est du texte libre saisi par l'agent assureur, jamais
+    // filtre -- rien n'empeche qu'il y mentionne la pathologie du patient
+    // ("non couvert : traitement VIH hors contrat"). On ne transmet donc
+    // jamais ce texte brut au patient, seulement le fait qu'un motif existe
+    // ; le detail se demande a la clinique ou a l'assureur, en personne.
     const claimsPublic = (consultations.data || []).map((c) => ({
       id: c.id,
       created_at: c.created_at,
@@ -109,7 +114,7 @@ serve(async (req) => {
       insurer_amount: c.insurer_amount,
       patient_amount: c.patient_amount,
       insurer_decision_at: c.insurer_decision_at,
-      rejection_reason: c.rejection_reason,
+      has_rejection_reason: !!c.rejection_reason,
     }));
 
     return new Response(

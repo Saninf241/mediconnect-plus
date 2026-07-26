@@ -42,7 +42,7 @@ export type PatientPortalData = {
     insurer_amount: number | null;
     patient_amount: number | null;
     insurer_decision_at: string | null;
-    rejection_reason: string | null;
+    has_rejection_reason: boolean;
   }>;
   prescriptions: Array<{
     id: string;

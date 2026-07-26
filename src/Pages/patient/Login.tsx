@@ -181,6 +181,13 @@ export default function PatientLoginPage() {
             </p>
           </div>
         )}
+
+        <p className="text-xs text-gray-400 text-center border-t pt-3">
+          Besoin d'aide ? Écrivez-nous à{" "}
+          <a href="mailto:contact@ndoungconsulting.com" className="underline">
+            contact@ndoungconsulting.com
+          </a>
+        </p>
       </div>
     </div>
   );

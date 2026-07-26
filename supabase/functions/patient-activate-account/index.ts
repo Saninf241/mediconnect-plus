@@ -12,6 +12,21 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+// patients.phone est saisi en clinique en local gabonais ("077074475"),
+// sans normalisation (3 chemins de creation divergents, aucun n'applique
+// de format E.164) -- verifie empiriquement : 100% des numeros reels en
+// base sont dans ce format. authUser.phone (Supabase Auth, apres OTP) est
+// en E.164 sans "+" ("24177074475"). Comparer ces deux formats bruts ne
+// matche jamais, ce qui rendait l'activation impossible pour tout le
+// monde (0 code utilise, 0 compte relie en base au moment de ce correctif).
+// On compare donc sur les chiffres significatifs (indicatif 241 et zero
+// initial retires des deux cotes) plutot que sur la chaine brute.
+function significantDigits(raw: string | null | undefined): string {
+  const digits = (raw ?? "").replace(/[^\d]/g, "");
+  const withoutCountryCode = digits.startsWith("241") ? digits.slice(3) : digits;
+  return withoutCountryCode.replace(/^0/, "");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -48,19 +63,22 @@ serve(async (req) => {
       });
     }
 
-    // Le téléphone Supabase Auth est en E.164 sans "+" (ex: 24106xxxxxxx).
-    // On compare en tolérant les deux formats stockés côté clinique.
-    const phoneVariants = [phone, `+${phone}`];
-
-    const { data: activation, error: activationError } = await supabase
+    // Le code seul n'est pas suffisant pour identifier la bonne ligne (deux
+    // patients differents pourraient un jour partager le meme code sur
+    // 900 000 valeurs possibles) : on filtre par code, puis on confirme le
+    // telephone en comparant les chiffres significatifs des deux cotes
+    // (cf. significantDigits ci-dessus) plutot que la chaine brute.
+    const { data: candidates, error: activationError } = await supabase
       .from("patient_activation_codes")
       .select("id, patient_id, phone, expires_at, used_at")
-      .in("phone", phoneVariants)
       .eq("code", code)
       .is("used_at", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order("created_at", { ascending: false });
+
+    const callerDigits = significantDigits(phone);
+    const activation = (candidates ?? []).find(
+      (c) => significantDigits(c.phone) === callerDigits
+    );
 
     if (activationError || !activation) {
       return new Response(JSON.stringify({ error: "Code invalide ou déjà utilisé" }), {

@@ -62,8 +62,12 @@ export default function RemboursementsPage() {
                     Décision reçue le {new Date(c.insurer_decision_at).toLocaleDateString()}
                   </p>
                 )}
-                {c.status === "rejected" && c.rejection_reason && (
-                  <p className="text-sm text-red-600">Motif : {c.rejection_reason}</p>
+                {c.status === "rejected" && (
+                  <p className="text-sm text-red-600">
+                    {c.has_rejection_reason
+                      ? "Un motif de rejet a été précisé — renseignez-vous auprès de votre clinique ou de votre assureur pour le détail."
+                      : "Contactez votre clinique ou votre assureur pour plus de détails."}
+                  </p>
                 )}
               </li>
             );
