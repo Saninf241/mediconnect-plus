@@ -22,6 +22,10 @@ interface ConsultationRow {
   insurer_amount: number | null;
   patient_amount: number | null;
   missing_tariffs: number | null;
+  payment_dispute_status: string | null;
+  payment_dispute_reason: string | null;
+  payment_disputed_at: string | null;
+  payment_dispute_resolved_at: string | null;
 
   clinic:
     | { name: string | null }
@@ -96,6 +100,7 @@ export default function AssureurConsultationDetailsPage() {
   const [reviewingManual, setReviewingManual] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
+  const [resolvingDispute, setResolvingDispute] = useState(false);
 
   // ✅ IMPORTANT : fetchDetails doit être réutilisable (PDF regen)
   const fetchDetails = useCallback(async () => {
@@ -119,6 +124,10 @@ export default function AssureurConsultationDetailsPage() {
         insurer_amount,
         patient_amount,
         missing_tariffs,
+        payment_dispute_status,
+        payment_dispute_reason,
+        payment_disputed_at,
+        payment_dispute_resolved_at,
         biometric_verified_at,
         biometric_operator_id,
         biometric_clinic_id,
@@ -343,6 +352,28 @@ export default function AssureurConsultationDetailsPage() {
     }
   };
 
+  const handleResolveDispute = async () => {
+    if (!consultation?.id || !insurerAgentId) return;
+    if (!window.confirm("Marquer ce litige comme résolu ?")) return;
+    setResolvingDispute(true);
+    try {
+      const { error } = await supabase
+        .from("consultations")
+        .update({
+          payment_dispute_status: "resolved",
+          payment_dispute_resolved_by_staff_id: insurerAgentId,
+          payment_dispute_resolved_at: new Date().toISOString(),
+        })
+        .eq("id", consultation.id);
+      if (error) throw error;
+      await fetchDetails();
+    } catch (e: any) {
+      alert(e.message || "Erreur lors de la résolution du litige.");
+    } finally {
+      setResolvingDispute(false);
+    }
+  };
+
   const handleRejectManualPricing = async () => {
     if (!manualPricing || !rejectReason.trim()) return;
     setReviewingManual(true);
@@ -432,6 +463,42 @@ export default function AssureurConsultationDetailsPage() {
         <p>
           <strong>Statut :</strong> {consultation.status}
         </p>
+
+        {consultation.payment_dispute_status && (
+          <div
+            className={`mt-3 p-3 rounded border ${
+              consultation.payment_dispute_status === "open"
+                ? "bg-red-50 border-red-300"
+                : "bg-gray-50 border-gray-300"
+            }`}
+          >
+            <p className={`font-semibold ${consultation.payment_dispute_status === "open" ? "text-red-800" : "text-gray-700"}`}>
+              {consultation.payment_dispute_status === "open"
+                ? "⚠️ Montant contesté par la clinique"
+                : "Litige résolu"}
+            </p>
+            {consultation.payment_dispute_reason && (
+              <p className="text-sm text-gray-700 mt-1">Motif : {consultation.payment_dispute_reason}</p>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              {consultation.payment_disputed_at
+                ? `Signalé le ${new Date(consultation.payment_disputed_at).toLocaleDateString("fr-FR")}`
+                : ""}
+              {consultation.payment_dispute_resolved_at
+                ? ` • Résolu le ${new Date(consultation.payment_dispute_resolved_at).toLocaleDateString("fr-FR")}`
+                : ""}
+            </p>
+            {consultation.payment_dispute_status === "open" && (
+              <button
+                onClick={handleResolveDispute}
+                disabled={resolvingDispute}
+                className="mt-2 text-sm bg-gray-900 text-white px-3 py-1.5 rounded disabled:opacity-50"
+              >
+                {resolvingDispute ? "..." : "Marquer résolu"}
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 p-3 rounded border bg-gray-50">
           <p className="font-semibold">Tarification (calcul Mediconnect+)</p>

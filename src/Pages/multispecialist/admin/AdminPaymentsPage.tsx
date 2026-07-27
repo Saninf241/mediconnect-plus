@@ -1,8 +1,11 @@
 // src/Pages/multispecialist/admin/AdminPaymentsPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
 import { useClinicId } from "../../../hooks/useClinicId";
 import { Card, CardContent } from "../../../components/ui/card";
+import { sendMessage } from "../../../lib/queries/messages";
+import ConsultationChatDoctor from "../../../components/ui/uidoctor/ConsultationChat";
 
 type PeriodFilter = "all" | "7d" | "30d" | "month";
 type FinanceStatusFilter = "all" | "sent" | "accepted" | "paid" | "rejected";
@@ -27,6 +30,10 @@ interface ConsultationRow {
   payment_status: string | null;
   payment_date: string | null;
   pricing_status: string | null;
+  payment_dispute_status: string | null;
+  payment_dispute_reason: string | null;
+  payment_disputed_at: string | null;
+  payment_dispute_resolved_at: string | null;
 }
 
 interface BatchRow {
@@ -116,6 +123,7 @@ function statusPillClass(status: string | null) {
 
 export default function AdminPaymentsPage() {
   const { clinicId, loadingClinic } = useClinicId();
+  const { user } = useUser();
 
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState<string | null>(null);
@@ -128,85 +136,138 @@ export default function AdminPaymentsPage() {
   const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
   const [consultations, setConsultations] = useState<ConsultationRow[]>([]);
   const [batches, setBatches] = useState<BatchRow[]>([]);
+  const [myStaffId, setMyStaffId] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
+  const [expandedDisputeId, setExpandedDisputeId] = useState<string | null>(null);
+  const [disputeReasonDraft, setDisputeReasonDraft] = useState("");
+  const [submittingDispute, setSubmittingDispute] = useState(false);
+
+  useEffect(() => {
+    if (!clinicId || !user?.id) return;
+    supabase
+      .from("clinic_staff")
+      .select("id")
+      .eq("clinic_id", clinicId)
+      .eq("clerk_user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error("[AdminPaymentsPage] erreur clinic_staff (moi) :", error.message);
+        setMyStaffId(data?.id ?? null);
+      });
+  }, [clinicId, user?.id]);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setNote(null);
+
+    try {
+      if (!clinicId) {
+        setNote("Impossible de charger les paiements pour cet établissement.");
+        setLoading(false);
+        return;
+      }
+
+      const startDate = getStartDate(periodFilter);
+
+      const staffRes = await supabase
+        .from("clinic_staff")
+        .select("id, name, role")
+        .eq("clinic_id", clinicId);
+
+      if (staffRes.error) {
+        console.error("[AdminPaymentsPage] clinic_staff error:", staffRes.error);
+        setStaffRows([]);
+        setNote("Erreur lors du chargement de l'équipe.");
+      } else {
+        setStaffRows((staffRes.data ?? []) as StaffRow[]);
+      }
+
+      let query = supabase
+        .from("consultations")
+        .select(
+          "id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name ), insurer_amount, payment_status, payment_date, pricing_status, payment_dispute_status, payment_dispute_reason, payment_disputed_at, payment_dispute_resolved_at"
+        )
+        .eq("clinic_id", clinicId)
+        .order("created_at", { ascending: false });
+
+      if (startDate) {
+        query = query.gte("created_at", startDate);
+      }
+
+      const consultationsRes = await query;
+
+      if (consultationsRes.error) {
+        console.error("[AdminPaymentsPage] consultations error:", consultationsRes.error);
+        setConsultations([]);
+        setNote("Erreur lors du chargement des données financières.");
+      } else {
+        setConsultations((consultationsRes.data ?? []) as ConsultationRow[]);
+      }
+
+      // Lots de remboursement assureur pour ce cabinet (montant net apres
+      // commission Mediconnect+, statut, date de paiement).
+      const batchesRes = await supabase
+        .from("payment_batches")
+        .select("id, amount, commission, total_paid, status, consultation_count, period_start, period_end, created_at, paid_at")
+        .eq("clinic_id", clinicId)
+        .order("created_at", { ascending: false });
+
+      if (batchesRes.error) {
+        console.error("[AdminPaymentsPage] payment_batches error:", batchesRes.error);
+        setBatches([]);
+      } else {
+        setBatches((batchesRes.data ?? []) as BatchRow[]);
+      }
+    } catch (error) {
+      console.error("[AdminPaymentsPage] unexpected error:", error);
+      setNote("Une erreur inattendue est survenue.");
+    } finally {
+      setLoading(false);
+    }
+  }, [clinicId, periodFilter]);
+
   useEffect(() => {
     if (loadingClinic) return;
-
-    const fetchData = async () => {
-      setLoading(true);
-      setNote(null);
-
-      try {
-        if (!clinicId) {
-          setNote("Impossible de charger les paiements pour cet établissement.");
-          setLoading(false);
-          return;
-        }
-
-        const startDate = getStartDate(periodFilter);
-
-        const staffRes = await supabase
-          .from("clinic_staff")
-          .select("id, name, role")
-          .eq("clinic_id", clinicId);
-
-        if (staffRes.error) {
-          console.error("[AdminPaymentsPage] clinic_staff error:", staffRes.error);
-          setStaffRows([]);
-          setNote("Erreur lors du chargement de l'équipe.");
-        } else {
-          setStaffRows((staffRes.data ?? []) as StaffRow[]);
-        }
-
-        let query = supabase
-          .from("consultations")
-          .select(
-            "id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name ), insurer_amount, payment_status, payment_date, pricing_status"
-          )
-          .eq("clinic_id", clinicId)
-          .order("created_at", { ascending: false });
-
-        if (startDate) {
-          query = query.gte("created_at", startDate);
-        }
-
-        const consultationsRes = await query;
-
-        if (consultationsRes.error) {
-          console.error("[AdminPaymentsPage] consultations error:", consultationsRes.error);
-          setConsultations([]);
-          setNote("Erreur lors du chargement des données financières.");
-        } else {
-          setConsultations((consultationsRes.data ?? []) as ConsultationRow[]);
-        }
-
-        // Lots de remboursement assureur pour ce cabinet (montant net apres
-        // commission Mediconnect+, statut, date de paiement).
-        const batchesRes = await supabase
-          .from("payment_batches")
-          .select("id, amount, commission, total_paid, status, consultation_count, period_start, period_end, created_at, paid_at")
-          .eq("clinic_id", clinicId)
-          .order("created_at", { ascending: false });
-
-        if (batchesRes.error) {
-          console.error("[AdminPaymentsPage] payment_batches error:", batchesRes.error);
-          setBatches([]);
-        } else {
-          setBatches((batchesRes.data ?? []) as BatchRow[]);
-        }
-      } catch (error) {
-        console.error("[AdminPaymentsPage] unexpected error:", error);
-        setNote("Une erreur inattendue est survenue.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
-  }, [clinicId, loadingClinic, periodFilter]);
+  }, [loadingClinic, fetchData]);
+
+  const handleOpenDispute = (rowId: string) => {
+    setDisputeReasonDraft("");
+    setExpandedDisputeId((prev) => (prev === rowId ? null : rowId));
+  };
+
+  const handleSubmitDispute = async (row: ConsultationRow) => {
+    const reason = disputeReasonDraft.trim();
+    if (!reason || !myStaffId) return;
+    setSubmittingDispute(true);
+    try {
+      const { error } = await supabase
+        .from("consultations")
+        .update({
+          payment_dispute_status: "open",
+          payment_dispute_reason: reason,
+          payment_disputed_by_staff_id: myStaffId,
+          payment_disputed_at: new Date().toISOString(),
+          payment_dispute_resolved_at: null,
+          payment_dispute_resolved_by_staff_id: null,
+        })
+        .eq("id", row.id);
+      if (error) throw error;
+
+      await sendMessage(row.id, myStaffId, "doctor", reason, null);
+
+      setDisputeReasonDraft("");
+      await fetchData();
+    } catch (e: any) {
+      console.error("[AdminPaymentsPage] erreur contestation :", e);
+      setNote(e.message || "Erreur lors de l'envoi de la contestation.");
+    } finally {
+      setSubmittingDispute(false);
+    }
+  };
 
   const doctors = useMemo(() => {
     return staffRows.filter(
@@ -725,44 +786,131 @@ export default function AdminPaymentsPage() {
                       <th className="py-3 pr-4">Déclaré</th>
                       <th className="py-3 pr-4">Approuvé assureur</th>
                       <th className="py-3 pr-4">ID dossier</th>
+                      <th className="py-3 pr-4">Litige</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedRows.map((row) => {
                       const finStatus = effectiveFinanceStatus(row);
+                      const canDispute = finStatus === "accepted" || finStatus === "paid";
+                      const disputeOpen = row.payment_dispute_status === "open";
+                      const disputeResolved = row.payment_dispute_status === "resolved";
+                      const isExpanded = expandedDisputeId === row.id;
                       return (
-                        <tr key={row.id} className="border-b last:border-b-0">
-                          <td className="py-3 pr-4">
-                            {row.created_at
-                              ? new Date(row.created_at).toLocaleString("fr-FR")
-                              : "-"}
-                          </td>
-                          <td className="py-3 pr-4 font-medium text-gray-900">
-                            {doctorMap.get(row.doctor_id ?? "") || "Médecin inconnu"}
-                          </td>
-                          <td className="py-3 pr-4 text-gray-700">{row.patients?.name || row.patient_id || "-"}</td>
-                          <td className="py-3 pr-4">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass(
-                                finStatus
-                              )}`}
-                            >
-                              {statusLabel(finStatus)}
-                            </span>
-                            {finStatus === "paid" && row.payment_date && (
-                              <span className="ml-1 text-xs text-gray-400">
-                                le {new Date(row.payment_date).toLocaleDateString("fr-FR")}
+                        <Fragment key={row.id}>
+                          <tr className="border-b last:border-b-0">
+                            <td className="py-3 pr-4">
+                              {row.created_at
+                                ? new Date(row.created_at).toLocaleString("fr-FR")
+                                : "-"}
+                            </td>
+                            <td className="py-3 pr-4 font-medium text-gray-900">
+                              {doctorMap.get(row.doctor_id ?? "") || "Médecin inconnu"}
+                            </td>
+                            <td className="py-3 pr-4 text-gray-700">{row.patients?.name || row.patient_id || "-"}</td>
+                            <td className="py-3 pr-4">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusPillClass(
+                                  finStatus
+                                )}`}
+                              >
+                                {statusLabel(finStatus)}
                               </span>
-                            )}
-                          </td>
-                          <td className="py-3 pr-4">
-                            {formatMoney(Number(row.amount) || 0)}
-                          </td>
-                          <td className="py-3 pr-4 font-medium">
-                            {row.insurer_amount != null ? formatMoney(row.insurer_amount) : "—"}
-                          </td>
-                          <td className="py-3 pr-4 text-xs text-gray-500">{row.id}</td>
-                        </tr>
+                              {finStatus === "paid" && row.payment_date && (
+                                <span className="ml-1 text-xs text-gray-400">
+                                  le {new Date(row.payment_date).toLocaleDateString("fr-FR")}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 pr-4">
+                              {formatMoney(Number(row.amount) || 0)}
+                            </td>
+                            <td className="py-3 pr-4 font-medium">
+                              {row.insurer_amount != null ? formatMoney(row.insurer_amount) : "—"}
+                            </td>
+                            <td className="py-3 pr-4 text-xs text-gray-500">{row.id}</td>
+                            <td className="py-3 pr-4">
+                              {canDispute ? (
+                                <button
+                                  onClick={() => handleOpenDispute(row.id)}
+                                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                    disputeOpen
+                                      ? "bg-red-100 text-red-700"
+                                      : disputeResolved
+                                      ? "bg-gray-100 text-gray-700"
+                                      : "border text-gray-700 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {disputeOpen ? "Contesté" : disputeResolved ? "Résolu" : "Contester"}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-gray-400">—</span>
+                              )}
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="border-b last:border-b-0">
+                              <td colSpan={8} className="bg-gray-50 px-4 py-4">
+                                {disputeOpen || disputeResolved ? (
+                                  <div className="space-y-3">
+                                    <div className={`rounded-lg border px-3 py-2 text-sm ${disputeOpen ? "bg-red-50 border-red-200" : "bg-gray-100 border-gray-200"}`}>
+                                      <p className="font-medium text-gray-900">
+                                        {disputeOpen ? "Contestation en cours" : "Contestation résolue"}
+                                      </p>
+                                      {row.payment_dispute_reason && (
+                                        <p className="text-gray-700 mt-1">Motif : {row.payment_dispute_reason}</p>
+                                      )}
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        {row.payment_disputed_at
+                                          ? `Signalé le ${new Date(row.payment_disputed_at).toLocaleDateString("fr-FR")}`
+                                          : ""}
+                                        {row.payment_dispute_resolved_at
+                                          ? ` • Résolu le ${new Date(row.payment_dispute_resolved_at).toLocaleDateString("fr-FR")}`
+                                          : ""}
+                                      </p>
+                                    </div>
+                                    {myStaffId && (
+                                      <ConsultationChatDoctor
+                                        consultationId={row.id}
+                                        senderId={myStaffId}
+                                        senderRole="doctor"
+                                        receiverId={null}
+                                      />
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <label className="text-sm font-medium text-gray-700">
+                                      Motif de la contestation
+                                    </label>
+                                    <textarea
+                                      className="w-full rounded-lg border px-3 py-2 text-sm"
+                                      rows={2}
+                                      placeholder="Ex : le montant approuvé ne correspond pas aux actes réalisés..."
+                                      value={disputeReasonDraft}
+                                      onChange={(e) => setDisputeReasonDraft(e.target.value)}
+                                    />
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => handleSubmitDispute(row)}
+                                        disabled={submittingDispute || !disputeReasonDraft.trim() || !myStaffId}
+                                        className="rounded-lg bg-red-600 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+                                      >
+                                        {submittingDispute ? "Envoi..." : "Envoyer la contestation"}
+                                      </button>
+                                      <button
+                                        onClick={() => setExpandedDisputeId(null)}
+                                        className="rounded-lg border px-3 py-1.5 text-sm"
+                                      >
+                                        Annuler
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       );
                     })}
                   </tbody>

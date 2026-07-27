@@ -80,9 +80,62 @@ serve(async (req) => {
       });
     }
 
+    // Un lot ne doit jamais etre paye tant qu'une des consultations qu'il
+    // contient est en litige ouvert avec la clinique (cf. migration
+    // 20260727120000) -- le litige peut avoir ete ouvert APRES la
+    // generation du lot, donc generate-payment-batch seul ne suffit pas a
+    // le garantir.
+    const { data: batchItems, error: batchItemsErr } = await supabase
+      .from("batch_items")
+      .select("consultation_id, consultations:consultation_id(payment_dispute_status)")
+      .eq("batch_id", batchId);
+
+    if (batchItemsErr) throw batchItemsErr;
+
+    const disputedCount = (batchItems ?? []).filter(
+      (it: any) => it.consultations?.payment_dispute_status === "open"
+    ).length;
+
+    if (disputedCount > 0) {
+      return new Response(
+        JSON.stringify({
+          error: `Ce lot contient ${disputedCount} consultation(s) en litige ouvert avec la clinique. Résolvez le(s) litige(s) avant de marquer ce lot payé.`,
+        }),
+        { status: 409, headers: cors }
+      );
+    }
+
+    // Un paiement automatique (initiate-payment-batch-payout) peut etre en
+    // cours ou avoir deja reussi pour ce lot -- si un agent/admin clique
+    // "Marquer payé" manuellement en meme temps, il ne faut jamais que les
+    // deux chemins s'executent pour le meme lot (double comptage, et une
+    // fois un vrai prestataire branche, un vrai virement pourrait deja
+    // etre en route).
+    const { data: activePayout, error: activePayoutErr } = await supabase
+      .from("payment_batch_payouts")
+      .select("id, status")
+      .eq("batch_id", batchId)
+      .in("status", ["initiated", "success"])
+      .maybeSingle();
+
+    if (activePayoutErr) throw activePayoutErr;
+
+    if (activePayout) {
+      return new Response(
+        JSON.stringify({
+          error: "Un paiement automatique est en cours ou a déjà réussi pour ce lot. Actualisez la page.",
+        }),
+        { status: 409, headers: cors }
+      );
+    }
+
     const now = new Date().toISOString();
 
-    const { error: updateBatchErr } = await supabase
+    // Update conditionne sur status='pending' : verrou atomique. Si un
+    // autre appel (autre onglet, autre admin) a deja bascule ce lot en
+    // "paid" entre notre lecture plus haut et cet update, 0 ligne matche
+    // et on l'affiche clairement plutot que de re-executer la cascade.
+    const { data: updatedBatch, error: updateBatchErr } = await supabase
       .from("payment_batches")
       .update({
         status: "paid",
@@ -90,9 +143,19 @@ serve(async (req) => {
         paid_by_staff_id: staffRow.id,
         paid_by_email: staffRow.email,
       })
-      .eq("id", batchId);
+      .eq("id", batchId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
 
     if (updateBatchErr) throw updateBatchErr;
+
+    if (!updatedBatch) {
+      return new Response(
+        JSON.stringify({ error: "Ce lot vient d'être payé par quelqu'un d'autre. Actualisez la page." }),
+        { status: 409, headers: cors }
+      );
+    }
 
     const { data: items, error: itemsErr } = await supabase
       .from("batch_items")

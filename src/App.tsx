@@ -304,7 +304,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-6xl font-extrabold text-gray-900 mb-3">
-              Stoppez la fraude à l’acte.<br className="hidden sm:block" />{" "}
+              Stoppez l’usurpation d’identité à l’acte.<br className="hidden sm:block" />{" "}
               Remboursez dès réception d’un dossier vérifié.
             </h1>
             <p className="text-lg md:text-xl text-gray-600">
@@ -418,7 +418,7 @@ export default function App() {
               <h3 className="text-xl font-semibold">Pour cliniques & cabinets</h3>
             </div>
             <ul className="space-y-2 text-gray-700">
-              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Enregistrement 2× plus rapide à l’accueil</li>
+              <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Enregistrement sensiblement plus rapide à l’accueil</li>
               <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Dossier patient unifié (consultations, ordonnances, factures)</li>
               <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Moins d’impayés grâce à la vérification d’assurance</li>
               <li className="flex items-start gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" /> Plus besoin de se déplacer chez l’assureur : le dossier part automatiquement</li>

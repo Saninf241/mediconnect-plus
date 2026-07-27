@@ -78,6 +78,35 @@ serve(async (req) => {
       );
     }
 
+    // consultation_manual_pricing est unique par consultation_id : un
+    // upsert ecrase toujours la ligne existante. Sans ce garde-fou, un
+    // deuxieme agent proposant un montant pendant qu'une proposition d'un
+    // premier agent est encore en attente ferait disparaitre silencieusement
+    // celle du premier (aucune trace, aucun message) -- seule une
+    // correction par le MEME agent doit pouvoir remplacer sa propre
+    // proposition en attente.
+    const { data: existingProposal, error: existingErr } = await supabase
+      .from("consultation_manual_pricing")
+      .select("status, proposed_by_staff_id, proposed_by_email")
+      .eq("consultation_id", consultation_id)
+      .maybeSingle();
+
+    if (existingErr) throw existingErr;
+
+    if (
+      existingProposal?.status === "pending" &&
+      existingProposal.proposed_by_staff_id !== staffRow.id
+    ) {
+      return new Response(
+        JSON.stringify({
+          error: `Une proposition est déjà en attente de validation pour cette consultation (soumise par ${
+            existingProposal.proposed_by_email ?? "un autre agent"
+          }). Attendez la décision d'un administrateur avant d'en soumettre une nouvelle.`,
+        }),
+        { status: 409, headers: cors }
+      );
+    }
+
     const { error: upsertErr } = await supabase
       .from("consultation_manual_pricing")
       .upsert(

@@ -66,7 +66,7 @@ serve(async (req) => {
 
     let q = supabase
       .from("consultations")
-      .select("id, clinic_id, insurer_amount, pricing_status, insurer_decision_at")
+      .select("id, clinic_id, insurer_amount, pricing_status, insurer_decision_at, payment_dispute_status")
       .eq("insurer_id", insurerId)
       .eq("status", "accepted");
 
@@ -83,15 +83,26 @@ serve(async (req) => {
     // (consultation_manual_pricing) -- suit ensuite exactement le meme
     // chemin qu'un calcul automatique reussi.
     const isPriced = (status: string | null) => status === "computed" || status === "manual_approved";
-    const notPriced = eligible.filter((c: any) => !isPriced(c.pricing_status));
-    const ready = eligible.filter((c: any) => isPriced(c.pricing_status) && c.clinic_id);
+    // Une consultation en litige ouvert (cabinet conteste insurer_amount,
+    // cf. migration 20260727120000) ne doit jamais etre regroupee/payee
+    // tant que le litige n'est pas resolu -- sinon l'admin paierait sur un
+    // montant que la clinique conteste activement, sans jamais l'avoir vu.
+    const isDisputed = (status: string | null) => status === "open";
+    const disputed = eligible.filter((c: any) => isDisputed(c.payment_dispute_status));
+    const notPriced = eligible.filter(
+      (c: any) => !isDisputed(c.payment_dispute_status) && !isPriced(c.pricing_status)
+    );
+    const ready = eligible.filter(
+      (c: any) => !isDisputed(c.payment_dispute_status) && isPriced(c.pricing_status) && c.clinic_id
+    );
 
     if (ready.length === 0) {
       return new Response(
         JSON.stringify({
           batches: [],
           excluded_not_priced: notPriced.length,
-          message: "Aucune consultation prête à être regroupée (déjà en lot, ou tarification non calculée).",
+          excluded_disputed: disputed.length,
+          message: "Aucune consultation prête à être regroupée (déjà en lot, en litige, ou tarification non calculée).",
         }),
         { status: 200, headers: { "Content-Type": "application/json", ...cors } }
       );
@@ -105,6 +116,15 @@ serve(async (req) => {
     }
 
     const batches = [];
+    // Deux agents (ou un double-clic) peuvent lancer une generation pour
+    // la meme clinique au meme moment -- la lecture "eligible" plus haut
+    // n'est pas verrouillee. batch_items.consultation_id est desormais
+    // UNIQUE (migration 20260727140000) : si une consultation vient d'etre
+    // regroupee par un appel concurrent entre notre lecture et notre
+    // ecriture, l'insert echoue avec 23505 -- on annule proprement CE lot
+    // (payment_batches orphelin supprime) et on continue les autres
+    // cliniques plutot que de tout faire echouer.
+    const raceConflictClinicIds: string[] = [];
 
     for (const [gClinicId, items] of grouped.entries()) {
       const amount = items.reduce((sum, i) => sum + i.amount, 0);
@@ -138,13 +158,25 @@ serve(async (req) => {
         .from("batch_items")
         .insert(items.map((i) => ({ batch_id: batch.id, consultation_id: i.id })));
 
-      if (linkError) throw linkError;
+      if (linkError) {
+        await supabase.from("payment_batches").delete().eq("id", batch.id);
+        if ((linkError as any).code === "23505") {
+          raceConflictClinicIds.push(gClinicId);
+          continue;
+        }
+        throw linkError;
+      }
 
       batches.push({ batchId: batch.id, clinicId: gClinicId, count: items.length, amount, commission, totalPaid });
     }
 
     return new Response(
-      JSON.stringify({ batches, excluded_not_priced: notPriced.length }),
+      JSON.stringify({
+        batches,
+        excluded_not_priced: notPriced.length,
+        excluded_disputed: disputed.length,
+        race_conflicts: raceConflictClinicIds.length,
+      }),
       { status: 200, headers: { "Content-Type": "application/json", ...cors } }
     );
   } catch (e) {
