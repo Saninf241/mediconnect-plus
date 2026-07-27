@@ -597,7 +597,7 @@ export default function ManageOrgsPage() {
             {clinics.length === 0 && <p className="text-sm text-gray-500">Aucun cabinet.</p>}
             {clinics.map((c) => (
               <Card key={c.id} className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="space-y-2">
                   <div>
                     <div className="font-medium">
                       {c.name}
@@ -614,7 +614,7 @@ export default function ManageOrgsPage() {
                       {new Date(c.created_at).toLocaleDateString("fr-FR")}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     <button
                       onClick={() => toggleMembers("clinic", c.id)}
                       className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
@@ -648,7 +648,7 @@ export default function ManageOrgsPage() {
                         setConfirmTarget({ kind: "clinic", id: c.id, name: c.name });
                         setConfirmText("");
                       }}
-                      className="text-red-600 text-sm hover:underline"
+                      className="text-red-600 text-sm hover:underline whitespace-nowrap"
                     >
                       Supprimer
                     </button>
@@ -876,7 +876,7 @@ export default function ManageOrgsPage() {
             {insurers.length === 0 && <p className="text-sm text-gray-500">Aucun assureur.</p>}
             {insurers.map((i) => (
               <Card key={i.id} className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="space-y-2">
                   <div>
                     <div className="font-medium">
                       {i.name}
@@ -888,7 +888,7 @@ export default function ManageOrgsPage() {
                     </div>
                     <div className="text-xs text-gray-500">{i.insurer_staff?.[0]?.count ?? 0} membre(s)</div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     <select
                       className="border rounded text-xs px-2 py-1"
                       value={i.verification_level ?? "N3"}
@@ -938,7 +938,7 @@ export default function ManageOrgsPage() {
                         setConfirmTarget({ kind: "insurer", id: i.id, name: i.name });
                         setConfirmText("");
                       }}
-                      className="text-red-600 text-sm hover:underline"
+                      className="text-red-600 text-sm hover:underline whitespace-nowrap"
                     >
                       Supprimer
                     </button>
