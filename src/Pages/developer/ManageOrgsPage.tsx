@@ -100,6 +100,12 @@ export default function ManageOrgsPage() {
   const [insurerStaffForm, setInsurerStaffForm] = useState({ email: "", role: "agent" });
   const [addingInsurerStaff, setAddingInsurerStaff] = useState(false);
 
+  // Voir / retirer les membres d'un cabinet ou d'un assureur existant.
+  const [membersFor, setMembersFor] = useState<{ kind: "clinic" | "insurer"; id: string } | null>(null);
+  const [memberList, setMemberList] = useState<any[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [removingStaffId, setRemovingStaffId] = useState<string | null>(null);
+
   // Réseau d'identification biométrique inter-cabinet.
   const [newNetworkClinic, setNewNetworkClinic] = useState("");
   const [newNetworkInsurer, setNewNetworkInsurer] = useState("");
@@ -218,6 +224,68 @@ export default function ManageOrgsPage() {
       toast.error(err.message || "Échec de l'ajout");
     } finally {
       setAddingInsurerStaff(false);
+    }
+  }
+
+  async function toggleMembers(kind: "clinic" | "insurer", id: string) {
+    if (membersFor?.kind === kind && membersFor.id === id) {
+      setMembersFor(null);
+      return;
+    }
+    setMembersFor({ kind, id });
+    setMembersLoading(true);
+    try {
+      const data = await call(
+        kind === "clinic"
+          ? { action: "list_clinic_staff", clinic_id: id }
+          : { action: "list_insurer_staff", insurer_id: id }
+      );
+      setMemberList(data.staff ?? []);
+    } catch (err: any) {
+      toast.error(err.message || "Impossible de charger les membres");
+      setMemberList([]);
+    } finally {
+      setMembersLoading(false);
+    }
+  }
+
+  async function refreshMemberList() {
+    if (!membersFor) return;
+    const data = await call(
+      membersFor.kind === "clinic"
+        ? { action: "list_clinic_staff", clinic_id: membersFor.id }
+        : { action: "list_insurer_staff", insurer_id: membersFor.id }
+    );
+    setMemberList(data.staff ?? []);
+  }
+
+  async function removeMember(kind: "clinic" | "insurer", staffId: string) {
+    if (!window.confirm("Retirer ce membre ? Son accès sera révoqué.")) return;
+    setRemovingStaffId(staffId);
+    try {
+      await call(
+        kind === "clinic" ? { action: "remove_clinic_staff", staff_id: staffId } : { action: "remove_insurer_staff", staff_id: staffId }
+      );
+      toast.success("Membre retiré.");
+      await refreshMemberList();
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la suppression", { autoClose: 8000 });
+    } finally {
+      setRemovingStaffId(null);
+    }
+  }
+
+  async function deactivateMember(staffId: string) {
+    setRemovingStaffId(staffId);
+    try {
+      await call({ action: "deactivate_clinic_staff", staff_id: staffId });
+      toast.success("Membre désactivé.");
+      await refreshMemberList();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la désactivation");
+    } finally {
+      setRemovingStaffId(null);
     }
   }
 
@@ -426,6 +494,12 @@ export default function ManageOrgsPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <button
+                      onClick={() => toggleMembers("clinic", c.id)}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {membersFor?.kind === "clinic" && membersFor.id === c.id ? "Fermer" : "Voir les membres"}
+                    </button>
+                    <button
                       onClick={() => {
                         setAddStaffForClinic(addStaffForClinic === c.id ? null : c.id);
                         setClinicStaffForm({ name: "", email: "", role: "secretary" });
@@ -445,6 +519,48 @@ export default function ManageOrgsPage() {
                     </button>
                   </div>
                 </div>
+
+                {membersFor?.kind === "clinic" && membersFor.id === c.id && (
+                  <div className="border-t pt-3 space-y-1">
+                    {membersLoading ? (
+                      <p className="text-sm text-gray-500">Chargement…</p>
+                    ) : memberList.length === 0 ? (
+                      <p className="text-sm text-gray-500">Aucun membre.</p>
+                    ) : (
+                      memberList.map((m) => (
+                        <div key={m.id} className="flex items-center justify-between text-sm border-b py-1.5">
+                          <span>
+                            {m.name} · {m.email} · {m.role}
+                            {m.status !== "active" && (
+                              <span className="text-amber-600"> ({m.status})</span>
+                            )}
+                            {!m.clerk_user_id && (
+                              <span className="text-gray-400"> · invitation en attente</span>
+                            )}
+                          </span>
+                          <div className="flex gap-2">
+                            {m.status === "active" && (
+                              <button
+                                onClick={() => deactivateMember(m.id)}
+                                disabled={removingStaffId === m.id}
+                                className="text-amber-700 text-xs hover:underline"
+                              >
+                                Désactiver
+                              </button>
+                            )}
+                            <button
+                              onClick={() => removeMember("clinic", m.id)}
+                              disabled={removingStaffId === m.id}
+                              className="text-red-600 text-xs hover:underline"
+                            >
+                              Retirer
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
 
                 {addStaffForClinic === c.id && (
                   <div className="border-t pt-3 grid grid-cols-1 sm:grid-cols-4 gap-2">
@@ -610,6 +726,12 @@ export default function ManageOrgsPage() {
                       {directoryFor === i.id ? "Fermer" : "Base adhérents"}
                     </button>
                     <button
+                      onClick={() => toggleMembers("insurer", i.id)}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {membersFor?.kind === "insurer" && membersFor.id === i.id ? "Fermer" : "Voir les membres"}
+                    </button>
+                    <button
                       onClick={() => {
                         setAddStaffForInsurer(addStaffForInsurer === i.id ? null : i.id);
                         setInsurerStaffForm({ email: "", role: "agent" });
@@ -629,6 +751,34 @@ export default function ManageOrgsPage() {
                     </button>
                   </div>
                 </div>
+
+                {membersFor?.kind === "insurer" && membersFor.id === i.id && (
+                  <div className="border-t pt-3 space-y-1">
+                    {membersLoading ? (
+                      <p className="text-sm text-gray-500">Chargement…</p>
+                    ) : memberList.length === 0 ? (
+                      <p className="text-sm text-gray-500">Aucun membre.</p>
+                    ) : (
+                      memberList.map((m) => (
+                        <div key={m.id} className="flex items-center justify-between text-sm border-b py-1.5">
+                          <span>
+                            {m.email} · {m.role}
+                            {!m.clerk_user_id && (
+                              <span className="text-gray-400"> · invitation en attente</span>
+                            )}
+                          </span>
+                          <button
+                            onClick={() => removeMember("insurer", m.id)}
+                            disabled={removingStaffId === m.id}
+                            className="text-red-600 text-xs hover:underline"
+                          >
+                            Retirer
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
 
                 {addStaffForInsurer === i.id && (
                   <div className="border-t pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">

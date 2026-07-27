@@ -76,6 +76,11 @@ type Action =
       role: "doctor" | "secretary" | "admin";
     }
   | { action: "add_insurer_staff"; insurer_id: string; email: string; role: string }
+  | { action: "list_clinic_staff"; clinic_id: string }
+  | { action: "remove_clinic_staff"; staff_id: string }
+  | { action: "deactivate_clinic_staff"; staff_id: string }
+  | { action: "list_insurer_staff"; insurer_id: string }
+  | { action: "remove_insurer_staff"; staff_id: string }
   | { action: "list_clinic_insurer_networks" }
   | { action: "add_clinic_insurer_network"; clinic_id: string; insurer_id: string }
   | {
@@ -331,6 +336,100 @@ serve(async (req) => {
       });
       if (error) throw error;
 
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_clinic_staff") {
+      const { data, error } = await supabase
+        .from("clinic_staff")
+        .select("id, name, email, role, status, clerk_user_id, created_at")
+        .eq("clinic_id", input.clinic_id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return new Response(JSON.stringify({ staff: data }), { headers: cors });
+    }
+
+    if (input.action === "remove_clinic_staff") {
+      const { data: row, error: rowErr } = await supabase
+        .from("clinic_staff")
+        .select("clerk_user_id, email")
+        .eq("id", input.staff_id)
+        .maybeSingle();
+      if (rowErr || !row) throw rowErr ?? new Error("Membre introuvable");
+
+      // Un membre avec un historique reel (consultations, prescriptions,
+      // notes...) ne peut pas etre supprime physiquement (FK NO ACTION,
+      // verifie : 23503 sur un vrai medecin avec des consultations) --
+      // c'est volontaire, ca protegerait sinon la tracabilite medicale.
+      // On nettoie Clerk (revoque l'acces) puis on tente le delete ; si
+      // ca echoue pour cette raison, on propose desactiver a la place.
+      await cleanupClerkStaff([row], clerkSecret);
+
+      const { error } = await supabase.from("clinic_staff").delete().eq("id", input.staff_id);
+      if (error) {
+        if ((error as any).code === "23503") {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Ce membre a un historique réel (consultations, prescriptions...) et ne peut pas être supprimé sans perdre la traçabilité. Son accès Clerk a déjà été révoqué — désactivez-le à la place pour couper son accès applicatif tout en gardant l'historique.",
+              code: "has_history",
+            }),
+            { status: 409, headers: cors }
+          );
+        }
+        throw error;
+      }
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "deactivate_clinic_staff") {
+      const { error } = await supabase
+        .from("clinic_staff")
+        .update({ status: "inactive" })
+        .eq("id", input.staff_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_insurer_staff") {
+      const { data, error } = await supabase
+        .from("insurer_staff")
+        .select("id, email, role, clerk_user_id, created_at")
+        .eq("insurer_id", input.insurer_id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return new Response(JSON.stringify({ staff: data }), { headers: cors });
+    }
+
+    if (input.action === "remove_insurer_staff") {
+      const { data: row, error: rowErr } = await supabase
+        .from("insurer_staff")
+        .select("clerk_user_id, email")
+        .eq("id", input.staff_id)
+        .maybeSingle();
+      if (rowErr || !row) throw rowErr ?? new Error("Membre introuvable");
+
+      // insurer_staff n'a pas de colonne status (verifie sur le schema) --
+      // contrairement a clinic_staff, il n'y a pas d'equivalent
+      // "desactiver" si la suppression echoue pour cause d'historique reel
+      // (consultations decidees, lots de paiement...). Le message
+      // d'erreur le dit explicitement plutot que d'echouer silencieusement.
+      await cleanupClerkStaff([row], clerkSecret);
+
+      const { error } = await supabase.from("insurer_staff").delete().eq("id", input.staff_id);
+      if (error) {
+        if ((error as any).code === "23503") {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Ce membre a un historique réel (décisions sur des consultations, lots de paiement...) et ne peut pas être supprimé sans perdre la traçabilité. Son accès Clerk a déjà été révoqué — aucune désactivation possible pour l'instant côté assureur (pas de statut équivalent), à traiter manuellement si besoin.",
+              code: "has_history",
+            }),
+            { status: 409, headers: cors }
+          );
+        }
+        throw error;
+      }
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }
 
