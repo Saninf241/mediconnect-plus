@@ -68,6 +68,23 @@ type Action =
   | { action: "add_convention"; clinic_id: string; insurer_id: string }
   | { action: "remove_convention"; id: string }
   | { action: "update_insurer_verification_level"; insurer_id: string; verification_level: string }
+  | { action: "toggle_clinic_active"; clinic_id: string; active: boolean }
+  | { action: "toggle_insurer_active"; insurer_id: string; active: boolean }
+  | {
+      action: "update_clinic_info";
+      clinic_id: string;
+      name: string;
+      address: string;
+      phone?: string | null;
+      speciality?: string | null;
+    }
+  | { action: "update_insurer_info"; insurer_id: string; name: string }
+  | {
+      action: "update_clinic_staff_role";
+      staff_id: string;
+      role: "doctor" | "secretary" | "admin";
+    }
+  | { action: "update_insurer_staff_role"; staff_id: string; role: string }
   | {
       action: "add_clinic_staff";
       clinic_id: string;
@@ -168,7 +185,7 @@ serve(async (req) => {
     if (input.action === "list_clinics") {
       const { data, error } = await supabase
         .from("clinics")
-        .select("id, name, type, active, created_at, clinic_staff(count), consultations:consultations(count)")
+        .select("id, name, type, address, phone, speciality, active, created_at, clinic_staff(count), consultations:consultations(count)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return new Response(JSON.stringify({ clinics: data }), { headers: cors });
@@ -177,7 +194,7 @@ serve(async (req) => {
     if (input.action === "list_insurers") {
       const { data, error } = await supabase
         .from("insurers")
-        .select("id, name, verification_level, insurer_staff(count)")
+        .select("id, name, verification_level, active, insurer_staff(count)")
         .order("name", { ascending: true });
       if (error) throw error;
       return new Response(JSON.stringify({ insurers: data }), { headers: cors });
@@ -243,6 +260,73 @@ serve(async (req) => {
         .from("insurers")
         .update({ verification_level: input.verification_level })
         .eq("id", input.insurer_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "toggle_clinic_active") {
+      const { error } = await supabase.from("clinics").update({ active: input.active }).eq("id", input.clinic_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "toggle_insurer_active") {
+      const { error } = await supabase.from("insurers").update({ active: input.active }).eq("id", input.insurer_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "update_clinic_info") {
+      if (!input.name?.trim() || !input.address?.trim()) {
+        return new Response(JSON.stringify({ error: "Nom et adresse requis" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase
+        .from("clinics")
+        .update({
+          name: input.name.trim(),
+          address: input.address.trim(),
+          phone: input.phone?.trim() || null,
+          speciality: input.speciality?.trim() || null,
+        })
+        .eq("id", input.clinic_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "update_insurer_info") {
+      if (!input.name?.trim()) {
+        return new Response(JSON.stringify({ error: "Nom requis" }), { status: 400, headers: cors });
+      }
+      // slug est une colonne generee (lower(replace(name,' ','_'))) --
+      // se met a jour automatiquement, rien a faire de ce cote.
+      const { error } = await supabase
+        .from("insurers")
+        .update({ name: input.name.trim() })
+        .eq("id", input.insurer_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "update_clinic_staff_role") {
+      if (!["doctor", "secretary", "admin"].includes(input.role)) {
+        return new Response(JSON.stringify({ error: "Rôle invalide" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase
+        .from("clinic_staff")
+        .update({ role: input.role })
+        .eq("id", input.staff_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "update_insurer_staff_role") {
+      if (!input.role?.trim()) {
+        return new Response(JSON.stringify({ error: "Rôle requis" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase
+        .from("insurer_staff")
+        .update({ role: input.role.trim() })
+        .eq("id", input.staff_id);
       if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }

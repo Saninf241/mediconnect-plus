@@ -14,6 +14,9 @@ type Clinic = {
   id: string;
   name: string;
   type: string | null;
+  address: string | null;
+  phone: string | null;
+  speciality: string | null;
   active: boolean | null;
   created_at: string;
   clinic_staff: { count: number }[];
@@ -24,6 +27,7 @@ type Insurer = {
   id: string;
   name: string;
   verification_level: string | null;
+  active: boolean | null;
   insurer_staff: { count: number }[];
 };
 
@@ -105,6 +109,16 @@ export default function ManageOrgsPage() {
   const [memberList, setMemberList] = useState<any[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null);
+  const [updatingRoleFor, setUpdatingRoleFor] = useState<string | null>(null);
+
+  // Suspendre/réactiver et éditer les infos de base d'un cabinet/assureur.
+  const [togglingActiveFor, setTogglingActiveFor] = useState<string | null>(null);
+  const [editClinicFor, setEditClinicFor] = useState<string | null>(null);
+  const [editClinicForm, setEditClinicForm] = useState({ name: "", address: "", phone: "", speciality: "" });
+  const [savingClinicEdit, setSavingClinicEdit] = useState(false);
+  const [editInsurerFor, setEditInsurerFor] = useState<string | null>(null);
+  const [editInsurerForm, setEditInsurerForm] = useState({ name: "" });
+  const [savingInsurerEdit, setSavingInsurerEdit] = useState(false);
 
   // Réseau d'identification biométrique inter-cabinet.
   const [newNetworkClinic, setNewNetworkClinic] = useState("");
@@ -286,6 +300,107 @@ export default function ManageOrgsPage() {
       toast.error(err.message || "Échec de la désactivation");
     } finally {
       setRemovingStaffId(null);
+    }
+  }
+
+  async function toggleClinicActive(clinic: Clinic) {
+    setTogglingActiveFor(clinic.id);
+    try {
+      await call({ action: "toggle_clinic_active", clinic_id: clinic.id, active: !clinic.active });
+      toast.success(clinic.active ? "Cabinet suspendu." : "Cabinet réactivé.");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setTogglingActiveFor(null);
+    }
+  }
+
+  async function toggleInsurerActive(insurer: Insurer) {
+    setTogglingActiveFor(insurer.id);
+    try {
+      await call({ action: "toggle_insurer_active", insurer_id: insurer.id, active: !insurer.active });
+      toast.success(insurer.active ? "Assureur suspendu." : "Assureur réactivé.");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setTogglingActiveFor(null);
+    }
+  }
+
+  function openClinicEdit(c: Clinic) {
+    setEditClinicFor(editClinicFor === c.id ? null : c.id);
+    setEditClinicForm({
+      name: c.name,
+      address: c.address ?? "",
+      phone: c.phone ?? "",
+      speciality: c.speciality ?? "",
+    });
+  }
+
+  async function saveClinicEdit(clinicId: string) {
+    if (!editClinicForm.name.trim() || !editClinicForm.address.trim()) {
+      toast.error("Nom et adresse requis.");
+      return;
+    }
+    setSavingClinicEdit(true);
+    try {
+      await call({
+        action: "update_clinic_info",
+        clinic_id: clinicId,
+        name: editClinicForm.name.trim(),
+        address: editClinicForm.address.trim(),
+        phone: editClinicForm.phone.trim() || null,
+        speciality: editClinicForm.speciality.trim() || null,
+      });
+      toast.success("Cabinet mis à jour.");
+      setEditClinicFor(null);
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setSavingClinicEdit(false);
+    }
+  }
+
+  function openInsurerEdit(i: Insurer) {
+    setEditInsurerFor(editInsurerFor === i.id ? null : i.id);
+    setEditInsurerForm({ name: i.name });
+  }
+
+  async function saveInsurerEdit(insurerId: string) {
+    if (!editInsurerForm.name.trim()) {
+      toast.error("Nom requis.");
+      return;
+    }
+    setSavingInsurerEdit(true);
+    try {
+      await call({ action: "update_insurer_info", insurer_id: insurerId, name: editInsurerForm.name.trim() });
+      toast.success("Assureur mis à jour.");
+      setEditInsurerFor(null);
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setSavingInsurerEdit(false);
+    }
+  }
+
+  async function updateStaffRole(kind: "clinic" | "insurer", staffId: string, role: string) {
+    setUpdatingRoleFor(staffId);
+    try {
+      await call(
+        kind === "clinic"
+          ? { action: "update_clinic_staff_role", staff_id: staffId, role }
+          : { action: "update_insurer_staff_role", staff_id: staffId, role }
+      );
+      toast.success("Rôle mis à jour.");
+      await refreshMemberList();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setUpdatingRoleFor(null);
     }
   }
 
@@ -484,7 +599,14 @@ export default function ManageOrgsPage() {
               <Card key={c.id} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{c.name}</div>
+                    <div className="font-medium">
+                      {c.name}
+                      {c.active === false && (
+                        <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                          Suspendu
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500">
                       {c.type === "multi_specialist" ? "Multi-spécialiste" : "Spécialiste"} ·{" "}
                       {c.clinic_staff?.[0]?.count ?? 0} membre(s) ·{" "}
@@ -500,6 +622,12 @@ export default function ManageOrgsPage() {
                       {membersFor?.kind === "clinic" && membersFor.id === c.id ? "Fermer" : "Voir les membres"}
                     </button>
                     <button
+                      onClick={() => openClinicEdit(c)}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {editClinicFor === c.id ? "Fermer" : "Modifier"}
+                    </button>
+                    <button
                       onClick={() => {
                         setAddStaffForClinic(addStaffForClinic === c.id ? null : c.id);
                         setClinicStaffForm({ name: "", email: "", role: "secretary" });
@@ -507,6 +635,13 @@ export default function ManageOrgsPage() {
                       className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
                     >
                       {addStaffForClinic === c.id ? "Fermer" : "Ajouter un membre"}
+                    </button>
+                    <button
+                      onClick={() => toggleClinicActive(c)}
+                      disabled={togglingActiveFor === c.id}
+                      className="text-amber-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {c.active === false ? "Réactiver" : "Suspendre"}
                     </button>
                     <button
                       onClick={() => {
@@ -520,6 +655,34 @@ export default function ManageOrgsPage() {
                   </div>
                 </div>
 
+                {editClinicFor === c.id && (
+                  <div className="border-t pt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <Input
+                      placeholder="Nom"
+                      value={editClinicForm.name}
+                      onChange={(e) => setEditClinicForm({ ...editClinicForm, name: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Adresse"
+                      value={editClinicForm.address}
+                      onChange={(e) => setEditClinicForm({ ...editClinicForm, address: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Téléphone"
+                      value={editClinicForm.phone}
+                      onChange={(e) => setEditClinicForm({ ...editClinicForm, phone: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Spécialité"
+                      value={editClinicForm.speciality}
+                      onChange={(e) => setEditClinicForm({ ...editClinicForm, speciality: e.target.value })}
+                    />
+                    <Button onClick={() => saveClinicEdit(c.id)} disabled={savingClinicEdit} className="sm:col-span-2">
+                      {savingClinicEdit ? "…" : "Enregistrer"}
+                    </Button>
+                  </div>
+                )}
+
                 {membersFor?.kind === "clinic" && membersFor.id === c.id && (
                   <div className="border-t pt-3 space-y-1">
                     {membersLoading ? (
@@ -530,7 +693,7 @@ export default function ManageOrgsPage() {
                       memberList.map((m) => (
                         <div key={m.id} className="flex items-center justify-between text-sm border-b py-1.5">
                           <span>
-                            {m.name} · {m.email} · {m.role}
+                            {m.name} · {m.email}
                             {m.status !== "active" && (
                               <span className="text-amber-600"> ({m.status})</span>
                             )}
@@ -538,7 +701,17 @@ export default function ManageOrgsPage() {
                               <span className="text-gray-400"> · invitation en attente</span>
                             )}
                           </span>
-                          <div className="flex gap-2">
+                          <div className="flex items-center gap-2">
+                            <select
+                              className="border rounded text-xs px-1.5 py-1"
+                              value={m.role}
+                              disabled={updatingRoleFor === m.id}
+                              onChange={(e) => updateStaffRole("clinic", m.id, e.target.value)}
+                            >
+                              <option value="doctor">Médecin</option>
+                              <option value="secretary">Secrétaire</option>
+                              <option value="admin">Admin</option>
+                            </select>
                             {m.status === "active" && (
                               <button
                                 onClick={() => deactivateMember(m.id)}
@@ -705,7 +878,14 @@ export default function ManageOrgsPage() {
               <Card key={i.id} className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-medium">{i.name}</div>
+                    <div className="font-medium">
+                      {i.name}
+                      {i.active === false && (
+                        <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                          Suspendu
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-gray-500">{i.insurer_staff?.[0]?.count ?? 0} membre(s)</div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -732,6 +912,12 @@ export default function ManageOrgsPage() {
                       {membersFor?.kind === "insurer" && membersFor.id === i.id ? "Fermer" : "Voir les membres"}
                     </button>
                     <button
+                      onClick={() => openInsurerEdit(i)}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {editInsurerFor === i.id ? "Fermer" : "Modifier"}
+                    </button>
+                    <button
                       onClick={() => {
                         setAddStaffForInsurer(addStaffForInsurer === i.id ? null : i.id);
                         setInsurerStaffForm({ email: "", role: "agent" });
@@ -739,6 +925,13 @@ export default function ManageOrgsPage() {
                       className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
                     >
                       {addStaffForInsurer === i.id ? "Fermer" : "Ajouter un membre"}
+                    </button>
+                    <button
+                      onClick={() => toggleInsurerActive(i)}
+                      disabled={togglingActiveFor === i.id}
+                      className="text-amber-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {i.active === false ? "Réactiver" : "Suspendre"}
                     </button>
                     <button
                       onClick={() => {
@@ -752,6 +945,19 @@ export default function ManageOrgsPage() {
                   </div>
                 </div>
 
+                {editInsurerFor === i.id && (
+                  <div className="border-t pt-3 flex gap-2">
+                    <Input
+                      placeholder="Nom"
+                      value={editInsurerForm.name}
+                      onChange={(e) => setEditInsurerForm({ name: e.target.value })}
+                    />
+                    <Button onClick={() => saveInsurerEdit(i.id)} disabled={savingInsurerEdit}>
+                      {savingInsurerEdit ? "…" : "Enregistrer"}
+                    </Button>
+                  </div>
+                )}
+
                 {membersFor?.kind === "insurer" && membersFor.id === i.id && (
                   <div className="border-t pt-3 space-y-1">
                     {membersLoading ? (
@@ -762,18 +968,29 @@ export default function ManageOrgsPage() {
                       memberList.map((m) => (
                         <div key={m.id} className="flex items-center justify-between text-sm border-b py-1.5">
                           <span>
-                            {m.email} · {m.role}
+                            {m.email}
                             {!m.clerk_user_id && (
                               <span className="text-gray-400"> · invitation en attente</span>
                             )}
                           </span>
-                          <button
-                            onClick={() => removeMember("insurer", m.id)}
-                            disabled={removingStaffId === m.id}
-                            className="text-red-600 text-xs hover:underline"
-                          >
-                            Retirer
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <select
+                              className="border rounded text-xs px-1.5 py-1"
+                              value={m.role}
+                              disabled={updatingRoleFor === m.id}
+                              onChange={(e) => updateStaffRole("insurer", m.id, e.target.value)}
+                            >
+                              <option value="agent">Agent</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                            <button
+                              onClick={() => removeMember("insurer", m.id)}
+                              disabled={removingStaffId === m.id}
+                              className="text-red-600 text-xs hover:underline"
+                            >
+                              Retirer
+                            </button>
+                          </div>
                         </div>
                       ))
                     )}
