@@ -1,8 +1,8 @@
 // src/App.tsx
 import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
-import { SignUp } from '@clerk/clerk-react';
 import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/clerk-react";
+import SignUpPage from "./components/auth/SignUpPage";
 import { Building, Code, User, CheckCircle2, TrendingUp, ShieldCheck, Building2, Lock, KeyRound, ScrollText, Scale, UserCheck, Fingerprint, FileCheck2, Stethoscope, Inbox, ClipboardCheck, Wallet } from 'lucide-react';
 import PrivateRouteByArea from "./components/auth/PrivateRouteByArea";
 import Unauthorized from './Pages/Unauthorized';
@@ -576,7 +576,7 @@ export default function App() {
 
     {/* Clerk auth */}
     <Route path="/sign-in/*" element={<SignInPage />} />
-    <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
+    <Route path="/sign-up/*" element={<SignUpPage />} />
 
     {/* Redirection post-login selon le rôle */}
     <Route path="/role-redirect" element={<RoleRedirect />} />

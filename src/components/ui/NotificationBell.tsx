@@ -1,25 +1,45 @@
-// src/components/ui/assureur/NotificationBell.tsx
-// Cloche de notifications de l'en-tete assureur : agrege les notifications
-// non lues (type "message", cf src/lib/queries/notifications.ts) tous
-// consultations confondues, avec mise a jour temps reel.
+// src/components/ui/NotificationBell.tsx
+// Cloche de notifications generique (agrege les notifications non lues par
+// consultation, avec mise a jour temps reel) -- utilisee cote assureur
+// (message/decision/litige/proposition) et cote cabinet (litige resolu).
+// Generalisee depuis l'ancienne version assureur-only pour couvrir le
+// circuit litige/tarification manuelle du 2026-07-27.
 import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../../../lib/supabase";
+import { supabase } from "../../lib/supabase";
 import {
   getUnreadMessageCounts,
   markConsultationNotificationsAsRead,
   type UnreadByConsultation,
-} from "../../../lib/queries/notifications";
+} from "../../lib/queries/notifications";
 
-export default function NotificationBell({ staffId }: { staffId: string }) {
+function labelFor(info: UnreadByConsultation[string]) {
+  if (info.hasDispute) return "Litige de remboursement";
+  if (info.hasProposal) return "Tarification manuelle";
+  if (info.hasDecision) return "Décision sur consultation";
+  return "Nouveau message";
+}
+
+export default function NotificationBell({
+  staffId,
+  types,
+  buildPath,
+  dark = false,
+}: {
+  staffId: string;
+  types: string[];
+  buildPath: (consultationId: string) => string;
+  /** Icone claire pour un fond de barre laterale sombre (defaut : fond clair). */
+  dark?: boolean;
+}) {
   const [counts, setCounts] = useState<UnreadByConsultation>({});
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const load = async () => {
-    const data = await getUnreadMessageCounts(staffId);
+    const data = await getUnreadMessageCounts(staffId, types);
     setCounts(data);
   };
 
@@ -27,7 +47,7 @@ export default function NotificationBell({ staffId }: { staffId: string }) {
     load();
 
     const channel = supabase
-      .channel(`notif-bell-insurer-${staffId}`)
+      .channel(`notif-bell-${staffId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${staffId}` },
@@ -38,6 +58,7 @@ export default function NotificationBell({ staffId }: { staffId: string }) {
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffId]);
 
   useEffect(() => {
@@ -53,16 +74,18 @@ export default function NotificationBell({ staffId }: { staffId: string }) {
 
   const openConsultation = async (consultationId: string) => {
     setOpen(false);
-    await markConsultationNotificationsAsRead(staffId, consultationId);
+    await markConsultationNotificationsAsRead(staffId, consultationId, types);
     await load();
-    navigate(`/assureur/consultations/${consultationId}`);
+    navigate(buildPath(consultationId));
   };
 
   return (
     <div className="relative" ref={containerRef}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative p-2 rounded-full text-gray-600 hover:bg-gray-100"
+        className={`relative p-2 rounded-full ${
+          dark ? "text-white hover:bg-white/10" : "text-gray-600 hover:bg-gray-100"
+        }`}
         aria-label="Notifications"
       >
         <Bell className="w-5 h-5" />
@@ -85,9 +108,7 @@ export default function NotificationBell({ staffId }: { staffId: string }) {
                 onClick={() => openConsultation(consultationId)}
                 className="w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-gray-50"
               >
-                <div className="text-sm font-medium">
-                  {info.hasDecision ? "Décision sur consultation" : "Nouveau message"}
-                </div>
+                <div className="text-sm font-medium">{labelFor(info)}</div>
                 <div className="text-xs text-gray-500">
                   Consultation {consultationId.slice(0, 8)} • {info.count} non lu{info.count > 1 ? "s" : ""}
                 </div>

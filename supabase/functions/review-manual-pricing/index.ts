@@ -70,7 +70,7 @@ serve(async (req) => {
 
     const { data: proposal, error: proposalErr } = await supabase
       .from("consultation_manual_pricing")
-      .select("id, consultation_id, insurer_id, proposed_amount, status, consultations(payment_status)")
+      .select("id, consultation_id, insurer_id, proposed_amount, proposed_by_staff_id, status, consultations(payment_status)")
       .eq("id", manual_pricing_id)
       .maybeSingle();
 
@@ -106,6 +106,18 @@ serve(async (req) => {
         })
         .eq("id", manual_pricing_id);
       if (error) throw error;
+
+      if (proposal.proposed_by_staff_id) {
+        const { error: notifErr } = await supabase.from("notifications").insert({
+          user_id: proposal.proposed_by_staff_id,
+          type: "manual_pricing_decision",
+          title: "Proposition de tarification rejetée",
+          content: `Votre proposition a été rejetée : ${rejection_reason.trim().slice(0, 160)}`,
+          metadata: { consultation_id: proposal.consultation_id, event: "proposal_rejected" },
+          read: false,
+        });
+        if (notifErr) console.error("review-manual-pricing: erreur notification agent:", notifErr);
+      }
 
       return new Response(JSON.stringify({ ok: true, status: "rejected" }), {
         status: 200,
@@ -152,6 +164,18 @@ serve(async (req) => {
       })
       .eq("id", proposal.consultation_id);
     if (updateConsultationErr) throw updateConsultationErr;
+
+    if (proposal.proposed_by_staff_id) {
+      const { error: notifErr } = await supabase.from("notifications").insert({
+        user_id: proposal.proposed_by_staff_id,
+        type: "manual_pricing_decision",
+        title: "Proposition de tarification approuvée",
+        content: `Votre proposition de ${proposal.proposed_amount.toLocaleString("fr-FR")} FCFA a été approuvée.`,
+        metadata: { consultation_id: proposal.consultation_id, event: "proposal_approved" },
+        read: false,
+      });
+      if (notifErr) console.error("review-manual-pricing: erreur notification agent:", notifErr);
+    }
 
     return new Response(JSON.stringify({ ok: true, status: "approved" }), {
       status: 200,

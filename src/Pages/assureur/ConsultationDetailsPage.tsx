@@ -26,6 +26,7 @@ interface ConsultationRow {
   payment_dispute_reason: string | null;
   payment_disputed_at: string | null;
   payment_dispute_resolved_at: string | null;
+  payment_disputed_by_staff_id: string | null;
 
   clinic:
     | { name: string | null }
@@ -128,6 +129,7 @@ export default function AssureurConsultationDetailsPage() {
         payment_dispute_reason,
         payment_disputed_at,
         payment_dispute_resolved_at,
+        payment_disputed_by_staff_id,
         biometric_verified_at,
         biometric_operator_id,
         biometric_clinic_id,
@@ -366,6 +368,19 @@ export default function AssureurConsultationDetailsPage() {
         })
         .eq("id", consultation.id);
       if (error) throw error;
+
+      if (consultation.payment_disputed_by_staff_id) {
+        const { error: notifErr } = await supabase.from("notifications").insert({
+          user_id: consultation.payment_disputed_by_staff_id,
+          type: "payment_dispute_resolved",
+          title: "Litige résolu",
+          content: "L'assureur a marqué votre litige de remboursement comme résolu.",
+          metadata: { consultation_id: consultation.id, event: "dispute_resolved" },
+          read: false,
+        });
+        if (notifErr) console.error("[AssureurDetails] erreur notification cabinet :", notifErr.message);
+      }
+
       await fetchDetails();
     } catch (e: any) {
       alert(e.message || "Erreur lors de la résolution du litige.");

@@ -146,6 +146,30 @@ serve(async (req) => {
       if (resetErr) throw resetErr;
     }
 
+    // Sans ca, seul un admin qui pense a ouvrir la page Paiements decouvre
+    // la proposition -- aucun signal proactif.
+    const { data: admins, error: adminsErr } = await supabase
+      .from("insurer_staff")
+      .select("id")
+      .eq("insurer_id", staffRow.insurer_id)
+      .eq("role", "admin");
+
+    if (adminsErr) {
+      console.error("propose-manual-pricing: erreur récupération admins:", adminsErr);
+    } else if (admins && admins.length > 0) {
+      const { error: notifErr } = await supabase.from("notifications").insert(
+        admins.map((a) => ({
+          user_id: a.id,
+          type: "manual_pricing_proposal",
+          title: "Proposition de tarification en attente",
+          content: `${staffRow.email ?? "Un agent"} propose ${proposed_amount.toLocaleString("fr-FR")} FCFA pour une consultation.`,
+          metadata: { consultation_id, event: "proposal_pending" },
+          read: false,
+        }))
+      );
+      if (notifErr) console.error("propose-manual-pricing: erreur notification admins:", notifErr);
+    }
+
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...cors },

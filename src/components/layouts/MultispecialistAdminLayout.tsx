@@ -1,6 +1,11 @@
 // src/components/layouts/MultispecialistAdminLayout.tsx
+import { useEffect, useState } from "react";
 import { Outlet, NavLink, Link } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import LogoutButton from "../ui/LogoutButton";
+import NotificationBell from "../ui/NotificationBell";
+import { supabase } from "../../lib/supabase";
+import { useClinicId } from "../../hooks/useClinicId";
 
 const NavItem = ({ to, children }: { to: string; children: React.ReactNode }) => (
   <li>
@@ -27,15 +32,43 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 );
 
 export default function MultispecialistAdminLayout() {
+  const { user } = useUser();
+  const { clinicId } = useClinicId();
+  const [myStaffId, setMyStaffId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!clinicId || !user?.id) return;
+    supabase
+      .from("clinic_staff")
+      .select("id")
+      .eq("clinic_id", clinicId)
+      .eq("clerk_user_id", user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) console.error("[MultispecialistAdminLayout] erreur clinic_staff (moi) :", error.message);
+        setMyStaffId(data?.id ?? null);
+      });
+  }, [clinicId, user?.id]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
       <aside className="w-72 bg-sky-800 text-white p-4 flex flex-col justify-between overflow-y-auto shrink-0">
         <div>
-          <div className="mb-8">
-            <h2 className="text-xl font-bold">Espace Dirigeant</h2>
-            <p className="text-sm text-sky-100/80 mt-1">
-              Pilotage du cabinet multi-spécialiste
-            </p>
+          <div className="mb-8 flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-bold">Espace Dirigeant</h2>
+              <p className="text-sm text-sky-100/80 mt-1">
+                Pilotage du cabinet multi-spécialiste
+              </p>
+            </div>
+            {myStaffId && (
+              <NotificationBell
+                staffId={myStaffId}
+                types={["payment_dispute_resolved"]}
+                buildPath={() => "/multispecialist/admin/payments"}
+                dark
+              />
+            )}
           </div>
 
           <ul className="space-y-1 text-sm">

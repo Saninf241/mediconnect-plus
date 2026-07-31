@@ -12,8 +12,15 @@ import {
   Settings,
 } from "lucide-react";
 import LogoutButton from "../ui/LogoutButton";
-import NotificationBell from "../ui/assureur/NotificationBell";
+import NotificationBell from "../ui/NotificationBell";
 import { useInsurerContext } from "../../hooks/useInsurerContext";
+
+const ASSUREUR_NOTIFICATION_TYPES = [
+  "message",
+  "payment_dispute",
+  "manual_pricing_proposal",
+  "manual_pricing_decision",
+];
 
 const navItems = [
   { name: "Rapports", path: "/assureur/reports", icon: FileText },
@@ -96,7 +103,11 @@ export default function AssureurLayout() {
           <div className="text-sm text-gray-600">
             {ctx.email} • <span>{ctx.role === "admin" ? "administrateur" : "agent"}</span>
           </div>
-          <NotificationBell staffId={ctx.staffId} />
+          <NotificationBell
+            staffId={ctx.staffId}
+            types={ASSUREUR_NOTIFICATION_TYPES}
+            buildPath={(id) => `/assureur/consultations/${id}`}
+          />
         </header>
 
         <main className="flex-1 p-6 bg-gray-50 overflow-y-auto min-w-0">

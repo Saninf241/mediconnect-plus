@@ -19,6 +19,7 @@ interface StaffRow {
 interface ConsultationRow {
   id: string;
   clinic_id: string | null;
+  insurer_id: string | null;
   doctor_id: string | null;
   patient_id: string | null;
   amount: number | null;
@@ -188,7 +189,7 @@ export default function AdminPaymentsPage() {
       let query = supabase
         .from("consultations")
         .select(
-          "id, clinic_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name ), insurer_amount, payment_status, payment_date, pricing_status, payment_dispute_status, payment_dispute_reason, payment_disputed_at, payment_dispute_resolved_at"
+          "id, clinic_id, insurer_id, doctor_id, patient_id, amount, status, created_at, updated_at, patients ( name ), insurer_amount, payment_status, payment_date, pricing_status, payment_dispute_status, payment_dispute_reason, payment_disputed_at, payment_dispute_resolved_at"
         )
         .eq("clinic_id", clinicId)
         .order("created_at", { ascending: false });
@@ -258,6 +259,34 @@ export default function AdminPaymentsPage() {
       if (error) throw error;
 
       await sendMessage(row.id, myStaffId, "doctor", reason, null);
+
+      // Sans ca, l'assureur n'apprend le litige qu'en tombant par hasard
+      // sur la bonne consultation ou le bon lot -- aucun agent/admin n'a
+      // d'assigne fixe par consultation (insurer_agent_id jamais rempli),
+      // donc on notifie toute l'equipe assureur plutot qu'une seule
+      // personne.
+      if (row.insurer_id) {
+        const { data: insurerStaff, error: staffErr } = await supabase
+          .from("insurer_staff")
+          .select("id")
+          .eq("insurer_id", row.insurer_id);
+
+        if (staffErr) {
+          console.error("[AdminPaymentsPage] erreur récupération équipe assureur :", staffErr.message);
+        } else if (insurerStaff && insurerStaff.length > 0) {
+          const { error: notifErr } = await supabase.from("notifications").insert(
+            insurerStaff.map((s) => ({
+              user_id: s.id,
+              type: "payment_dispute",
+              title: "Litige de remboursement",
+              content: `Un cabinet conteste un montant remboursé : ${reason.slice(0, 160)}`,
+              metadata: { consultation_id: row.id, event: "dispute_opened" },
+              read: false,
+            }))
+          );
+          if (notifErr) console.error("[AdminPaymentsPage] erreur notification assureur :", notifErr.message);
+        }
+      }
 
       setDisputeReasonDraft("");
       await fetchData();
