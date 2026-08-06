@@ -1,0 +1,12 @@
+-- Audit securite 2026-08 : merge_patients() est SECURITY DEFINER (contourne
+-- RLS) mais n'avait jamais eu son EXECUTE revoque au public/anon/authenticated,
+-- contrairement a dev_delete_clinic/dev_delete_insurer (meme profil de risque,
+-- crees le meme jour, migration 20260712180000). Confirme en base :
+-- role_routine_grants montrait EXECUTE accorde a PUBLIC, anon ET authenticated
+-- -- n'importe qui avec la seule cle anon pouvait fusionner deux patients
+-- arbitraires de deux cabinets differents via /rest/v1/rpc/merge_patients,
+-- en contournant entierement le controle de role "developer" de l'edge
+-- function dev-manage-patients. Meme correctif que dev_delete_* : seuls
+-- postgres et service_role gardent EXECUTE (dev-manage-patients appelle deja
+-- cette RPC via service_role, donc aucun impact sur le flux existant).
+revoke all on function public.merge_patients(uuid, uuid, text) from public, authenticated, anon;
