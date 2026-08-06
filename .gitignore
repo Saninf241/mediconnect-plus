@@ -24,6 +24,5 @@ dist-ssr
 *.sw?
 
 .env
-git add .gitignore
-git commit -m "Ignore .env to avoid pushing secrets"
-git push
+.env.production
+.env.*.local

@@ -25,6 +25,14 @@ export const handler: Handler = async (event) => {
       return json(401, { error: "Unauthorized" });
     }
 
+    // NOTE (audit securite) : contrairement a biometrics-enroll, cet endpoint
+    // ne peut pas verifier "ce clinic_id appartient bien a l'appelant" -- le
+    // seul garde-fou reste APP_INGEST_SECRET, un secret partage identique
+    // pour toute la flotte d'appareils (pas de credential par cabinet). Tant
+    // que ce secret n'est pas remplace par une authentification par
+    // appareil/cabinet, n'importe quel clinic_id peut theoriquement etre
+    // interroge par quiconque detient le secret. Risque residuel accepte
+    // pour l'instant, a traiter lors de la rotation/refonte d'INGEST_SECRET.
     const clinicId = event.queryStringParameters?.clinic_id || null;
     const scope = event.queryStringParameters?.scope || "network";
 

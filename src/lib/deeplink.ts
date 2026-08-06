@@ -22,6 +22,18 @@ export function buildZKDeeplink(opts: {
   if (opts.patientId) qp.set("patient_id", opts.patientId);
   if (opts.consultationId) qp.set("consultation_id", opts.consultationId);
 
+  // Defense en profondeur (en plus des policies RLS) : FingerprintCallback
+  // fait confiance a patient_id lu depuis l'URL de retour pour ecrire en
+  // base. Comme ce retour transite par un deep link non authentifie, on
+  // memorise ici le patient_id que CETTE session a reellement demande
+  // d'enroler, pour que le callback puisse verifier que la reponse
+  // correspond bien a la demande envoyee, pas a une URL forgee a la main.
+  if (opts.mode === "enroll" && opts.patientId) {
+    try {
+      sessionStorage.setItem("fp:expected_patient_id", opts.patientId);
+    } catch {}
+  }
+
   // schéma custom
   const deeplink = `mediconnect://fingerprint/${opts.mode}?${qp.toString()}`;
 

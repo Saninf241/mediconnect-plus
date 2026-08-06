@@ -87,7 +87,22 @@ export default function FingerprintCallback() {
       }
 
       if (mode === "enroll") {
-        const ok = status === "captured" && !!patientId;
+        // Defense en profondeur : le deep link de retour n'est pas
+        // authentifie (n'importe qui peut construire une URL vers cette
+        // page avec un patient_id de son choix). On verifie que ce
+        // patient_id correspond bien a celui que CETTE session a demande
+        // d'enroler (memorise par buildZKDeeplink au moment du depart),
+        // en plus des policies RLS qui restent le rempart principal.
+        let expectedPatientId: string | null = null;
+        try {
+          expectedPatientId = sessionStorage.getItem("fp:expected_patient_id");
+          sessionStorage.removeItem("fp:expected_patient_id");
+        } catch {}
+
+        const patientMismatch =
+          !!patientId && !!expectedPatientId && patientId !== expectedPatientId;
+
+        const ok = status === "captured" && !!patientId && !patientMismatch;
 
         try {
           sessionStorage.setItem(
@@ -97,10 +112,17 @@ export default function FingerprintCallback() {
               ok,
               patient_id: patientId || null,
               template_b64: templateB64 || null,
-              error: error || null,
+              error: patientMismatch ? "patient_mismatch" : error || null,
             })
           );
         } catch {}
+
+        if (patientMismatch) {
+          console.error("[FP] patient_id du callback ne correspond pas à la demande envoyée", {
+            patientId,
+            expectedPatientId,
+          });
+        }
 
         if (ok) {
           await supabase
@@ -114,7 +136,11 @@ export default function FingerprintCallback() {
 
           setMessage("Empreinte enregistrée avec succès ✅");
         } else {
-          setMessage(`Échec capture : ${error || "Aucune donnée reçue."}`);
+          setMessage(
+            patientMismatch
+              ? "Échec capture : réponse invalide (patient non concordant)."
+              : `Échec capture : ${error || "Aucune donnée reçue."}`
+          );
         }
 
         sessionStorage.removeItem("fp:return");

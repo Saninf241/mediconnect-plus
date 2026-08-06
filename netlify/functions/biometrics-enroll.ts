@@ -35,6 +35,47 @@ export const handler: Handler = async (event) => {
       return { statusCode: 400, body: "Missing fields" };
     }
 
+    // Le seul garde-fou de cet endpoint est APP_INGEST_SECRET, un secret
+    // partage embarque en dur dans l'app Android (extractible de l'APK) --
+    // il n'authentifie pas QUI appelle, seulement "un appareil de la flotte".
+    // Sans cette verification, patient_id/clinic_id sont pris tels quels :
+    // un appelant qui connait/devine ces deux ids pouvait enroler un
+    // gabarit biometrique pour un patient au nom d'un cabinet qui n'a
+    // aucun lien reel avec lui. On verifie donc que patient_id appartient
+    // bien a clinic_id (cabinet d'origine OU lien patient_clinic_links
+    // existant, pour ne pas casser le cas legitime d'un patient suivi
+    // dans plusieurs cabinets) avant d'ecrire quoi que ce soit.
+    const { data: patientRow, error: patientErr } = await supabase
+      .from("patients")
+      .select("id, clinic_id")
+      .eq("id", patient_id)
+      .maybeSingle();
+
+    if (patientErr) {
+      console.error("patient lookup error:", patientErr);
+      return { statusCode: 500, body: "DB error (patient lookup)" };
+    }
+    if (!patientRow) {
+      return { statusCode: 404, body: "Patient introuvable" };
+    }
+
+    if (patientRow.clinic_id !== clinic_id) {
+      const { data: link, error: linkErr } = await supabase
+        .from("patient_clinic_links")
+        .select("patient_id")
+        .eq("patient_id", patient_id)
+        .eq("clinic_id", clinic_id)
+        .maybeSingle();
+
+      if (linkErr) {
+        console.error("patient_clinic_links lookup error:", linkErr);
+        return { statusCode: 500, body: "DB error (clinic link lookup)" };
+      }
+      if (!link) {
+        return { statusCode: 403, body: "Ce patient n'appartient pas à ce cabinet" };
+      }
+    }
+
     const hash =
       template_hash ||
       crypto.createHash("sha256").update(template_b64, "utf8").digest("hex");
