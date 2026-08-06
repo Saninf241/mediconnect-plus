@@ -48,6 +48,21 @@ async function sendEmail(subject: string, text: string) {
 
 serve(async (req) => {
   try {
+    // Ce endpoint est un Database Webhook Supabase (verify_jwt=false a la
+    // passerelle, necessaire pour que Supabase lui-meme puisse l'appeler) :
+    // sans verification propre, N'IMPORTE QUI sur Internet pouvait POSTer un
+    // JSON arbitraire ici et faire envoyer un email a contenu totalement
+    // controle par l'attaquant a DEV_NOTIFICATION_EMAIL (vecteur de
+    // phishing/spam cible). Le secret ci-dessous doit etre configure comme
+    // header personnalise du Database Webhook (Studio > Database > Webhooks
+    // > cette entree > HTTP Headers), en plus d'etre defini comme secret de
+    // la fonction (WEBHOOK_SHARED_SECRET).
+    const expectedSecret = Deno.env.get("WEBHOOK_SHARED_SECRET");
+    const providedSecret = req.headers.get("x-webhook-secret");
+    if (!expectedSecret || !providedSecret || providedSecret !== expectedSecret) {
+      return new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), { status: 401 });
+    }
+
     const payload = (await req.json()) as WebhookPayload;
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,

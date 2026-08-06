@@ -43,7 +43,21 @@ async function verifySvixSignature(
     .map((s) => s.split(",")[1])
     .filter(Boolean);
 
-  return candidates.includes(expected);
+  // Comparaison a temps constant : `includes` compare chaine par chaine et
+  // s'arrete au premier octet different, ce qui fuit (en theorie) un signal
+  // temporel exploitable pour deviner la signature attendue octet par octet.
+  return candidates.some((c) => timingSafeEqual(c, expected));
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const bufA = new TextEncoder().encode(a);
+  const bufB = new TextEncoder().encode(b);
+  if (bufA.length !== bufB.length) return false;
+  let diff = 0;
+  for (let i = 0; i < bufA.length; i++) {
+    diff |= bufA[i] ^ bufB[i];
+  }
+  return diff === 0;
 }
 
 serve(async (req) => {

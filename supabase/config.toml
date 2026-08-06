@@ -1,0 +1,105 @@
+# Miroir versionne de l'etat reel des Edge Functions (interroge en direct via
+# l'API Supabase le 2026-08-06 -- audit securite Partie 3). Jusqu'ici, seule
+# generate-consultation-pdf avait son propre supabase.toml commite ; le
+# reglage verify_jwt de toutes les autres n'existait qu'a l'etat "vu dans le
+# Dashboard", invisible en revue de code et non reproductible via
+# `supabase functions deploy`.
+#
+# verify_jwt = false ne veut PAS dire "pas d'authentification" : la plupart
+# de ces fonctions verifient elles-memes un token Clerk (verifyToken) dans
+# leur code, ce qu'un verify_jwt=true cote passerelle casserait (un token
+# Clerk n'est pas un JWT signe par Supabase). Les 3 fonctions "patient-*" en
+# true utilisent de vraies sessions Supabase Auth (telephone+OTP) -- coherent.
+#
+# Si vous changez ce fichier, `supabase functions deploy <nom>` re-applique
+# le reglage indique ici -- gardez-le synchronise avec la realite plutot que
+# de le modifier a la main dans le Dashboard sans repercuter ici.
+
+[functions.dev-create-clinic]
+verify_jwt = false
+
+[functions.dev-create-insurer]
+verify_jwt = false
+
+[functions.dev-manage-orgs]
+verify_jwt = false
+
+[functions.dev-manage-patients]
+verify_jwt = false
+
+[functions.dev-support-tickets]
+verify_jwt = false
+
+[functions.admin-invite-clinic-member]
+verify_jwt = false
+
+[functions.admin-remove-clinic-member]
+verify_jwt = false
+
+[functions.clinic-submit-payment-info]
+verify_jwt = false
+
+[functions.generate-payment-batch]
+verify_jwt = false
+
+[functions.mark-payment-batch-paid]
+verify_jwt = false
+
+[functions.initiate-payment-batch-payout]
+verify_jwt = false
+
+[functions.export-payment-csv]
+verify_jwt = false
+
+[functions.propose-manual-pricing]
+verify_jwt = false
+
+[functions.review-manual-pricing]
+verify_jwt = false
+
+[functions.filter-consultations]
+verify_jwt = false
+
+[functions.match-insurer-directory]
+verify_jwt = false
+
+[functions.generate-patient-access-code]
+verify_jwt = false
+
+[functions.resolve-existing-patient]
+verify_jwt = false
+
+# generate-consultation-pdf : deja documente dans son propre supabase.toml
+# (supabase/functions/generate-consultation-pdf/supabase.toml), verify_jwt
+# false pour la meme raison (verification Clerk faite dans le code).
+
+# Webhooks : n'importe qui doit pouvoir atteindre le code (Clerk/Svix pour
+# l'un, Supabase Database Webhooks pour l'autre) -- l'authentification se
+# fait DANS le code (signature Svix pour clerk-webhook-user-created, secret
+# partage pour notify-ticket-email depuis ce correctif).
+[functions.clerk-webhook-user-created]
+verify_jwt = false
+
+[functions.notify-ticket-email]
+verify_jwt = false
+
+# Espace patient : vraies sessions Supabase Auth (telephone + OTP), un JWT
+# Supabase valide est donc attendu et verifiable cote passerelle.
+[functions.patient-activate-account]
+verify_jwt = true
+
+[functions.patient-portal-data]
+verify_jwt = true
+
+[functions.patient-support-tickets]
+verify_jwt = true
+
+# Non appelees par le front (verifie -- aucune reference dans src/) ; leur
+# propre logique interne est de toute facon non fonctionnelle (voir audit
+# Partie 3). Laissees en verify_jwt=true (etat actuel) faute d'etre
+# nettoyees/supprimees pour l'instant.
+[functions.detect-anomalies]
+verify_jwt = true
+
+[functions.send-weekly-report-email]
+verify_jwt = true
