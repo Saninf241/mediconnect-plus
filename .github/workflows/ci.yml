@@ -1,0 +1,42 @@
+name: CI
+
+# Garde-fou minimal (audit securite 2026-08) : jusqu'ici, rien ne verifiait
+# le code avant deploiement -- chaque push declenchait directement un build
+# + deploiement Netlify, sans lint/typecheck/tests. Ce workflow ne touche
+# JAMAIS au deploiement lui-meme (aucune interaction avec Netlify) : il
+# echoue juste visiblement sur GitHub si le code ne compile pas, contient
+# des erreurs de type, ou casse le lint -- Netlify continue de deployer
+# independamment de ce workflow tant qu'il n'est pas explicitement branche
+# en required check sur la branche.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # Rapport seulement : 218 erreurs preexistantes au 2026-08 (surtout
+      # @typescript-eslint/no-explicit-any), non bloquant tant qu'elles ne
+      # sont pas resorbees -- sinon la CI serait rouge des le premier push.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build

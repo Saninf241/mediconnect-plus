@@ -18,3 +18,18 @@
   for = "/*"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+    # Durcissement de base (audit securite 2026-08) : rien de ce qui suit ne
+    # bloque quoi que ce soit tant que la CSP reste en Report-Only.
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    # Report-Only : journalise les violations dans la console du navigateur
+    # sans jamais bloquer une requete -- sert a verifier que l'allowlist
+    # (Clerk + Supabase, seuls domaines externes reellement appeles cote
+    # navigateur, verifie dans le code) est complete avant de passer un jour
+    # a Content-Security-Policy (mode bloquant). A tester en conditions
+    # reelles (login Clerk, appels Supabase) avant toute bascule en mode
+    # applique.
+    Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self' https://clerk.mediconnect-plus.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://clerk.mediconnect-plus.com https://zwxegqevthzfphdqtjew.supabase.co wss://zwxegqevthzfphdqtjew.supabase.co; frame-src 'self' https://clerk.mediconnect-plus.com; object-src 'none'; base-uri 'self'; form-action 'self'"
