@@ -121,7 +121,20 @@ type Action =
   | { action: "list_pending_payment_info" }
   | { action: "list_payment_info_drift" }
   | { action: "verify_clinic_payment_info"; id: string }
-  | { action: "reject_clinic_payment_info"; id: string; reason: string };
+  | { action: "reject_clinic_payment_info"; id: string; reason: string }
+  | { action: "list_pharmacies" }
+  | {
+      action: "create_pharmacy";
+      name: string;
+      address?: string | null;
+      phone?: string | null;
+      email?: string | null;
+    }
+  | { action: "delete_pharmacy"; pharmacy_id: string }
+  | { action: "toggle_pharmacy_active"; pharmacy_id: string; active: boolean }
+  | { action: "list_pharmacy_staff"; pharmacy_id: string }
+  | { action: "add_pharmacy_staff"; pharmacy_id: string; name: string; email: string }
+  | { action: "remove_pharmacy_staff"; staff_id: string };
 
 // Supprimer une ligne clinic_staff/insurer_staff cote Supabase ne libere
 // pas l'email cote Clerk : le compte (si l'invitation a ete acceptee) ou
@@ -514,6 +527,129 @@ serve(async (req) => {
         }
         throw error;
       }
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_pharmacies") {
+      const { data, error } = await supabase
+        .from("pharmacies")
+        .select("id, name, address, phone, email, is_active, created_at, pharmacy_staff(count)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return new Response(JSON.stringify({ pharmacies: data }), { headers: cors });
+    }
+
+    if (input.action === "create_pharmacy") {
+      if (!input.name?.trim()) {
+        return new Response(JSON.stringify({ error: "Nom requis" }), { status: 400, headers: cors });
+      }
+      const { error } = await supabase.from("pharmacies").insert({
+        name: input.name.trim(),
+        address: input.address?.trim() || null,
+        phone: input.phone?.trim() || null,
+        email: input.email?.trim() || null,
+        is_active: true,
+      });
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "delete_pharmacy") {
+      const { data: staffRows } = await supabase
+        .from("pharmacy_staff")
+        .select("user_id, email")
+        .eq("pharmacy_id", input.pharmacy_id);
+
+      // pharmacy_staff garde son Clerk id dans "user_id" (nom historique de
+      // la colonne) ; cleanupClerkStaff attend "clerk_user_id", d'où le mapping.
+      await cleanupClerkStaff(
+        (staffRows ?? []).map((r) => ({ clerk_user_id: r.user_id, email: r.email })),
+        clerkSecret
+      );
+
+      const { error } = await supabase.rpc("dev_delete_pharmacy", { p_pharmacy_id: input.pharmacy_id });
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "toggle_pharmacy_active") {
+      const { error } = await supabase
+        .from("pharmacies")
+        .update({ is_active: input.active })
+        .eq("id", input.pharmacy_id);
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_pharmacy_staff") {
+      const { data, error } = await supabase
+        .from("pharmacy_staff")
+        .select("id, full_name, email, role, status, user_id, created_at")
+        .eq("pharmacy_id", input.pharmacy_id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return new Response(JSON.stringify({ staff: data }), { headers: cors });
+    }
+
+    if (input.action === "add_pharmacy_staff") {
+      if (!input.pharmacy_id || !input.name?.trim() || !input.email?.trim()) {
+        return new Response(
+          JSON.stringify({ error: "Pharmacie, nom et email requis" }),
+          { status: 400, headers: cors }
+        );
+      }
+
+      // Même convention que add_clinic_staff / add_insurer_staff :
+      // invitation Clerk, la ligne est créée avec user_id vide et remplie
+      // par clerk-webhook-user-created quand l'invitation est acceptée.
+      try {
+        await clerkFetch(
+          "/invitations",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              email_address: input.email.trim(),
+              public_metadata: { role: "pharmacist" },
+              notify: true,
+            }),
+          },
+          clerkSecret
+        );
+      } catch (e) {
+        return new Response(
+          JSON.stringify({ error: `Échec de l'invitation Clerk : ${(e as Error).message}` }),
+          { status: 400, headers: cors }
+        );
+      }
+
+      const { error } = await supabase.from("pharmacy_staff").insert({
+        pharmacy_id: input.pharmacy_id,
+        user_id: null,
+        full_name: input.name.trim(),
+        role: "pharmacist",
+        email: input.email.trim(),
+        status: "active",
+      });
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "remove_pharmacy_staff") {
+      const { data: row, error: rowErr } = await supabase
+        .from("pharmacy_staff")
+        .select("user_id, email")
+        .eq("id", input.staff_id)
+        .maybeSingle();
+      if (rowErr || !row) throw rowErr ?? new Error("Membre introuvable");
+
+      // Contrairement à clinic_staff, pharmacist_id sur pharmacy_deliveries
+      // n'est pas une FK (juste un texte informatif) : pas de blocage
+      // "historique réel" possible ici, suppression directe.
+      await cleanupClerkStaff([{ clerk_user_id: row.user_id, email: row.email }], clerkSecret);
+
+      const { error } = await supabase.from("pharmacy_staff").delete().eq("id", input.staff_id);
+      if (error) throw error;
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
     }
 

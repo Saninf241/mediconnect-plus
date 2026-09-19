@@ -107,9 +107,19 @@ serve(async (req) => {
         .eq("email", email)
         .select("id");
 
+      // pharmacy_staff utilise "user_id" (nom historique de la colonne),
+      // pas "clerk_user_id", mais c'est le même Clerk user id qu'on y met.
+      const pharmacyRes = await supabase
+        .from("pharmacy_staff")
+        .update({ user_id: clerkUserId })
+        .is("user_id", null)
+        .eq("email", email)
+        .select("id");
+
       results[email] = {
         clinic_staff_updated: clinicRes.data?.length ?? 0,
         insurer_staff_updated: insurerRes.data?.length ?? 0,
+        pharmacy_staff_updated: pharmacyRes.data?.length ?? 0,
       };
     }
 

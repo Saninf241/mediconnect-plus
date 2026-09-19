@@ -75,6 +75,17 @@ type DriftRow = {
   current_values: Record<string, unknown>;
 };
 
+type Pharmacy = {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean | null;
+  created_at: string;
+  pharmacy_staff: { count: number }[];
+};
+
 type DirectoryMember = {
   id: string;
   full_name: string;
@@ -91,6 +102,7 @@ export default function ManageOrgsPage() {
   const { getToken } = useAuth();
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [insurers, setInsurers] = useState<Insurer[]>([]);
+  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
   const [conventions, setConventions] = useState<Convention[]>([]);
   const [networks, setNetworks] = useState<ClinicInsurerNetwork[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,8 +116,16 @@ export default function ManageOrgsPage() {
   const [insurerStaffForm, setInsurerStaffForm] = useState({ email: "", role: "agent" });
   const [addingInsurerStaff, setAddingInsurerStaff] = useState(false);
 
-  // Voir / retirer les membres d'un cabinet ou d'un assureur existant.
-  const [membersFor, setMembersFor] = useState<{ kind: "clinic" | "insurer"; id: string } | null>(null);
+  // Nouvelle pharmacie + membre à ajouter à une pharmacie existante.
+  const [showNewPharmacyForm, setShowNewPharmacyForm] = useState(false);
+  const [newPharmacyForm, setNewPharmacyForm] = useState({ name: "", address: "", phone: "", email: "" });
+  const [creatingPharmacy, setCreatingPharmacy] = useState(false);
+  const [addStaffForPharmacy, setAddStaffForPharmacy] = useState<string | null>(null);
+  const [pharmacyStaffForm, setPharmacyStaffForm] = useState({ name: "", email: "" });
+  const [addingPharmacyStaff, setAddingPharmacyStaff] = useState(false);
+
+  // Voir / retirer les membres d'un cabinet, assureur ou pharmacie existant.
+  const [membersFor, setMembersFor] = useState<{ kind: "clinic" | "insurer" | "pharmacy"; id: string } | null>(null);
   const [memberList, setMemberList] = useState<any[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null);
@@ -125,7 +145,7 @@ export default function ManageOrgsPage() {
   const [newNetworkInsurer, setNewNetworkInsurer] = useState("");
   const [addingNetwork, setAddingNetwork] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<
-    { kind: "clinic" | "insurer"; id: string; name: string } | null
+    { kind: "clinic" | "insurer" | "pharmacy"; id: string; name: string } | null
   >(null);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -171,9 +191,10 @@ export default function ManageOrgsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [c, i, cv, nw, pi, drift] = await Promise.all([
+      const [c, i, ph, cv, nw, pi, drift] = await Promise.all([
         call({ action: "list_clinics" }),
         call({ action: "list_insurers" }),
+        call({ action: "list_pharmacies" }),
         call({ action: "list_conventions" }),
         call({ action: "list_clinic_insurer_networks" }),
         call({ action: "list_pending_payment_info" }),
@@ -181,6 +202,7 @@ export default function ManageOrgsPage() {
       ]);
       setClinics(c.clinics ?? []);
       setInsurers(i.insurers ?? []);
+      setPharmacies(ph.pharmacies ?? []);
       setConventions(cv.conventions ?? []);
       setNetworks(nw.networks ?? []);
       setPaymentInfoList(pi.payment_info ?? []);
@@ -241,7 +263,75 @@ export default function ManageOrgsPage() {
     }
   }
 
-  async function toggleMembers(kind: "clinic" | "insurer", id: string) {
+  function memberListAction(kind: "clinic" | "insurer" | "pharmacy", id: string) {
+    if (kind === "clinic") return { action: "list_clinic_staff", clinic_id: id };
+    if (kind === "insurer") return { action: "list_insurer_staff", insurer_id: id };
+    return { action: "list_pharmacy_staff", pharmacy_id: id };
+  }
+
+  async function createPharmacy() {
+    if (!newPharmacyForm.name.trim()) {
+      toast.error("Nom requis.");
+      return;
+    }
+    setCreatingPharmacy(true);
+    try {
+      await call({
+        action: "create_pharmacy",
+        name: newPharmacyForm.name.trim(),
+        address: newPharmacyForm.address.trim() || null,
+        phone: newPharmacyForm.phone.trim() || null,
+        email: newPharmacyForm.email.trim() || null,
+      });
+      toast.success("Pharmacie créée.");
+      setShowNewPharmacyForm(false);
+      setNewPharmacyForm({ name: "", address: "", phone: "", email: "" });
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la création");
+    } finally {
+      setCreatingPharmacy(false);
+    }
+  }
+
+  async function addPharmacyStaff(pharmacyId: string) {
+    if (!pharmacyStaffForm.name.trim() || !pharmacyStaffForm.email.trim()) {
+      toast.error("Nom et email requis.");
+      return;
+    }
+    setAddingPharmacyStaff(true);
+    try {
+      await call({
+        action: "add_pharmacy_staff",
+        pharmacy_id: pharmacyId,
+        name: pharmacyStaffForm.name.trim(),
+        email: pharmacyStaffForm.email.trim(),
+      });
+      toast.success("Invitation envoyée.");
+      setAddStaffForPharmacy(null);
+      setPharmacyStaffForm({ name: "", email: "" });
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de l'ajout");
+    } finally {
+      setAddingPharmacyStaff(false);
+    }
+  }
+
+  async function togglePharmacyActive(pharmacy: Pharmacy) {
+    setTogglingActiveFor(pharmacy.id);
+    try {
+      await call({ action: "toggle_pharmacy_active", pharmacy_id: pharmacy.id, active: !pharmacy.is_active });
+      toast.success(pharmacy.is_active ? "Pharmacie suspendue." : "Pharmacie réactivée.");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setTogglingActiveFor(null);
+    }
+  }
+
+  async function toggleMembers(kind: "clinic" | "insurer" | "pharmacy", id: string) {
     if (membersFor?.kind === kind && membersFor.id === id) {
       setMembersFor(null);
       return;
@@ -249,11 +339,7 @@ export default function ManageOrgsPage() {
     setMembersFor({ kind, id });
     setMembersLoading(true);
     try {
-      const data = await call(
-        kind === "clinic"
-          ? { action: "list_clinic_staff", clinic_id: id }
-          : { action: "list_insurer_staff", insurer_id: id }
-      );
+      const data = await call(memberListAction(kind, id));
       setMemberList(data.staff ?? []);
     } catch (err: any) {
       toast.error(err.message || "Impossible de charger les membres");
@@ -265,20 +351,20 @@ export default function ManageOrgsPage() {
 
   async function refreshMemberList() {
     if (!membersFor) return;
-    const data = await call(
-      membersFor.kind === "clinic"
-        ? { action: "list_clinic_staff", clinic_id: membersFor.id }
-        : { action: "list_insurer_staff", insurer_id: membersFor.id }
-    );
+    const data = await call(memberListAction(membersFor.kind, membersFor.id));
     setMemberList(data.staff ?? []);
   }
 
-  async function removeMember(kind: "clinic" | "insurer", staffId: string) {
+  async function removeMember(kind: "clinic" | "insurer" | "pharmacy", staffId: string) {
     if (!window.confirm("Retirer ce membre ? Son accès sera révoqué.")) return;
     setRemovingStaffId(staffId);
     try {
       await call(
-        kind === "clinic" ? { action: "remove_clinic_staff", staff_id: staffId } : { action: "remove_insurer_staff", staff_id: staffId }
+        kind === "clinic"
+          ? { action: "remove_clinic_staff", staff_id: staffId }
+          : kind === "insurer"
+          ? { action: "remove_insurer_staff", staff_id: staffId }
+          : { action: "remove_pharmacy_staff", staff_id: staffId }
       );
       toast.success("Membre retiré.");
       await refreshMemberList();
@@ -565,9 +651,12 @@ export default function ManageOrgsPage() {
       if (confirmTarget.kind === "clinic") {
         await call({ action: "delete_clinic", clinic_id: confirmTarget.id });
         toast.success("Cabinet supprimé");
-      } else {
+      } else if (confirmTarget.kind === "insurer") {
         await call({ action: "delete_insurer", insurer_id: confirmTarget.id });
         toast.success("Assureur supprimé");
+      } else {
+        await call({ action: "delete_pharmacy", pharmacy_id: confirmTarget.id });
+        toast.success("Pharmacie supprimée");
       }
       setConfirmTarget(null);
       setConfirmText("");
@@ -582,7 +671,7 @@ export default function ManageOrgsPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold">Gérer cabinets & assureurs</h1>
+        <h1 className="text-2xl font-bold">Gérer cabinets, assureurs & pharmacies</h1>
         <p className="text-gray-600">
           Suppression définitive — utile pour nettoyer les organisations de test.
         </p>
@@ -758,6 +847,153 @@ export default function ManageOrgsPage() {
                     </select>
                     <Button onClick={() => addClinicStaff(c.id)} disabled={addingClinicStaff}>
                       {addingClinicStaff ? "…" : "Inviter"}
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Pharmacies ({pharmacies.length})</h2>
+              <button
+                onClick={() => setShowNewPharmacyForm((v) => !v)}
+                className="text-indigo-700 text-sm hover:underline"
+              >
+                {showNewPharmacyForm ? "Fermer" : "+ Nouvelle pharmacie"}
+              </button>
+            </div>
+
+            {showNewPharmacyForm && (
+              <Card className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Input
+                  placeholder="Nom"
+                  value={newPharmacyForm.name}
+                  onChange={(e) => setNewPharmacyForm({ ...newPharmacyForm, name: e.target.value })}
+                />
+                <Input
+                  placeholder="Adresse"
+                  value={newPharmacyForm.address}
+                  onChange={(e) => setNewPharmacyForm({ ...newPharmacyForm, address: e.target.value })}
+                />
+                <Input
+                  placeholder="Téléphone"
+                  value={newPharmacyForm.phone}
+                  onChange={(e) => setNewPharmacyForm({ ...newPharmacyForm, phone: e.target.value })}
+                />
+                <Input
+                  placeholder="Email"
+                  value={newPharmacyForm.email}
+                  onChange={(e) => setNewPharmacyForm({ ...newPharmacyForm, email: e.target.value })}
+                />
+                <Button onClick={createPharmacy} disabled={creatingPharmacy} className="sm:col-span-2">
+                  {creatingPharmacy ? "…" : "Créer la pharmacie"}
+                </Button>
+              </Card>
+            )}
+
+            {pharmacies.length === 0 && !showNewPharmacyForm && (
+              <p className="text-sm text-gray-500">Aucune pharmacie.</p>
+            )}
+
+            {pharmacies.map((p) => (
+              <Card key={p.id} className="space-y-3">
+                <div className="space-y-2">
+                  <div>
+                    <div className="font-medium">
+                      {p.name}
+                      {p.is_active === false && (
+                        <span className="ml-2 text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                          Suspendue
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {p.address || "Adresse non renseignée"} · {p.pharmacy_staff?.[0]?.count ?? 0} membre(s) ·{" "}
+                      {new Date(p.created_at).toLocaleDateString("fr-FR")}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <button
+                      onClick={() => toggleMembers("pharmacy", p.id)}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {membersFor?.kind === "pharmacy" && membersFor.id === p.id ? "Fermer" : "Voir les membres"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAddStaffForPharmacy(addStaffForPharmacy === p.id ? null : p.id);
+                        setPharmacyStaffForm({ name: "", email: "" });
+                      }}
+                      className="text-indigo-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {addStaffForPharmacy === p.id ? "Fermer" : "Ajouter un pharmacien"}
+                    </button>
+                    <button
+                      onClick={() => togglePharmacyActive(p)}
+                      disabled={togglingActiveFor === p.id}
+                      className="text-amber-700 text-sm hover:underline whitespace-nowrap"
+                    >
+                      {p.is_active === false ? "Réactiver" : "Suspendre"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmTarget({ kind: "pharmacy", id: p.id, name: p.name });
+                        setConfirmText("");
+                      }}
+                      className="text-red-600 text-sm hover:underline whitespace-nowrap"
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                </div>
+
+                {membersFor?.kind === "pharmacy" && membersFor.id === p.id && (
+                  <div className="border-t pt-3 space-y-1">
+                    {membersLoading ? (
+                      <p className="text-sm text-gray-500">Chargement…</p>
+                    ) : memberList.length === 0 ? (
+                      <p className="text-sm text-gray-500">Aucun membre.</p>
+                    ) : (
+                      memberList.map((m) => (
+                        <div key={m.id} className="flex items-center justify-between text-sm border-b py-1.5">
+                          <span>
+                            {m.full_name} · {m.email}
+                            {m.status !== "active" && (
+                              <span className="text-amber-600"> ({m.status})</span>
+                            )}
+                            {!m.user_id && (
+                              <span className="text-gray-400"> · invitation en attente</span>
+                            )}
+                          </span>
+                          <button
+                            onClick={() => removeMember("pharmacy", m.id)}
+                            disabled={removingStaffId === m.id}
+                            className="text-red-600 text-xs hover:underline"
+                          >
+                            Retirer
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {addStaffForPharmacy === p.id && (
+                  <div className="border-t pt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <Input
+                      placeholder="Nom complet"
+                      value={pharmacyStaffForm.name}
+                      onChange={(e) => setPharmacyStaffForm({ ...pharmacyStaffForm, name: e.target.value })}
+                    />
+                    <Input
+                      placeholder="Email"
+                      value={pharmacyStaffForm.email}
+                      onChange={(e) => setPharmacyStaffForm({ ...pharmacyStaffForm, email: e.target.value })}
+                    />
+                    <Button onClick={() => addPharmacyStaff(p.id)} disabled={addingPharmacyStaff}>
+                      {addingPharmacyStaff ? "…" : "Inviter"}
                     </Button>
                   </div>
                 )}
@@ -1255,7 +1491,9 @@ export default function ManageOrgsPage() {
             <p className="text-sm text-gray-600">
               {confirmTarget.kind === "clinic"
                 ? "Ça supprime définitivement le cabinet, son équipe, ses consultations et les patients qui n'ont aucun autre cabinet lié. Irréversible."
-                : "Ça supprime définitivement l'assureur et son équipe. Les consultations liées sont conservées côté cabinet mais perdent leur lien assureur. Irréversible."}
+                : confirmTarget.kind === "insurer"
+                ? "Ça supprime définitivement l'assureur et son équipe. Les consultations liées sont conservées côté cabinet mais perdent leur lien assureur. Irréversible."
+                : "Ça supprime définitivement la pharmacie, son équipe et son historique de délivrances. Les consultations liées sont conservées côté cabinet mais perdent leur association à cette pharmacie. Irréversible."}
             </p>
             <p className="text-sm">
               Tape <span className="font-mono font-semibold">{confirmTarget.name}</span> pour confirmer :
