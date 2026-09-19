@@ -33,7 +33,7 @@ export function usePharmacyContext() {
           .select("id, full_name, email, pharmacy_id, pharmacies ( id, name )")
           .limit(1);
 
-        if (clerkId) q = q.eq("clerk_user_id", clerkId);
+        if (clerkId) q = q.eq("user_id", clerkId);
         else if (email) q = q.eq("email", email);
 
         const { data, error } = await q.maybeSingle();

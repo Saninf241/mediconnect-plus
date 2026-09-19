@@ -64,7 +64,7 @@ serve(async (req) => {
       supabase
         .from("consultations")
         .select(
-          "id, created_at, consultation_type, status, payment_status, amount, insurer_amount, patient_amount, insurer_decision_at, rejection_reason, next_visit_date, clinics(name), clinic_staff(name, speciality)"
+          "id, created_at, consultation_type, status, payment_status, amount, insurer_amount, patient_amount, insurer_decision_at, rejection_reason, next_visit_date, medications, dispense_code, clinics(name), clinic_staff(name, speciality), pharmacies(name)"
         )
         .eq("patient_id", patient.id)
         .order("created_at", { ascending: false })
@@ -82,23 +82,53 @@ serve(async (req) => {
     ]);
 
     const consultationIds = (consultations.data || []).map((c) => c.id);
-    const { data: medications } = consultationIds.length
-      ? await supabase
-          .from("consultation_medications")
-          .select("id, name, dosage, form, duration, instructions, created_at, consultation_id")
-          .in("consultation_id", consultationIds)
-          .order("created_at", { ascending: false })
-      : { data: [] };
+    const [{ data: medications }, { data: deliveries }] = await Promise.all([
+      consultationIds.length
+        ? supabase
+            .from("consultation_medications")
+            .select("id, name, dosage, form, duration, instructions, created_at, consultation_id")
+            .in("consultation_id", consultationIds)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] }),
+      // Statut de délivrance pharmacie (position B) : la pharmacie a déjà pu
+      // marquer l'ordonnance comme délivrée (totalement ou partiellement).
+      consultationIds.length
+        ? supabase
+            .from("pharmacy_deliveries")
+            .select("consultation_id, delivered_at, delivered_items")
+            .in("consultation_id", consultationIds)
+        : Promise.resolve({ data: [] }),
+    ]);
 
-    const consultationsPublic = (consultations.data || []).map((c) => ({
-      id: c.id,
-      created_at: c.created_at,
-      type: c.consultation_type || "Consultation",
-      clinic_name: (c as any).clinics?.name ?? null,
-      doctor_name: (c as any).clinic_staff?.name ?? null,
-      doctor_speciality: (c as any).clinic_staff?.speciality ?? null,
-      next_visit_date: c.next_visit_date,
-    }));
+    const deliveryByConsultation = new Map(
+      (deliveries || []).map((d) => [d.consultation_id, d])
+    );
+
+    const consultationsPublic = (consultations.data || []).map((c) => {
+      const delivery = deliveryByConsultation.get(c.id);
+      const medsCount = (c.medications || []).length;
+      const deliveryStatus = !c.dispense_code
+        ? null
+        : !delivery
+        ? "pending"
+        : medsCount > 0 && delivery.delivered_items.length < medsCount
+        ? "partial"
+        : "delivered";
+
+      return {
+        id: c.id,
+        created_at: c.created_at,
+        type: c.consultation_type || "Consultation",
+        clinic_name: (c as any).clinics?.name ?? null,
+        doctor_name: (c as any).clinic_staff?.name ?? null,
+        doctor_speciality: (c as any).clinic_staff?.speciality ?? null,
+        next_visit_date: c.next_visit_date,
+        dispense_code: c.dispense_code ?? null,
+        pharmacy_name: (c as any).pharmacies?.name ?? null,
+        delivery_status: deliveryStatus,
+        delivered_at: delivery?.delivered_at ?? null,
+      };
+    });
 
     // rejection_reason est du texte libre saisi par l'agent assureur, jamais
     // filtre -- rien n'empeche qu'il y mentionne la pathologie du patient

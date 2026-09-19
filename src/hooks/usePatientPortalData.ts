@@ -32,6 +32,10 @@ export type PatientPortalData = {
     doctor_name: string | null;
     doctor_speciality: string | null;
     next_visit_date: string | null;
+    dispense_code: string | null;
+    pharmacy_name: string | null;
+    delivery_status: "pending" | "partial" | "delivered" | null;
+    delivered_at: string | null;
   }>;
   claims: Array<{
     id: string;

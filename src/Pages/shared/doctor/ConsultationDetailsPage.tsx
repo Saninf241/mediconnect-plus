@@ -36,6 +36,8 @@ interface ConsultationRecord {
   diagnosis_code_text: string | null;
   pricing_status: string | null;
   insurer_amount: number | null;
+  dispense_code: string | null;
+  pharmacy_id: string | null;
 
   // jointures
   patients?: {
@@ -53,12 +55,23 @@ interface ConsultationRecord {
   } | null;
 }
 
+type DeliveryStatus = {
+  delivered_at: string;
+  delivered_items: string[];
+  pharmacies: { name: string | null } | null;
+};
+
+type PharmacyOption = { id: string; name: string };
+
 export default function ConsultationDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const [record, setRecord] = useState<ConsultationRecord | null>(null);
   const [manualPricing, setManualPricing] = useState<ManualPricing | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFlagged, setIsFlagged] = useState(false);
+  const [pharmacies, setPharmacies] = useState<PharmacyOption[]>([]);
+  const [savingPharmacy, setSavingPharmacy] = useState(false);
+  const [delivery, setDelivery] = useState<DeliveryStatus | null>(null);
 
   // Flag "en revue" atténué (anti-fraude) : signal générique, sans détail de
   // règle ni de seuil — voir doctor_flagged_consultation_ids() côté SQL.
@@ -99,6 +112,8 @@ export default function ConsultationDetailsPage() {
           diagnosis_code_text,
           pricing_status,
           insurer_amount,
+          dispense_code,
+          pharmacy_id,
           patients ( name, phone, date_of_birth ),
           clinics ( name ),
           clinic_staff:clinic_staff!consultations_doctor_id_fkey ( name )
@@ -135,6 +150,56 @@ export default function ConsultationDetailsPage() {
 
     fetchConsultation();
   }, [id]);
+
+  // Pharmacies actives, pour le sélecteur facultatif "pharmacie associée".
+  useEffect(() => {
+    supabase
+      .from("pharmacies")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("name")
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[DoctorDetails] pharmacies fetch error:", error);
+          return;
+        }
+        setPharmacies((data as PharmacyOption[]) || []);
+      });
+  }, []);
+
+  // Statut de délivrance, une fois l'ordonnance retirée en pharmacie.
+  useEffect(() => {
+    if (!id) return;
+    supabase
+      .from("pharmacy_deliveries")
+      .select("delivered_at, delivered_items, pharmacies ( name )")
+      .eq("consultation_id", id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("[DoctorDetails] delivery fetch error:", error);
+          return;
+        }
+        setDelivery(data as DeliveryStatus | null);
+      });
+  }, [id]);
+
+  const handlePharmacyChange = async (pharmacyId: string) => {
+    if (!record) return;
+    setSavingPharmacy(true);
+    const { error } = await supabase
+      .from("consultations")
+      .update({ pharmacy_id: pharmacyId || null })
+      .eq("id", record.id);
+    setSavingPharmacy(false);
+
+    if (error) {
+      console.error("[DoctorDetails] pharmacy update error:", error);
+      alert("Impossible d’enregistrer la pharmacie associée.");
+      return;
+    }
+    setRecord({ ...record, pharmacy_id: pharmacyId || null });
+  };
 
   if (loading || !record) {
     return (
@@ -179,6 +244,7 @@ export default function ConsultationDetailsPage() {
         doctorName: doctorName === "—" ? "Médecin" : doctorName,
         medications: meds,
         consultationDate: record.created_at,
+        dispenseCode: record.dispense_code,
       });
     } catch (e) {
       console.error("[DoctorDetails] erreur génération ordonnance :", e);
@@ -407,6 +473,54 @@ export default function ConsultationDetailsPage() {
         >
           Générer l’ordonnance PDF
         </Button>
+
+        {record.dispense_code && (
+          <div className="pt-3 mt-3 border-t space-y-3">
+            <div>
+              <p className="text-sm font-medium">Code de retrait pharmacie</p>
+              <p className="font-mono text-lg tracking-widest">
+                {record.dispense_code.replace(/(.{4})/g, "$1 ").trim()}
+              </p>
+              <p className="text-xs text-gray-500">
+                Imprimé sur l’ordonnance. Valable dans n’importe quelle pharmacie du réseau.
+              </p>
+            </div>
+
+            {delivery ? (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                ✅ Retirée le {new Date(delivery.delivered_at).toLocaleString()}
+                {delivery.pharmacies?.name ? ` à ${delivery.pharmacies.name}` : ""}.
+                {delivery.delivered_items.length < meds.length && (
+                  <span className="block text-amber-700 mt-1">
+                    ⚠️ Délivrance partielle ({delivery.delivered_items.length}/{meds.length} lignes).
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Pharmacie associée (facultatif)
+                </label>
+                <select
+                  className="border rounded px-3 py-2 text-sm w-full max-w-sm"
+                  value={record.pharmacy_id || ""}
+                  disabled={savingPharmacy}
+                  onChange={(e) => handlePharmacyChange(e.target.value)}
+                >
+                  <option value="">— Aucune (le patient peut aller partout) —</option>
+                  {pharmacies.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Non requis : le patient peut se présenter dans n’importe quelle pharmacie
+                  avec le code ci-dessus. À ne renseigner que si vous voulez pré-signaler la
+                  pharmacie choisie par le patient.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Bloc messagerie médecin ↔ assureur */}
