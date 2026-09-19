@@ -1,8 +1,14 @@
 // supabase/functions/initiate-payment-batch-payout/index.ts
-// Declenche un paiement mobile money automatique pour un lot, en plus du
-// "Marquer paye" manuel existant (mark-payment-batch-paid, inchange et
-// toujours utilisable en repli -- virement bancaire, panne prestataire,
-// ou cabinet sans moyen de paiement verifie).
+// Declenche un paiement mobile money automatique pour un lot, en plus de
+// la confirmation manuelle existante (action confirm_batch_funds_received
+// de dev-manage-orgs, toujours utilisable en repli -- virement bancaire,
+// panne prestataire, ou cabinet sans moyen de paiement verifie).
+//
+// Reserve au role developer (Mediconnect+) : cette fonction reverse au
+// cabinet, ce qui ne doit jamais se produire tant que l'assureur n'a pas
+// declare son virement a Mediconnect+ (declare-batch-transfer) -- d'ou
+// l'exigence status === "transfer_declared" plus bas. L'assureur ne peut
+// plus payer directement la clinique.
 //
 // AUCUN PRESTATAIRE REEL N'EST BRANCHE : aucun compte marchand pawaPay/
 // CinetPay n'existe encore (voir echanges utilisateur du 2026-07-27).
@@ -22,6 +28,16 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
+
+const CLERK_API = "https://api.clerk.com/v1";
+
+async function getClerkUser(userId: string, clerkSecret: string) {
+  const res = await fetch(`${CLERK_API}/users/${userId}`, {
+    headers: { Authorization: `Bearer ${clerkSecret}` },
+  });
+  if (!res.ok) throw new Error(`Clerk API error (${res.status})`);
+  return res.json();
+}
 
 function maskAccountNumber(v: string | null | undefined) {
   if (!v) return "—";
@@ -81,27 +97,20 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: staffRow, error: staffErr } = await supabase
-      .from("insurer_staff")
-      .select("id, insurer_id, role, email")
-      .eq("clerk_user_id", callerId)
-      .maybeSingle();
-
-    if (staffErr || !staffRow?.insurer_id) {
+    // Reverser au cabinet est desormais une action Mediconnect+, pas
+    // assureur : meme verification que dev-manage-orgs (publicMetadata.role
+    // === "developer" cote Clerk), pas de lien insurer_staff a verifier.
+    const clerkSecret = Deno.env.get("CLERK_SECRET_KEY")!;
+    const caller = await getClerkUser(callerId, clerkSecret);
+    if (caller?.public_metadata?.role !== "developer") {
       return new Response(
-        JSON.stringify({ error: "Accès refusé : compte non lié à un assureur" }),
+        JSON.stringify({ error: "Accès refusé : réservé aux développeurs" }),
         { status: 403, headers: cors }
       );
     }
-
-    // Meme convention que mark-payment-batch-paid : declencher un vrai
-    // paiement (meme simule) reste une action reservee a l'admin.
-    if (staffRow.role !== "admin") {
-      return new Response(
-        JSON.stringify({ error: "Accès refusé : réservé aux administrateurs de l'assureur" }),
-        { status: 403, headers: cors }
-      );
-    }
+    const callerEmail =
+      (caller?.email_addresses ?? []).find((e: any) => e.id === caller?.primary_email_address_id)
+        ?.email_address ?? caller?.email_addresses?.[0]?.email_address ?? null;
 
     const { batchId } = await req.json().catch(() => ({}));
     if (!batchId) {
@@ -118,22 +127,20 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Lot introuvable" }), { status: 404, headers: cors });
     }
 
-    if (batch.insurer_id !== staffRow.insurer_id) {
+    if (batch.status !== "transfer_declared") {
       return new Response(
-        JSON.stringify({ error: "Accès refusé : ce lot n'appartient pas à votre assureur" }),
-        { status: 403, headers: cors }
+        JSON.stringify({
+          error:
+            batch.status === "paid"
+              ? "Ce lot est déjà marqué payé"
+              : "L'assureur n'a pas encore déclaré son virement pour ce lot (declare-batch-transfer).",
+        }),
+        { status: 409, headers: cors }
       );
     }
 
-    if (batch.status === "paid") {
-      return new Response(JSON.stringify({ error: "Ce lot est déjà marqué payé" }), {
-        status: 409,
-        headers: cors,
-      });
-    }
-
-    // Meme garde-fou que mark-payment-batch-paid : un litige ouvert bloque
-    // tout paiement, automatique ou manuel.
+    // Meme garde-fou que confirm_batch_funds_received : un litige ouvert
+    // bloque tout paiement, automatique ou manuel.
     const { data: batchItems, error: batchItemsErr } = await supabase
       .from("batch_items")
       .select("consultation_id, consultations:consultation_id(payment_dispute_status)")
@@ -167,7 +174,7 @@ serve(async (req) => {
         JSON.stringify({
           error:
             "Ce cabinet n'a pas encore de moyen de paiement vérifié. Demandez-lui de le renseigner (Paramètres du cabinet), " +
-            "faites-le vérifier côté développeur, ou utilisez « Marquer payé » après un virement manuel.",
+            "faites-le vérifier côté développeur, ou utilisez « Confirmer réception + marquer payé » après un virement manuel au cabinet.",
         }),
         { status: 409, headers: cors }
       );
@@ -178,7 +185,7 @@ serve(async (req) => {
         JSON.stringify({
           error:
             "Le paiement automatique n'est disponible que pour un cabinet enregistré en mobile money. " +
-            "Ce cabinet a enregistré un virement bancaire — utilisez « Marquer payé » après un virement manuel.",
+            "Ce cabinet a enregistré un virement bancaire — utilisez « Confirmer réception + marquer payé » après un virement manuel.",
         }),
         { status: 409, headers: cors }
       );
@@ -212,7 +219,9 @@ serve(async (req) => {
         destination_type: "mobile_money",
         destination_snapshot: destinationSnapshot,
         status: "initiated",
-        initiated_by_staff_id: staffRow.id,
+        // initiated_by_staff_id reste vide : un compte developer n'a pas
+        // de ligne insurer_staff. L'auteur est trace via
+        // payment_batches.funds_confirmed_by_email plus bas.
       })
       .select("id")
       .single();
@@ -251,20 +260,21 @@ serve(async (req) => {
       .update({ status: "success", provider_reference: result.providerReference, completed_at: now })
       .eq("id", payoutRow.id);
 
-    // Meme verrou atomique que mark-payment-batch-paid : si un "Marquer
-    // payé" manuel a deja bascule ce lot entre notre verification initiale
-    // et maintenant, 0 ligne matche -- on ne recascade pas sur les
+    // Meme verrou atomique que confirm_batch_funds_received : si une
+    // confirmation manuelle a deja bascule ce lot entre notre verification
+    // initiale et maintenant, 0 ligne matche -- on ne recascade pas sur les
     // consultations (deja fait par l'autre chemin), on le signale juste.
     const { data: updatedBatch, error: updateBatchErr } = await supabase
       .from("payment_batches")
       .update({
         status: "paid",
         paid_at: now,
-        paid_by_staff_id: staffRow.id,
-        paid_by_email: staffRow.email,
+        paid_by_email: callerEmail,
+        funds_confirmed_at: now,
+        funds_confirmed_by_email: callerEmail,
       })
       .eq("id", batchId)
-      .eq("status", "pending")
+      .eq("status", "transfer_declared")
       .select("id")
       .maybeSingle();
 

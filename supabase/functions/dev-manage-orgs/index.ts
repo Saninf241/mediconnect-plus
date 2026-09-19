@@ -121,7 +121,9 @@ type Action =
   | { action: "list_pending_payment_info" }
   | { action: "list_payment_info_drift" }
   | { action: "verify_clinic_payment_info"; id: string }
-  | { action: "reject_clinic_payment_info"; id: string; reason: string };
+  | { action: "reject_clinic_payment_info"; id: string; reason: string }
+  | { action: "list_transfer_declared_batches" }
+  | { action: "confirm_batch_funds_received"; batch_id: string };
 
 // Supprimer une ligne clinic_staff/insurer_staff cote Supabase ne libere
 // pas l'email cote Clerk : le compte (si l'invitation a ete acceptee) ou
@@ -719,6 +721,106 @@ serve(async (req) => {
       );
 
       return new Response(JSON.stringify({ ok: true }), { headers: cors });
+    }
+
+    if (input.action === "list_transfer_declared_batches") {
+      // Lots pour lesquels l'assureur a declare avoir vire les fonds a
+      // Mediconnect+ (declare-batch-transfer) mais dont la reception n'a
+      // pas encore ete confirmee ici -- la clinique n'est pas encore payee.
+      const { data, error } = await supabase
+        .from("payment_batches")
+        .select(
+          "id, insurer_id, clinic_id, amount, commission, total_paid, consultation_count, insurer_transfer_reference, insurer_transfer_declared_at, insurers:insurer_id(name), clinics:clinic_id(name)"
+        )
+        .eq("status", "transfer_declared")
+        .order("insurer_transfer_declared_at", { ascending: true });
+      if (error) throw error;
+      return new Response(JSON.stringify({ batches: data }), { headers: cors });
+    }
+
+    if (input.action === "confirm_batch_funds_received") {
+      const callerEmail =
+        (caller?.email_addresses ?? []).find((e: any) => e.id === caller?.primary_email_address_id)
+          ?.email_address ?? caller?.email_addresses?.[0]?.email_address ?? null;
+
+      const { data: batch, error: batchErr } = await supabase
+        .from("payment_batches")
+        .select("id, status")
+        .eq("id", input.batch_id)
+        .maybeSingle();
+      if (batchErr || !batch) throw batchErr ?? new Error("Lot introuvable");
+
+      if (batch.status !== "transfer_declared") {
+        throw new Error(
+          batch.status === "paid"
+            ? "Ce lot est déjà marqué payé."
+            : "Ce lot n'a pas encore de virement déclaré par l'assureur."
+        );
+      }
+
+      // Un litige a pu s'ouvrir apres la declaration du virement -- on ne
+      // reverse jamais un lot conteste par le cabinet, meme si Mediconnect+
+      // a deja recu les fonds de l'assureur (la reconciliation se fait
+      // manuellement avant de confirmer).
+      const { data: batchItems, error: itemsErr } = await supabase
+        .from("batch_items")
+        .select("consultation_id, consultations:consultation_id(payment_dispute_status)")
+        .eq("batch_id", input.batch_id);
+      if (itemsErr) throw itemsErr;
+
+      const disputedCount = (batchItems ?? []).filter(
+        (it: any) => it.consultations?.payment_dispute_status === "open"
+      ).length;
+      if (disputedCount > 0) {
+        throw new Error(
+          `Ce lot contient ${disputedCount} consultation(s) en litige ouvert avec la clinique. Résolvez le(s) litige(s) avant de confirmer.`
+        );
+      }
+
+      // Un paiement automatique (initiate-payment-batch-payout, mobile
+      // money) peut deja avoir reussi pour ce lot entre-temps -- jamais
+      // reverser deux fois.
+      const { data: activePayout, error: activePayoutErr } = await supabase
+        .from("payment_batch_payouts")
+        .select("id")
+        .eq("batch_id", input.batch_id)
+        .in("status", ["initiated", "success"])
+        .maybeSingle();
+      if (activePayoutErr) throw activePayoutErr;
+      if (activePayout) {
+        throw new Error("Un paiement automatique est en cours ou a déjà réussi pour ce lot. Actualisez la page.");
+      }
+
+      const now = new Date().toISOString();
+
+      // Update conditionne sur status='transfer_declared' : verrou
+      // atomique contre un double-clic ou une confirmation concurrente.
+      const { data: updated, error: updateErr } = await supabase
+        .from("payment_batches")
+        .update({
+          status: "paid",
+          paid_at: now,
+          paid_by_email: callerEmail,
+          funds_confirmed_at: now,
+          funds_confirmed_by_email: callerEmail,
+        })
+        .eq("id", input.batch_id)
+        .eq("status", "transfer_declared")
+        .select("id")
+        .maybeSingle();
+      if (updateErr) throw updateErr;
+      if (!updated) throw new Error("Ce lot vient d'être modifié par quelqu'un d'autre. Réessayez.");
+
+      const consultationIds = (batchItems ?? []).map((i: any) => i.consultation_id).filter(Boolean);
+      if (consultationIds.length > 0) {
+        const { error: consultErr } = await supabase
+          .from("consultations")
+          .update({ payment_status: "paid", payment_date: now })
+          .in("id", consultationIds);
+        if (consultErr) throw consultErr;
+      }
+
+      return new Response(JSON.stringify({ ok: true, updated: consultationIds.length }), { headers: cors });
     }
 
     return new Response(JSON.stringify({ error: "Action inconnue" }), { status: 400, headers: cors });

@@ -38,6 +38,8 @@ type Batch = {
   created_at: string | null;
   paid_at: string | null;
   paid_by_email: string | null;
+  insurer_transfer_reference: string | null;
+  insurer_transfer_declared_at: string | null;
   clinic: { name: string | null } | null;
   created_by: { email: string | null } | { email: string | null }[] | null;
 };
@@ -85,7 +87,7 @@ type ClinicPaymentInfo = {
   status: string | null;
 };
 
-type BatchFilter = "all" | "pending" | "paid";
+type BatchFilter = "all" | "pending" | "transfer_declared" | "paid";
 
 function firstOf<T>(v: T | T[] | null | undefined): T | null {
   if (!v) return null;
@@ -102,7 +104,7 @@ export default function PaiementsPage() {
   const [loading, setLoading] = useState(true);
   const [batchFilter, setBatchFilter] = useState<BatchFilter>("all");
   const [generatingClinicId, setGeneratingClinicId] = useState<string | null>(null);
-  const [markingBatchId, setMarkingBatchId] = useState<string | null>(null);
+  const [declaringBatchId, setDeclaringBatchId] = useState<string | null>(null);
   const [exporting, setExporting] = useState<string | null>(null);
 
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
@@ -110,9 +112,8 @@ export default function PaiementsPage() {
   const [manualPricingByConsult, setManualPricingByConsult] = useState<Record<string, ManualPricingInfo>>({});
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null);
   const [paymentInfoByClinic, setPaymentInfoByClinic] = useState<Record<string, ClinicPaymentInfo>>({});
-  const [payingBatchId, setPayingBatchId] = useState<string | null>(null);
 
-  const canMarkPaid = ctx?.role === "admin";
+  const canDeclareTransfer = ctx?.role === "admin";
 
   const load = async () => {
     if (!ctx) return;
@@ -129,7 +130,7 @@ export default function PaiementsPage() {
       supabase
         .from("payment_batches")
         .select(
-          "id, clinic_id, amount, commission, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, paid_by_email, clinic:clinic_id(name), created_by:created_by_staff_id(email)"
+          "id, clinic_id, amount, commission, total_paid, status, period_start, period_end, consultation_count, created_at, paid_at, paid_by_email, insurer_transfer_reference, insurer_transfer_declared_at, clinic:clinic_id(name), created_by:created_by_staff_id(email)"
         )
         .eq("insurer_id", ctx.insurerId)
         .order("created_at", { ascending: false }),
@@ -236,7 +237,8 @@ export default function PaiementsPage() {
 
   const batchCounts = useMemo(() => {
     const paid = batches.filter((b) => b.status === "paid").length;
-    return { all: batches.length, paid, pending: batches.length - paid };
+    const transferDeclared = batches.filter((b) => b.status === "transfer_declared").length;
+    return { all: batches.length, paid, transferDeclared, pending: batches.length - paid - transferDeclared };
   }, [batches]);
 
   const callFunction = async (name: string, body: unknown) => {
@@ -328,35 +330,27 @@ export default function PaiementsPage() {
     }
   };
 
-  const handlePayViaGateway = async (batchId: string) => {
-    if (!window.confirm("Déclencher le paiement mobile money pour ce lot ?")) return;
-    setPayingBatchId(batchId);
+  const handleDeclareTransfer = async (batchId: string, amount: number) => {
+    if (
+      !window.confirm(
+        `Confirmer que vous avez viré ${amount.toLocaleString("fr-FR")} FCFA à Mediconnect+ pour ce lot ? ` +
+          `Mediconnect+ devra ensuite confirmer la réception des fonds avant de reverser la clinique.`
+      )
+    )
+      return;
+    const transferReference = window.prompt(
+      "Référence du virement (numéro, date, banque...) — facultatif, aide Mediconnect+ à rapprocher votre paiement :",
+      ""
+    );
+    setDeclaringBatchId(batchId);
     try {
-      const json = await callFunction("initiate-payment-batch-payout", { batchId });
-      toast.success(
-        json.simulated
-          ? `Paiement simulé effectué (aucun prestataire réel branché) — réf. ${json.providerReference}.`
-          : `Paiement envoyé — réf. ${json.providerReference}.`
-      );
+      await callFunction("declare-batch-transfer", { batchId, transferReference: transferReference || undefined });
+      toast.success("Virement déclaré — en attente de confirmation Mediconnect+.");
       await load();
     } catch (e: any) {
-      toast.error(e.message || "Erreur lors du déclenchement du paiement.");
+      toast.error(e.message || "Erreur lors de la déclaration du virement.");
     } finally {
-      setPayingBatchId(null);
-    }
-  };
-
-  const handleMarkPaid = async (batchId: string) => {
-    if (!window.confirm("Confirmer que ce lot a bien été payé à la clinique ?")) return;
-    setMarkingBatchId(batchId);
-    try {
-      await callFunction("mark-payment-batch-paid", { batchId });
-      toast.success("Lot marqué payé.");
-      await load();
-    } catch (e: any) {
-      toast.error(e.message || "Erreur lors du marquage.");
-    } finally {
-      setMarkingBatchId(null);
+      setDeclaringBatchId(null);
     }
   };
 
@@ -434,7 +428,7 @@ export default function PaiementsPage() {
                         window.open(`/assureur/consultations/${encodeURIComponent(p.consultation_id)}`, "_blank")
                       }
                     >
-                      {canMarkPaid ? "Examiner" : "Voir"}
+                      {canDeclareTransfer ? "Examiner" : "Voir"}
                     </Button>
                   </div>
                 </Card>
@@ -528,7 +522,13 @@ export default function PaiementsPage() {
               className={batchFilter === "pending" ? "bg-yellow-600 text-white" : "bg-white text-gray-900 border"}
               onClick={() => setBatchFilter("pending")}
             >
-              En attente ({batchCounts.pending})
+              À virer ({batchCounts.pending})
+            </Button>
+            <Button
+              className={batchFilter === "transfer_declared" ? "bg-blue-600 text-white" : "bg-white text-gray-900 border"}
+              onClick={() => setBatchFilter("transfer_declared")}
+            >
+              Virement déclaré ({batchCounts.transferDeclared})
             </Button>
             <Button
               className={batchFilter === "paid" ? "bg-green-600 text-white" : "bg-white text-gray-900 border"}
@@ -559,8 +559,14 @@ export default function PaiementsPage() {
           <div className="space-y-2">
             {filteredBatches.map((b) => {
               const isPaid = b.status === "paid";
+              const isTransferDeclared = b.status === "transfer_declared";
               return (
-                <Card key={b.id} className={`p-4 border-l-4 ${isPaid ? "border-green-500" : "border-yellow-400"}`}>
+                <Card
+                  key={b.id}
+                  className={`p-4 border-l-4 ${
+                    isPaid ? "border-green-500" : isTransferDeclared ? "border-blue-400" : "border-yellow-400"
+                  }`}
+                >
                   <div className="flex items-center justify-between gap-4">
                     <div className="text-sm">
                       <p className="font-medium">{b.clinic?.name ?? "—"}</p>
@@ -599,11 +605,19 @@ export default function PaiementsPage() {
                       <p className="text-xs text-gray-400">
                         Créé le {b.created_at ? new Date(b.created_at).toLocaleDateString("fr-FR") : "—"}
                         {firstOf(b.created_by)?.email ? ` par ${firstOf(b.created_by)?.email}` : ""}
+                        {isTransferDeclared && b.insurer_transfer_declared_at ? (
+                          <>
+                            {" "}
+                            • Virement déclaré le{" "}
+                            {new Date(b.insurer_transfer_declared_at).toLocaleDateString("fr-FR")}
+                            {b.insurer_transfer_reference ? ` (réf. ${b.insurer_transfer_reference})` : ""}
+                          </>
+                        ) : null}
                         {isPaid && b.paid_at ? (
                           <>
                             {" "}
-                            • Payé le {new Date(b.paid_at).toLocaleDateString("fr-FR")}
-                            {b.paid_by_email ? ` par ${b.paid_by_email}` : ""}
+                            • Reversé à la clinique le {new Date(b.paid_at).toLocaleDateString("fr-FR")}
+                            {b.paid_by_email ? ` (confirmé par ${b.paid_by_email})` : ""}
                           </>
                         ) : null}
                       </p>
@@ -612,10 +626,14 @@ export default function PaiementsPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className={`text-xs px-2 py-1 rounded font-medium ${
-                          isPaid ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                          isPaid
+                            ? "bg-green-100 text-green-800"
+                            : isTransferDeclared
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
-                        {isPaid ? "Payé" : "En attente"}
+                        {isPaid ? "Reversé à la clinique" : isTransferDeclared ? "Virement déclaré — en attente Mediconnect+" : "À virer à Mediconnect+"}
                       </span>
                       <Button
                         className="bg-white text-gray-900 border hover:bg-gray-50"
@@ -623,23 +641,14 @@ export default function PaiementsPage() {
                       >
                         {expandedBatchId === b.id ? "Masquer le détail" : "Voir le détail"}
                       </Button>
-                      {!isPaid && canMarkPaid && b.clinic_id && paymentInfoByClinic[b.clinic_id]?.payment_method === "mobile_money" && (
+                      {!isPaid && !isTransferDeclared && canDeclareTransfer && (
                         <Button
-                          className="bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                          onClick={() => handlePayViaGateway(b.id)}
-                          disabled={payingBatchId === b.id}
-                          title="Aucun prestataire réel branché pour l'instant — le paiement sera simulé."
+                          className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                          onClick={() => handleDeclareTransfer(b.id, b.amount ?? 0)}
+                          disabled={declaringBatchId === b.id}
+                          title="À faire une fois le virement du montant brut envoyé à Mediconnect+."
                         >
-                          {payingBatchId === b.id ? "..." : "Payer via mobile money"}
-                        </Button>
-                      )}
-                      {!isPaid && canMarkPaid && (
-                        <Button
-                          className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-                          onClick={() => handleMarkPaid(b.id)}
-                          disabled={markingBatchId === b.id}
-                        >
-                          {markingBatchId === b.id ? "..." : "Marquer payé manuellement"}
+                          {declaringBatchId === b.id ? "..." : "J'ai viré ce lot à Mediconnect+"}
                         </Button>
                       )}
                     </div>

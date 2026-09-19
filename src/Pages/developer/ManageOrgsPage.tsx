@@ -67,6 +67,20 @@ type PaymentInfo = {
   clinics: { name: string } | null;
 };
 
+type TransferDeclaredBatch = {
+  id: string;
+  insurer_id: string;
+  clinic_id: string;
+  amount: number | null;
+  commission: number | null;
+  total_paid: number | null;
+  consultation_count: number | null;
+  insurer_transfer_reference: string | null;
+  insurer_transfer_declared_at: string;
+  insurers: { name: string } | null;
+  clinics: { name: string } | null;
+};
+
 type DriftRow = {
   id: string;
   clinic_id: string;
@@ -156,6 +170,12 @@ export default function ManageOrgsPage() {
   const [rejectingFor, setRejectingFor] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
+  // Lots pour lesquels l'assureur a declare un virement a Mediconnect+ --
+  // en attente de confirmation de reception avant de reverser le cabinet.
+  const [transferDeclaredBatches, setTransferDeclaredBatches] = useState<TransferDeclaredBatch[]>([]);
+  const [confirmingBatchId, setConfirmingBatchId] = useState<string | null>(null);
+  const [triggeringPayoutBatchId, setTriggeringPayoutBatchId] = useState<string | null>(null);
+
   async function call(body: unknown) {
     const token = await getToken();
     const res = await fetch(`${FUNCTIONS_BASE}/dev-manage-orgs`, {
@@ -171,13 +191,14 @@ export default function ManageOrgsPage() {
   async function loadAll() {
     setLoading(true);
     try {
-      const [c, i, cv, nw, pi, drift] = await Promise.all([
+      const [c, i, cv, nw, pi, drift, td] = await Promise.all([
         call({ action: "list_clinics" }),
         call({ action: "list_insurers" }),
         call({ action: "list_conventions" }),
         call({ action: "list_clinic_insurer_networks" }),
         call({ action: "list_pending_payment_info" }),
         call({ action: "list_payment_info_drift" }),
+        call({ action: "list_transfer_declared_batches" }),
       ]);
       setClinics(c.clinics ?? []);
       setInsurers(i.insurers ?? []);
@@ -185,6 +206,7 @@ export default function ManageOrgsPage() {
       setNetworks(nw.networks ?? []);
       setPaymentInfoList(pi.payment_info ?? []);
       setDriftRows(drift.drift ?? []);
+      setTransferDeclaredBatches(td.batches ?? []);
     } catch (err: any) {
       toast.error(err.message || "Impossible de charger la liste");
     } finally {
@@ -462,6 +484,51 @@ export default function ManageOrgsPage() {
       await loadAll();
     } catch (err: any) {
       toast.error(err.message || "Échec du rejet");
+    }
+  }
+
+  async function confirmBatchFundsReceived(batchId: string) {
+    if (
+      !window.confirm(
+        "Confirmer que Mediconnect+ a bien reçu les fonds de l'assureur pour ce lot ? " +
+          "Cette action marque immédiatement le cabinet comme payé (virement manuel supposé déjà en cours ou fait)."
+      )
+    )
+      return;
+    setConfirmingBatchId(batchId);
+    try {
+      await call({ action: "confirm_batch_funds_received", batch_id: batchId });
+      toast.success("Réception confirmée — lot reversé à la clinique.");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la confirmation");
+    } finally {
+      setConfirmingBatchId(null);
+    }
+  }
+
+  async function triggerMobileMoneyPayout(batchId: string) {
+    if (!window.confirm("Déclencher le paiement mobile money (simulé) pour ce lot ?")) return;
+    setTriggeringPayoutBatchId(batchId);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${FUNCTIONS_BASE}/initiate-payment-batch-payout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ batchId }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Erreur");
+      toast.success(
+        json.simulated
+          ? `Paiement simulé effectué (aucun prestataire réel branché) — réf. ${json.providerReference}.`
+          : `Paiement envoyé — réf. ${json.providerReference}.`
+      );
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err.message || "Échec du déclenchement du paiement");
+    } finally {
+      setTriggeringPayoutBatchId(null);
     }
   }
 
@@ -780,6 +847,74 @@ export default function ManageOrgsPage() {
               ))}
             </div>
           )}
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold">
+              Lots en attente de confirmation Mediconnect+ ({transferDeclaredBatches.length})
+            </h2>
+            <p className="text-xs text-gray-500">
+              L'assureur a déclaré avoir viré le montant brut du lot à Mediconnect+. Ne confirmez que si les fonds
+              sont réellement arrivés sur le compte Mediconnect+ (vérifiez le relevé bancaire avant de cliquer) —
+              cette action reverse immédiatement le montant net au cabinet.
+            </p>
+            {transferDeclaredBatches.length === 0 && (
+              <p className="text-sm text-gray-500">Aucun lot en attente.</p>
+            )}
+            {transferDeclaredBatches.map((b) => {
+              const info = paymentInfoList.find((p) => p.clinic_id === b.clinic_id && p.status === "verified");
+              return (
+                <Card key={b.id} className="space-y-2 border-l-4 border-blue-400">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="text-sm">
+                      <p className="font-medium">
+                        {b.clinics?.name ?? "—"} <span className="text-gray-400">←</span> {b.insurers?.name ?? "—"}
+                      </p>
+                      <p className="text-gray-500">
+                        {b.consultation_count ?? "—"} consultation(s) • Brut viré :{" "}
+                        {(b.amount ?? 0).toLocaleString("fr-FR")} FCFA • Net à reverser au cabinet :{" "}
+                        {(b.total_paid ?? 0).toLocaleString("fr-FR")} FCFA (commission {(b.commission ?? 0).toLocaleString("fr-FR")} FCFA)
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Déclaré le {new Date(b.insurer_transfer_declared_at).toLocaleString("fr-FR")}
+                        {b.insurer_transfer_reference ? ` • réf. ${b.insurer_transfer_reference}` : ""}
+                      </p>
+                      {info ? (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Destination cabinet :{" "}
+                          {info.payment_method === "mobile_money"
+                            ? `${info.mobile_money_provider ?? "Mobile money"} — ${info.mobile_money_number ?? "—"}`
+                            : `Virement — ${info.bank_name ?? "—"} — ${info.account_number ?? "—"}`}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-red-600 mt-1">
+                          ⚠️ Aucun moyen de paiement vérifié pour ce cabinet — confirmez uniquement si le virement au
+                          cabinet a été fait par un autre moyen.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      {info?.payment_method === "mobile_money" && (
+                        <Button
+                          onClick={() => triggerMobileMoneyPayout(b.id)}
+                          disabled={triggeringPayoutBatchId === b.id}
+                          title="Confirme la réception ET reverse automatiquement (simulé, aucun prestataire réel branché)."
+                        >
+                          {triggeringPayoutBatchId === b.id ? "..." : "Confirmer + payer mobile money"}
+                        </Button>
+                      )}
+                      <Button
+                        className="bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                        onClick={() => confirmBatchFundsReceived(b.id)}
+                        disabled={confirmingBatchId === b.id}
+                      >
+                        {confirmingBatchId === b.id ? "..." : "Confirmer réception + marquer payé"}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </section>
 
           <section className="space-y-3">
             <div className="flex items-center justify-between">

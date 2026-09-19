@@ -1,7 +1,7 @@
 // supabase/functions/review-manual-pricing/index.ts
 // Approbation/rejet d'une proposition de tarification manuelle. Reserve a
 // l'admin de l'assureur proprietaire de la proposition (meme convention
-// que mark-payment-batch-paid). L'approbation ecrit consultations.
+// que declare-batch-transfer). L'approbation ecrit consultations.
 // insurer_amount / pricing_status='manual_approved' -- a partir de la,
 // la consultation suit exactement le meme chemin que si le calcul
 // automatique avait reussi (eligible a generate-payment-batch).

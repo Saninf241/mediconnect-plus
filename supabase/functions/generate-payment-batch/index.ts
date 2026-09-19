@@ -2,8 +2,11 @@
 // Regroupe les consultations acceptees et deja tarifees d'un assureur, par
 // clinique, en un lot de paiement (payment_batches + batch_items). Ne
 // touche jamais consultations.status -- une consultation "batchee" reste
-// "accepted" jusqu'a ce que le lot soit marque paye (mark-payment-batch-paid),
-// qui met a jour payment_status/payment_date individuellement.
+// "accepted" jusqu'a ce que le lot soit reverse au cabinet (assureur
+// declare son virement via declare-batch-transfer, puis Mediconnect+
+// confirme la reception via l'action confirm_batch_funds_received de
+// dev-manage-orgs, ou initiate-payment-batch-payout pour le mobile money),
+// ce qui met a jour payment_status/payment_date individuellement.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyToken } from "https://esm.sh/@clerk/backend@1";
