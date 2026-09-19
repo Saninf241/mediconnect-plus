@@ -1,4 +1,3 @@
-
 export type Json =
   | string
   | number
@@ -12,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -254,20 +228,6 @@ export type Database = {
             foreignKeyName: "alerts_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "alerts_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "alerts_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
             referencedRelation: "consultations_fingerprint_alerts_30d"
             referencedColumns: ["id"]
           },
@@ -299,7 +259,7 @@ export type Database = {
         Update: {
           appointment_date?: string
           checked_in_at?: string | null
-          clinic_id?: string | null
+          clinic_id?: string
           created_at?: string | null
           doctor_id?: string | null
           id?: string
@@ -361,92 +321,15 @@ export type Database = {
           {
             foreignKeyName: "batch_items_consultation_id_fkey"
             columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "batch_items_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "batch_items_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "batch_items_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_fingerprint_alerts_30d"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      biometric_captures: {
-        Row: {
-          captured_at: string
-          consultation_id: string
-          device_id: string | null
-          id: string
-          operator_id: string | null
-          patient_id: string
-        }
-        Insert: {
-          captured_at?: string
-          consultation_id: string
-          device_id?: string | null
-          id?: string
-          operator_id?: string | null
-          patient_id: string
-        }
-        Update: {
-          captured_at?: string
-          consultation_id?: string
-          device_id?: string | null
-          id?: string
-          operator_id?: string | null
-          patient_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "biometric_captures_consultation_id_fkey"
-            columns: ["consultation_id"]
             isOneToOne: true
             referencedRelation: "consultations"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "biometric_captures_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: true
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "biometric_captures_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: true
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "biometric_captures_consultation_id_fkey"
+            foreignKeyName: "batch_items_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: true
             referencedRelation: "consultations_fingerprint_alerts_30d"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "biometric_captures_patient_id_fkey"
-            columns: ["patient_id"]
-            isOneToOne: false
-            referencedRelation: "patients"
             referencedColumns: ["id"]
           },
         ]
@@ -470,6 +353,45 @@ export type Database = {
             columns: ["clinic_id"]
             isOneToOne: false
             referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clinic_insurer_conventions: {
+        Row: {
+          active: boolean
+          clinic_id: string
+          created_at: string
+          id: string
+          insurer_id: string
+        }
+        Insert: {
+          active?: boolean
+          clinic_id: string
+          created_at?: string
+          id?: string
+          insurer_id: string
+        }
+        Update: {
+          active?: boolean
+          clinic_id?: string
+          created_at?: string
+          id?: string
+          insurer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinic_insurer_conventions_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clinic_insurer_conventions_insurer_id_fkey"
+            columns: ["insurer_id"]
+            isOneToOne: false
+            referencedRelation: "insurers"
             referencedColumns: ["id"]
           },
         ]
@@ -512,6 +434,83 @@ export type Database = {
             columns: ["insurer_id"]
             isOneToOne: false
             referencedRelation: "insurers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clinic_payment_info: {
+        Row: {
+          account_holder_name: string | null
+          account_number: string | null
+          bank_name: string | null
+          clinic_id: string
+          created_at: string
+          id: string
+          mobile_money_number: string | null
+          mobile_money_provider: string | null
+          payment_method: string
+          rejection_reason: string | null
+          status: string
+          submitted_at: string
+          submitted_by_clerk_user_id: string | null
+          submitted_by_email: string | null
+          submitted_by_name: string | null
+          submitted_by_role: string | null
+          updated_at: string
+          verified_at: string | null
+          verified_by_email: string | null
+          verified_snapshot: Json | null
+        }
+        Insert: {
+          account_holder_name?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          clinic_id: string
+          created_at?: string
+          id?: string
+          mobile_money_number?: string | null
+          mobile_money_provider?: string | null
+          payment_method: string
+          rejection_reason?: string | null
+          status?: string
+          submitted_at?: string
+          submitted_by_clerk_user_id?: string | null
+          submitted_by_email?: string | null
+          submitted_by_name?: string | null
+          submitted_by_role?: string | null
+          updated_at?: string
+          verified_at?: string | null
+          verified_by_email?: string | null
+          verified_snapshot?: Json | null
+        }
+        Update: {
+          account_holder_name?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          clinic_id?: string
+          created_at?: string
+          id?: string
+          mobile_money_number?: string | null
+          mobile_money_provider?: string | null
+          payment_method?: string
+          rejection_reason?: string | null
+          status?: string
+          submitted_at?: string
+          submitted_by_clerk_user_id?: string | null
+          submitted_by_email?: string | null
+          submitted_by_name?: string | null
+          submitted_by_role?: string | null
+          updated_at?: string
+          verified_at?: string | null
+          verified_by_email?: string | null
+          verified_snapshot?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinic_payment_info_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: true
+            referencedRelation: "clinics"
             referencedColumns: ["id"]
           },
         ]
@@ -657,20 +656,6 @@ export type Database = {
             foreignKeyName: "consultation_codes_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_codes_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_codes_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
             referencedRelation: "consultations_fingerprint_alerts_30d"
             referencedColumns: ["id"]
           },
@@ -717,20 +702,6 @@ export type Database = {
             columns: ["consultation_id"]
             isOneToOne: false
             referencedRelation: "consultations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_examinations_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_examinations_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
             referencedColumns: ["id"]
           },
           {
@@ -786,21 +757,97 @@ export type Database = {
             foreignKeyName: "consultation_history_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_history_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_history_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
             referencedRelation: "consultations_fingerprint_alerts_30d"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      consultation_manual_pricing: {
+        Row: {
+          approved_at: string | null
+          approved_by_email: string | null
+          approved_by_staff_id: string | null
+          consultation_id: string
+          created_at: string
+          id: string
+          insurer_id: string
+          justification: string | null
+          proposed_amount: number
+          proposed_at: string
+          proposed_by_email: string | null
+          proposed_by_staff_id: string | null
+          rejection_reason: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_email?: string | null
+          approved_by_staff_id?: string | null
+          consultation_id: string
+          created_at?: string
+          id?: string
+          insurer_id: string
+          justification?: string | null
+          proposed_amount: number
+          proposed_at?: string
+          proposed_by_email?: string | null
+          proposed_by_staff_id?: string | null
+          rejection_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_email?: string | null
+          approved_by_staff_id?: string | null
+          consultation_id?: string
+          created_at?: string
+          id?: string
+          insurer_id?: string
+          justification?: string | null
+          proposed_amount?: number
+          proposed_at?: string
+          proposed_by_email?: string | null
+          proposed_by_staff_id?: string | null
+          rejection_reason?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consultation_manual_pricing_approved_by_staff_id_fkey"
+            columns: ["approved_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_manual_pricing_consultation_id_fkey"
+            columns: ["consultation_id"]
+            isOneToOne: true
+            referencedRelation: "consultations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_manual_pricing_consultation_id_fkey"
+            columns: ["consultation_id"]
+            isOneToOne: true
+            referencedRelation: "consultations_fingerprint_alerts_30d"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_manual_pricing_insurer_id_fkey"
+            columns: ["insurer_id"]
+            isOneToOne: false
+            referencedRelation: "insurers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultation_manual_pricing_proposed_by_staff_id_fkey"
+            columns: ["proposed_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
             referencedColumns: ["id"]
           },
         ]
@@ -842,20 +889,6 @@ export type Database = {
             columns: ["consultation_id"]
             isOneToOne: false
             referencedRelation: "consultations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_medications_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "consultation_medications_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
             referencedColumns: ["id"]
           },
           {
@@ -916,6 +949,7 @@ export type Database = {
           diagnosis_code_ids: string[]
           diagnosis_code_text: string | null
           diagnosis_drawn: string | null
+          dispense_code: string | null
           doctor_id: string | null
           duration: string | null
           fingerprint_missing: boolean | null
@@ -926,6 +960,8 @@ export type Database = {
           insurer_amount: number | null
           insurer_comment: string | null
           insurer_decision_at: string | null
+          insurer_decision_by_email: string | null
+          insurer_decision_by_staff_id: string | null
           insurer_id: string | null
           is_urgent: boolean | null
           medical_history_snapshot: Json | null
@@ -937,8 +973,15 @@ export type Database = {
           patient_amount: number | null
           patient_id: string | null
           payment_date: string | null
+          payment_dispute_reason: string | null
+          payment_dispute_resolved_at: string | null
+          payment_dispute_resolved_by_staff_id: string | null
+          payment_dispute_status: string | null
+          payment_disputed_at: string | null
+          payment_disputed_by_staff_id: string | null
           payment_status: string | null
           pdf_url: string | null
+          pharmacy_id: string | null
           prescription: Json | null
           pricing_details: Json | null
           pricing_status: string
@@ -978,6 +1021,7 @@ export type Database = {
           diagnosis_code_ids?: string[]
           diagnosis_code_text?: string | null
           diagnosis_drawn?: string | null
+          dispense_code?: string | null
           doctor_id?: string | null
           duration?: string | null
           fingerprint_missing?: boolean | null
@@ -988,6 +1032,8 @@ export type Database = {
           insurer_amount?: number | null
           insurer_comment?: string | null
           insurer_decision_at?: string | null
+          insurer_decision_by_email?: string | null
+          insurer_decision_by_staff_id?: string | null
           insurer_id?: string | null
           is_urgent?: boolean | null
           medical_history_snapshot?: Json | null
@@ -999,8 +1045,15 @@ export type Database = {
           patient_amount?: number | null
           patient_id?: string | null
           payment_date?: string | null
+          payment_dispute_reason?: string | null
+          payment_dispute_resolved_at?: string | null
+          payment_dispute_resolved_by_staff_id?: string | null
+          payment_dispute_status?: string | null
+          payment_disputed_at?: string | null
+          payment_disputed_by_staff_id?: string | null
           payment_status?: string | null
           pdf_url?: string | null
+          pharmacy_id?: string | null
           prescription?: Json | null
           pricing_details?: Json | null
           pricing_status?: string
@@ -1040,6 +1093,7 @@ export type Database = {
           diagnosis_code_ids?: string[]
           diagnosis_code_text?: string | null
           diagnosis_drawn?: string | null
+          dispense_code?: string | null
           doctor_id?: string | null
           duration?: string | null
           fingerprint_missing?: boolean | null
@@ -1050,6 +1104,8 @@ export type Database = {
           insurer_amount?: number | null
           insurer_comment?: string | null
           insurer_decision_at?: string | null
+          insurer_decision_by_email?: string | null
+          insurer_decision_by_staff_id?: string | null
           insurer_id?: string | null
           is_urgent?: boolean | null
           medical_history_snapshot?: Json | null
@@ -1061,8 +1117,15 @@ export type Database = {
           patient_amount?: number | null
           patient_id?: string | null
           payment_date?: string | null
+          payment_dispute_reason?: string | null
+          payment_dispute_resolved_at?: string | null
+          payment_dispute_resolved_by_staff_id?: string | null
+          payment_dispute_status?: string | null
+          payment_disputed_at?: string | null
+          payment_disputed_by_staff_id?: string | null
           payment_status?: string | null
           pdf_url?: string | null
+          pharmacy_id?: string | null
           prescription?: Json | null
           pricing_details?: Json | null
           pricing_status?: string
@@ -1118,10 +1181,38 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "consultations_insurer_decision_by_staff_id_fkey"
+            columns: ["insurer_decision_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "consultations_patient_id_fkey"
             columns: ["patient_id"]
             isOneToOne: false
             referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultations_payment_dispute_resolved_by_staff_id_fkey"
+            columns: ["payment_dispute_resolved_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultations_payment_disputed_by_staff_id_fkey"
+            columns: ["payment_disputed_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "clinic_staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consultations_pharmacy_id_fkey"
+            columns: ["pharmacy_id"]
+            isOneToOne: false
+            referencedRelation: "pharmacies"
             referencedColumns: ["id"]
           },
         ]
@@ -1324,16 +1415,92 @@ export type Database = {
           },
         ]
       }
+      insurer_member_directory: {
+        Row: {
+          created_at: string
+          created_by_clerk_user_id: string
+          created_by_email: string | null
+          created_by_name: string | null
+          created_by_role: string
+          full_name: string
+          id: string
+          insurer_id: string
+          is_active: boolean
+          member_no: string | null
+          national_id: string | null
+          notes: string | null
+          plan_code: string | null
+          updated_at: string
+          updated_by_clerk_user_id: string | null
+          updated_by_email: string | null
+          updated_by_name: string | null
+          updated_by_role: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_clerk_user_id: string
+          created_by_email?: string | null
+          created_by_name?: string | null
+          created_by_role: string
+          full_name: string
+          id?: string
+          insurer_id: string
+          is_active?: boolean
+          member_no?: string | null
+          national_id?: string | null
+          notes?: string | null
+          plan_code?: string | null
+          updated_at?: string
+          updated_by_clerk_user_id?: string | null
+          updated_by_email?: string | null
+          updated_by_name?: string | null
+          updated_by_role?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_clerk_user_id?: string
+          created_by_email?: string | null
+          created_by_name?: string | null
+          created_by_role?: string
+          full_name?: string
+          id?: string
+          insurer_id?: string
+          is_active?: boolean
+          member_no?: string | null
+          national_id?: string | null
+          notes?: string | null
+          plan_code?: string | null
+          updated_at?: string
+          updated_by_clerk_user_id?: string | null
+          updated_by_email?: string | null
+          updated_by_name?: string | null
+          updated_by_role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurer_member_directory_insurer_id_fkey"
+            columns: ["insurer_id"]
+            isOneToOne: false
+            referencedRelation: "insurers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insurer_memberships: {
         Row: {
           confidence: string | null
           coverage_end: string | null
           coverage_start: string | null
           created_at: string | null
+          created_by_clerk_user_id: string | null
+          created_by_email: string | null
+          created_by_name: string | null
+          created_by_role: string | null
           id: string
           insurer_id: string | null
           is_active: boolean | null
           last_verified_at: string | null
+          matched_directory_id: string | null
           member_no: string | null
           patient_id: string
           plan_code: string | null
@@ -1346,10 +1513,15 @@ export type Database = {
           coverage_end?: string | null
           coverage_start?: string | null
           created_at?: string | null
+          created_by_clerk_user_id?: string | null
+          created_by_email?: string | null
+          created_by_name?: string | null
+          created_by_role?: string | null
           id?: string
           insurer_id?: string | null
           is_active?: boolean | null
           last_verified_at?: string | null
+          matched_directory_id?: string | null
           member_no?: string | null
           patient_id: string
           plan_code?: string | null
@@ -1362,10 +1534,15 @@ export type Database = {
           coverage_end?: string | null
           coverage_start?: string | null
           created_at?: string | null
+          created_by_clerk_user_id?: string | null
+          created_by_email?: string | null
+          created_by_name?: string | null
+          created_by_role?: string | null
           id?: string
           insurer_id?: string | null
           is_active?: boolean | null
           last_verified_at?: string | null
+          matched_directory_id?: string | null
           member_no?: string | null
           patient_id?: string
           plan_code?: string | null
@@ -1379,6 +1556,13 @@ export type Database = {
             columns: ["insurer_id"]
             isOneToOne: false
             referencedRelation: "insurers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurer_memberships_matched_directory_id_fkey"
+            columns: ["matched_directory_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_member_directory"
             referencedColumns: ["id"]
           },
           {
@@ -1549,18 +1733,21 @@ export type Database = {
       }
       insurers: {
         Row: {
+          active: boolean
           id: string
           name: string
           slug: string | null
           verification_level: string
         }
         Insert: {
+          active?: boolean
           id?: string
           name: string
           slug?: string | null
           verification_level: string
         }
         Update: {
+          active?: boolean
           id?: string
           name?: string
           slug?: string | null
@@ -1668,20 +1855,6 @@ export type Database = {
             foreignKeyName: "medical_reports_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "medical_reports_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "medical_reports_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
             referencedRelation: "consultations_fingerprint_alerts_30d"
             referencedColumns: ["id"]
           },
@@ -1758,20 +1931,6 @@ export type Database = {
             foreignKeyName: "messages_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "messages_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
             referencedRelation: "consultations_fingerprint_alerts_30d"
             referencedColumns: ["id"]
           },
@@ -1809,6 +1968,44 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      patient_activation_codes: {
+        Row: {
+          code: string
+          created_at: string
+          expires_at: string
+          id: string
+          patient_id: string
+          phone: string
+          used_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          patient_id: string
+          phone: string
+          used_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          patient_id?: string
+          phone?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_activation_codes_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       patient_auth: {
         Row: {
@@ -1938,7 +2135,7 @@ export type Database = {
             foreignKeyName: "patient_clinic_links_clinic_id_fkey"
             columns: ["clinic_id"]
             isOneToOne: false
-            referencedRelation: "etablissements"
+            referencedRelation: "clinics"
             referencedColumns: ["id"]
           },
           {
@@ -1972,6 +2169,7 @@ export type Database = {
           is_assured: boolean | null
           last_visit_date: string | null
           medical_history: Json | null
+          merged_into_patient_id: string | null
           name: string
           national_id: string | null
           phone: string | null
@@ -2001,6 +2199,7 @@ export type Database = {
           is_assured?: boolean | null
           last_visit_date?: string | null
           medical_history?: Json | null
+          merged_into_patient_id?: string | null
           name: string
           national_id?: string | null
           phone?: string | null
@@ -2030,6 +2229,7 @@ export type Database = {
           is_assured?: boolean | null
           last_visit_date?: string | null
           medical_history?: Json | null
+          merged_into_patient_id?: string | null
           name?: string
           national_id?: string | null
           phone?: string | null
@@ -2046,6 +2246,70 @@ export type Database = {
             referencedRelation: "clinics"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "patients_merged_into_patient_id_fkey"
+            columns: ["merged_into_patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_batch_payouts: {
+        Row: {
+          batch_id: string
+          completed_at: string | null
+          destination_snapshot: Json | null
+          destination_type: string
+          failure_reason: string | null
+          id: string
+          initiated_at: string
+          initiated_by_staff_id: string | null
+          provider: string
+          provider_reference: string | null
+          status: string
+        }
+        Insert: {
+          batch_id: string
+          completed_at?: string | null
+          destination_snapshot?: Json | null
+          destination_type: string
+          failure_reason?: string | null
+          id?: string
+          initiated_at?: string
+          initiated_by_staff_id?: string | null
+          provider: string
+          provider_reference?: string | null
+          status?: string
+        }
+        Update: {
+          batch_id?: string
+          completed_at?: string | null
+          destination_snapshot?: Json | null
+          destination_type?: string
+          failure_reason?: string | null
+          id?: string
+          initiated_at?: string
+          initiated_by_staff_id?: string | null
+          provider?: string
+          provider_reference?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_batch_payouts_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "payment_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_batch_payouts_initiated_by_staff_id_fkey"
+            columns: ["initiated_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
+            referencedColumns: ["id"]
+          },
         ]
       }
       payment_batches: {
@@ -2053,9 +2317,16 @@ export type Database = {
           amount: number | null
           clinic_id: string | null
           commission: number | null
+          consultation_count: number | null
           created_at: string | null
+          created_by_staff_id: string | null
           id: string
+          insurer_id: string | null
           paid_at: string | null
+          paid_by_email: string | null
+          paid_by_staff_id: string | null
+          period_end: string | null
+          period_start: string | null
           status: string | null
           total_paid: number | null
         }
@@ -2063,9 +2334,16 @@ export type Database = {
           amount?: number | null
           clinic_id?: string | null
           commission?: number | null
+          consultation_count?: number | null
           created_at?: string | null
+          created_by_staff_id?: string | null
           id?: string
+          insurer_id?: string | null
           paid_at?: string | null
+          paid_by_email?: string | null
+          paid_by_staff_id?: string | null
+          period_end?: string | null
+          period_start?: string | null
           status?: string | null
           total_paid?: number | null
         }
@@ -2073,9 +2351,16 @@ export type Database = {
           amount?: number | null
           clinic_id?: string | null
           commission?: number | null
+          consultation_count?: number | null
           created_at?: string | null
+          created_by_staff_id?: string | null
           id?: string
+          insurer_id?: string | null
           paid_at?: string | null
+          paid_by_email?: string | null
+          paid_by_staff_id?: string | null
+          period_end?: string | null
+          period_start?: string | null
           status?: string | null
           total_paid?: number | null
         }
@@ -2085,6 +2370,27 @@ export type Database = {
             columns: ["clinic_id"]
             isOneToOne: false
             referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_batches_created_by_staff_id_fkey"
+            columns: ["created_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_batches_insurer_id_fkey"
+            columns: ["insurer_id"]
+            isOneToOne: false
+            referencedRelation: "insurers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_batches_paid_by_staff_id_fkey"
+            columns: ["paid_by_staff_id"]
+            isOneToOne: false
+            referencedRelation: "insurer_staff"
             referencedColumns: ["id"]
           },
         ]
@@ -2161,20 +2467,6 @@ export type Database = {
             foreignKeyName: "payments_consultation_id_fkey"
             columns: ["consultation_id"]
             isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "payments_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "payments_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
             referencedRelation: "consultations_fingerprint_alerts_30d"
             referencedColumns: ["id"]
           },
@@ -2221,6 +2513,7 @@ export type Database = {
           comment: string | null
           consultation_id: string
           delivered_at: string
+          delivered_items: string[]
           id: string
           pharmacist_id: string
           pharmacy_id: string
@@ -2229,6 +2522,7 @@ export type Database = {
           comment?: string | null
           consultation_id: string
           delivered_at?: string
+          delivered_items?: string[]
           id?: string
           pharmacist_id: string
           pharmacy_id: string
@@ -2237,6 +2531,7 @@ export type Database = {
           comment?: string | null
           consultation_id?: string
           delivered_at?: string
+          delivered_items?: string[]
           id?: string
           pharmacist_id?: string
           pharmacy_id?: string
@@ -2247,20 +2542,6 @@ export type Database = {
             columns: ["consultation_id"]
             isOneToOne: false
             referencedRelation: "consultations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pharmacy_deliveries_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pharmacy_deliveries_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
             referencedColumns: ["id"]
           },
           {
@@ -2316,20 +2597,6 @@ export type Database = {
             columns: ["consultation_id"]
             isOneToOne: false
             referencedRelation: "consultations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pharmacy_receipts_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "pharmacy_receipts_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
             referencedColumns: ["id"]
           },
           {
@@ -2420,20 +2687,6 @@ export type Database = {
             columns: ["consultation_id"]
             isOneToOne: false
             referencedRelation: "consultations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prescriptions_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_alerts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prescriptions_consultation_id_fkey"
-            columns: ["consultation_id"]
-            isOneToOne: false
-            referencedRelation: "consultations_bio_feed"
             referencedColumns: ["id"]
           },
           {
@@ -2683,21 +2936,159 @@ export type Database = {
           },
         ]
       }
+      support_ticket_messages: {
+        Row: {
+          author_clerk_user_id: string
+          author_name: string | null
+          author_role: string
+          body: string
+          created_at: string
+          id: string
+          ticket_id: string
+        }
+        Insert: {
+          author_clerk_user_id: string
+          author_name?: string | null
+          author_role: string
+          body: string
+          created_at?: string
+          id?: string
+          ticket_id: string
+        }
+        Update: {
+          author_clerk_user_id?: string
+          author_name?: string | null
+          author_role?: string
+          body?: string
+          created_at?: string
+          id?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      support_tickets: {
+        Row: {
+          callback_phone: string | null
+          clinic_id: string | null
+          created_at: string
+          created_by_clerk_user_id: string | null
+          created_by_email: string | null
+          created_by_name: string | null
+          created_by_patient_id: string | null
+          created_by_role: string
+          id: string
+          insurer_id: string | null
+          message: string
+          priority: string
+          resolved_at: string | null
+          status: string
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          callback_phone?: string | null
+          clinic_id?: string | null
+          created_at?: string
+          created_by_clerk_user_id?: string | null
+          created_by_email?: string | null
+          created_by_name?: string | null
+          created_by_patient_id?: string | null
+          created_by_role: string
+          id?: string
+          insurer_id?: string | null
+          message: string
+          priority?: string
+          resolved_at?: string | null
+          status?: string
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          callback_phone?: string | null
+          clinic_id?: string | null
+          created_at?: string
+          created_by_clerk_user_id?: string | null
+          created_by_email?: string | null
+          created_by_name?: string | null
+          created_by_patient_id?: string | null
+          created_by_role?: string
+          id?: string
+          insurer_id?: string | null
+          message?: string
+          priority?: string
+          resolved_at?: string | null
+          status?: string
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: false
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_created_by_patient_id_fkey"
+            columns: ["created_by_patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_tickets_insurer_id_fkey"
+            columns: ["insurer_id"]
+            isOneToOne: false
+            referencedRelation: "insurers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
-      consultations_alerts: {
+      clinic_payment_info_drift: {
         Row: {
-          amount: number | null
-          anomaly: boolean | null
-          clinic_name: string | null
-          created_at: string | null
-          doctor_name: string | null
+          clinic_id: string | null
+          current_values: Json | null
           id: string | null
-          patient_is_assured: boolean | null
-          patient_name: string | null
-          status: Database["public"]["Enums"]["consultation_status"] | null
+          status: string | null
+          verified_at: string | null
+          verified_snapshot: Json | null
         }
-        Relationships: []
+        Insert: {
+          clinic_id?: string | null
+          current_values?: never
+          id?: string | null
+          status?: string | null
+          verified_at?: string | null
+          verified_snapshot?: Json | null
+        }
+        Update: {
+          clinic_id?: string | null
+          current_values?: never
+          id?: string | null
+          status?: string | null
+          verified_at?: string | null
+          verified_snapshot?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clinic_payment_info_clinic_id_fkey"
+            columns: ["clinic_id"]
+            isOneToOne: true
+            referencedRelation: "clinics"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       consultations_anomalies_7d: {
         Row: {
@@ -2714,20 +3105,6 @@ export type Database = {
           patient_name: string | null
           title: string | null
           type: string | null
-        }
-        Relationships: []
-      }
-      consultations_bio_feed: {
-        Row: {
-          amount: number | null
-          biometric_validated_at: string | null
-          clinic_name: string | null
-          created_at: string | null
-          doctor_name: string | null
-          id: string | null
-          patient_is_assured: boolean | null
-          patient_name: string | null
-          status: Database["public"]["Enums"]["consultation_status"] | null
         }
         Relationships: []
       }
@@ -2798,6 +3175,34 @@ export type Database = {
       create_patient_with_link: {
         Args: { actor_email: string; p: Json }
         Returns: string
+      }
+      current_pharmacy_staff: {
+        Args: never
+        Returns: {
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          pharmacy_id: string
+          role: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "pharmacy_staff"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      dev_delete_clinic: { Args: { p_clinic_id: string }; Returns: undefined }
+      dev_delete_insurer: { Args: { p_insurer_id: string }; Returns: undefined }
+      doctor_can_read_consultation: {
+        Args: { p_doctor_id: string }
+        Returns: boolean
+      }
+      doctor_can_read_patient: {
+        Args: { p_created_by: string; p_patient_id: string }
+        Returns: boolean
       }
       doctor_flagged_consultation_ids: { Args: never; Returns: string[] }
       finalize_patient_uninsured: {
@@ -2959,11 +3364,58 @@ export type Database = {
         Args: { curlopt: string; value: string }
         Returns: boolean
       }
+      insurer_get_doctor_name: {
+        Args: { p_consultation_id: string }
+        Returns: string
+      }
+      is_clinic_member: {
+        Args: { p_clinic_id: string; p_roles?: string[] }
+        Returns: boolean
+      }
+      is_insurer_member:
+        | { Args: { p_insurer_id: string }; Returns: boolean }
+        | {
+            Args: { p_insurer_id: string; p_roles: string[] }
+            Returns: boolean
+          }
+      is_pharmacy_member: {
+        Args: { p_pharmacy_id: string; p_roles?: string[] }
+        Returns: boolean
+      }
       match_fingerprint: {
         Args: { fingerprint: string }
         Returns: {
           patient_id: string
         }[]
+      }
+      merge_patients: {
+        Args: {
+          p_actor_email?: string
+          p_loser_id: string
+          p_survivor_id: string
+        }
+        Returns: Json
+      }
+      pharmacy_lookup_by_code: {
+        Args: { p_code: string }
+        Returns: {
+          already_delivered: boolean
+          clinic_name: string
+          consultation_id: string
+          created_at: string
+          delivered_items: string[]
+          doctor_name: string
+          medications: string[]
+          patient_name: string
+        }[]
+      }
+      pharmacy_record_delivery: {
+        Args: {
+          p_comment?: string
+          p_consultation_id: string
+          p_delivered_items: string[]
+        }
+        Returns: string
       }
       rpc_create_patient_draft:
         | {
@@ -3170,9 +3622,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       consultation_status: [
