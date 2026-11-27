@@ -15,6 +15,9 @@ export default function SignOutPage() {
         sessionStorage.removeItem("fp:last");
         sessionStorage.removeItem("fp:return");
         sessionStorage.removeItem("wizard:returnStep");
+        // Copies partagées entre onglets du parcours empreinte (formulaire patient en cours)
+        localStorage.removeItem("wizard:snapshot");
+        localStorage.removeItem("fp:expected_patient_id");
 
         // Nettoyage complet pour plus de sécurité
         sessionStorage.clear();

@@ -53,7 +53,15 @@ export default function FingerprintCallback() {
                         url.searchParams.get("template_hash");
     const error       = url.searchParams.get("error");
 
-    const storedReturn = sessionStorage.getItem("fp:return");
+    // fp:return (même onglet) sinon paramètre ?return= de l'URL (nouvel
+    // onglet sur mobile). Chemin interne uniquement : navigate() reste sur
+    // ce domaine, mais on refuse quand même tout ce qui n'est pas "/...".
+    const urlReturnRaw = url.searchParams.get("return");
+    const urlReturn =
+      urlReturnRaw && urlReturnRaw.startsWith("/") && !urlReturnRaw.startsWith("//")
+        ? urlReturnRaw
+        : null;
+    const storedReturn = sessionStorage.getItem("fp:return") || urlReturn;
 
     // 1️⃣ Déduire le scope : paramètre ?scope=… OU préfixe de fp:return
     let scope = url.searchParams.get("scope") || undefined;
@@ -97,6 +105,15 @@ export default function FingerprintCallback() {
         try {
           expectedPatientId = sessionStorage.getItem("fp:expected_patient_id");
           sessionStorage.removeItem("fp:expected_patient_id");
+          // Nouvel onglet (mobile) : copie localStorage, valable 30 min.
+          const shared = localStorage.getItem("fp:expected_patient_id");
+          localStorage.removeItem("fp:expected_patient_id");
+          if (!expectedPatientId && shared) {
+            const parsed = JSON.parse(shared);
+            if (parsed?.id && Date.now() - Number(parsed.ts) < 30 * 60 * 1000) {
+              expectedPatientId = parsed.id;
+            }
+          }
         } catch {}
 
         const patientMismatch =
@@ -149,7 +166,9 @@ export default function FingerprintCallback() {
         const suffix = ok
           ? "?fp=captured"
           : `?fp=error${error ? `&fp_reason=${encodeURIComponent(error)}` : ""}`;
-        setTimeout(() => navigate(back + suffix, { replace: true }), 600);
+        // back peut déjà contenir une query string -> "&" au lieu de "?".
+        const enrollTarget = back.includes("?") ? back + "&" + suffix.slice(1) : back + suffix;
+        setTimeout(() => navigate(enrollTarget, { replace: true }), 600);
         return;
       }
 

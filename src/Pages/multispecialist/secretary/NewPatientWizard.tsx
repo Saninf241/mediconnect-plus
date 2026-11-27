@@ -73,6 +73,8 @@ const getOriginForPhone = () => {
   return window.location.origin;
 };
 
+const WIZARD_SNAPSHOT_KEY = "wizard:snapshot";
+
 export default function NewPatientWizard() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -90,15 +92,52 @@ export default function NewPatientWizard() {
   // (étape 1) avec un simple bandeau d'info + lien pour refaire le scan.
   const [precheckNotFound, setPrecheckNotFound] = useState<boolean>(false);
 
-  // Restaurer l’étape si on revient du scanner
+  // Restaurer le formulaire si on revient du scanner. Sur mobile, Android
+  // rouvre le retour dans un NOUVEL onglet : l'état React et le
+  // sessionStorage sont perdus. On garde donc un instantané court
+  // (30 min, effacé dès la restauration) dans le localStorage, partagé
+  // entre onglets.
   useEffect(() => {
-    const saved = sessionStorage.getItem("wizard:returnStep");
-    if (saved) {
-      const n = Number(saved);
-      if (!Number.isNaN(n) && n >= 0 && n <= 4) setStep(n);
-      sessionStorage.removeItem("wizard:returnStep");
+    const params = new URLSearchParams(window.location.search);
+    const isScanReturn =
+      !!params.get("fp") || !!params.get("id_found") || !!params.get("id_not_found") || !!params.get("id_error");
+    const raw = localStorage.getItem(WIZARD_SNAPSHOT_KEY);
+    if (!raw) return;
+    localStorage.removeItem(WIZARD_SNAPSHOT_KEY);
+    if (!isScanReturn) return;
+    try {
+      const snap = JSON.parse(raw);
+      if (Date.now() - Number(snap.ts) > 30 * 60 * 1000) return;
+      if (snap.path !== window.location.pathname) return;
+      if (typeof snap.step === "number" && snap.step >= 0 && snap.step <= 4) setStep(snap.step);
+      if (snap.ptype) setPtype(snap.ptype);
+      if (snap.form) setForm(snap.form);
+      if (snap.patientId) setPatientId(snap.patientId);
+      if (snap.draftKey && snap.patientId) sessionStorage.setItem(snap.draftKey, snap.patientId);
+    } catch {
+      // instantané illisible : on repart de zéro
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function saveWizardSnapshot(nextStep: number, pid: string | null, draftKey: string | null) {
+    try {
+      localStorage.setItem(
+        WIZARD_SNAPSHOT_KEY,
+        JSON.stringify({
+          ts: Date.now(),
+          path: window.location.pathname,
+          step: nextStep,
+          ptype,
+          form,
+          patientId: pid,
+          draftKey,
+        })
+      );
+    } catch {
+      // stockage indisponible : le retour fonctionnera, sans restauration du formulaire
+    }
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -115,6 +154,7 @@ export default function NewPatientWizard() {
         ...f,
         biometrics: { ...(f.biometrics ?? {}), status: "failed" },
       }));
+      setStep(3);
       // Le choix Réessayer / Continuer est affiché à l'étape 3 ; on précise
       // seulement la cause quand l'appli la renvoie.
       const reason = params.get("fp_reason");
@@ -213,7 +253,7 @@ export default function NewPatientWizard() {
       const c = ctx ?? (await resolveSecretaryContext());
       setCtx(c);
 
-      sessionStorage.setItem("wizard:returnStep", "0");
+      saveWizardSnapshot(0, null, null);
       sessionStorage.setItem(
         "fp:return",
         window.location.pathname + window.location.search + window.location.hash
@@ -568,7 +608,7 @@ export default function NewPatientWizard() {
       const pid = await ensureDraftPatient();
       const c = ctx ?? (await resolveSecretaryContext());
 
-      sessionStorage.setItem("wizard:returnStep", "3");
+      saveWizardSnapshot(3, pid, `wizardDraft:${c.clinicId}:${form.full_name}:${form.dob}:${form.phone}`);
       sessionStorage.setItem(
         "fp:return",
         window.location.pathname +

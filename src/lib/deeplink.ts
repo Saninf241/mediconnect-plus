@@ -10,7 +10,19 @@ export function buildZKDeeplink(opts: {
   redirectOriginForPhone: string;
   redirectPath: string;
 }) {
-  const redirectUrl = `${opts.redirectOriginForPhone}${opts.redirectPath}`;
+  // Page à laquelle revenir, aussi transmise DANS l'URL de retour : sur
+  // mobile (ex. Samsung S25), Android rouvre le callback dans un NOUVEL
+  // onglet, où le sessionStorage (fp:return) est vide. Sans ce paramètre,
+  // FingerprintCallback retombait sur un espace par défaut
+  // (/multispecialist/secretary/new) -> "accès refusé" pour un secrétaire
+  // de cabinet spécialiste. L'appli Android conserve les paramètres
+  // existants de redirect_url (Uri.buildUpon).
+  const returnPath = window.location.pathname + window.location.search;
+  const redirectBase = `${opts.redirectOriginForPhone}${opts.redirectPath}`;
+  const redirectUrl =
+    redirectBase +
+    (redirectBase.includes("?") ? "&" : "?") +
+    `return=${encodeURIComponent(returnPath)}`;
 
   const qp = new URLSearchParams({
     redirect_url: redirectUrl,
@@ -31,6 +43,11 @@ export function buildZKDeeplink(opts: {
   if (opts.mode === "enroll" && opts.patientId) {
     try {
       sessionStorage.setItem("fp:expected_patient_id", opts.patientId);
+      // Copie partagée entre onglets (retour dans un nouvel onglet sur mobile).
+      localStorage.setItem(
+        "fp:expected_patient_id",
+        JSON.stringify({ id: opts.patientId, ts: Date.now() })
+      );
     } catch {}
   }
 
