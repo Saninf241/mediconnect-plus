@@ -3,6 +3,11 @@
 // reparee et testee) -- jusqu'ici accessible uniquement depuis l'editeur SQL.
 // Cherche des patients candidats doublons, permet de choisir lequel garder
 // (survivor) et lequel fusionner dedans (loser), puis appelle la fonction.
+// Bouton "Editer" : filet de secours pour corriger une fiche (nom/telephone/
+// date de naissance/NIN) quand aucun staff actif du cabinet ne peut le faire
+// lui-meme -- pas un doublon du modal secretaire (scope clinic_id + RLS),
+// chaque edition passe par dev-manage-patients (update_patient) et est
+// journalisee dans dev_patient_edits.
 import { useState } from "react";
 import { useAuth } from "@clerk/clerk-react";
 import { toast } from "react-toastify";
@@ -19,7 +24,9 @@ type Patient = {
   name: string;
   phone: string | null;
   national_id: string | null;
+  date_of_birth: string | null;
   is_assured: boolean | null;
+  fingerprint_enrolled: boolean | null;
   status: string | null;
   merged_into_patient_id: string | null;
   clinic_id: string | null;
@@ -37,6 +44,12 @@ export default function MergePatientsPage() {
   const [confirming, setConfirming] = useState(false);
   const [merging, setMerging] = useState(false);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+
+  const [editing, setEditing] = useState<Patient | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", phone: "", date_of_birth: "", national_id: "" });
+  const [unlockName, setUnlockName] = useState(false);
+  const [editReason, setEditReason] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function call(body: unknown) {
     const token = await getToken();
@@ -82,6 +95,60 @@ export default function MergePatientsPage() {
       toast.error(err.message || "Échec de la fusion");
     } finally {
       setMerging(false);
+    }
+  }
+
+  function openEdit(p: Patient) {
+    setEditing(p);
+    setEditForm({
+      name: p.name,
+      phone: p.phone ?? "",
+      date_of_birth: p.date_of_birth ?? "",
+      national_id: p.national_id ?? "",
+    });
+    setUnlockName(false);
+    setEditReason("");
+  }
+
+  const nameLocked = !!editing && (!!editing.is_assured || !!editing.fingerprint_enrolled) && !unlockName;
+
+  async function saveEdit() {
+    if (!editing) return;
+    if (!editForm.date_of_birth) {
+      toast.error("La date de naissance ne peut pas être vide.");
+      return;
+    }
+    if (unlockName && editForm.name.trim() !== editing.name && !editReason.trim()) {
+      toast.error("Un motif est requis pour changer le nom d'un patient assuré/identifié.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updates: Record<string, string | null> = {
+        phone: editForm.phone.trim() || null,
+        date_of_birth: editForm.date_of_birth,
+        national_id: editForm.national_id.trim() || null,
+      };
+      if (!nameLocked) updates.name = editForm.name.trim();
+
+      const data = await call({
+        action: "update_patient",
+        patient_id: editing.id,
+        updates,
+        reason: editReason.trim() || undefined,
+      });
+      if ((data.changed ?? []).length === 0) {
+        toast.info("Aucune modification.");
+      } else {
+        toast.success(`Fiche mise à jour (${data.changed.join(", ")}).`);
+      }
+      setEditing(null);
+      setResults([]);
+      setQuery("");
+    } catch (err: any) {
+      toast.error(err.message || "Échec de la mise à jour");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -134,6 +201,13 @@ export default function MergePatientsPage() {
                     className="text-orange-700 text-xs hover:underline disabled:opacity-40"
                   >
                     Fusionner (doublon)
+                  </button>
+                  <button
+                    onClick={() => openEdit(p)}
+                    disabled={p.status === "merged"}
+                    className="text-blue-700 text-xs hover:underline disabled:opacity-40"
+                  >
+                    Éditer
                   </button>
                 </div>
               </div>
@@ -195,6 +269,85 @@ export default function MergePatientsPage() {
               </button>
               <Button onClick={doMerge} disabled={merging} className="bg-orange-600 hover:bg-orange-700">
                 {merging ? "Fusion…" : "Confirmer la fusion"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <Card className="max-w-md w-full space-y-3">
+            <h3 className="font-semibold text-lg text-blue-700">Corriger la fiche</h3>
+            <p className="text-xs text-gray-500">
+              Filet de secours quand aucun staff actif du cabinet ne peut corriger le dossier
+              lui-même (cabinet fermé, staff parti). Chaque modification est journalisée.
+            </p>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Nom</label>
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                disabled={nameLocked}
+              />
+              {!!editing && (editing.is_assured || editing.fingerprint_enrolled) && (
+                <label className="flex items-center gap-2 text-xs text-orange-700 pt-1">
+                  <input
+                    type="checkbox"
+                    checked={unlockName}
+                    onChange={(e) => setUnlockName(e.target.checked)}
+                  />
+                  Patient assuré/identifié par empreinte — déverrouiller le nom (motif requis)
+                </label>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Téléphone</label>
+              <Input
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Date de naissance</label>
+              <Input
+                type="date"
+                value={editForm.date_of_birth}
+                onChange={(e) => setEditForm((f) => ({ ...f, date_of_birth: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">NIN</label>
+              <Input
+                value={editForm.national_id}
+                onChange={(e) => setEditForm((f) => ({ ...f, national_id: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">
+                Motif {unlockName ? "(obligatoire — déverrouillage du nom)" : "(optionnel)"}
+              </label>
+              <Input
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                placeholder="Ex : cabinet fermé, correction demandée par le patient…"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                onClick={() => setEditing(null)}
+                className="px-4 py-2 text-sm rounded border"
+              >
+                Annuler
+              </button>
+              <Button onClick={saveEdit} disabled={saving} className="bg-blue-600 hover:bg-blue-700">
+                {saving ? "Enregistrement…" : "Enregistrer"}
               </Button>
             </div>
           </Card>
