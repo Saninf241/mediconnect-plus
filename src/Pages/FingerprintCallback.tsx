@@ -160,7 +160,8 @@ export default function FingerprintCallback() {
               type: "identify",
               ok,
               patient_id: ok ? identifiedPatientId : null,
-              consultationId: ok ? consultationId || null : null,
+              // snake_case : clé lue par NewConsultationPage (last.consultation_id)
+              consultation_id: ok ? consultationId || null : null,
               error: error || null,
             })
           );

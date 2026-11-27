@@ -53,6 +53,19 @@ export default function NewPatientPage() {
       setPrecheckNotFound(true);
     }
 
+    // Consommer le résultat du scan anti-doublon : sinon fp:last (identify)
+    // resterait en sessionStorage et NewConsultationPage le reprendrait plus
+    // tard comme une identification fraîche (patient auto-sélectionné et
+    // consultation marquée vérifiée sans nouveau scan).
+    try {
+      const raw = sessionStorage.getItem("fp:last");
+      if (raw && JSON.parse(raw)?.type === "identify") {
+        sessionStorage.removeItem("fp:last");
+      }
+    } catch {
+      sessionStorage.removeItem("fp:last");
+    }
+
     if (idFound || idNotFound) {
       const clean = window.location.pathname + window.location.hash;
       window.history.replaceState(null, "", clean);
