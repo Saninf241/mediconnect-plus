@@ -32,6 +32,8 @@ export default function NewPatientPage() {
   const [precheckDone, setPrecheckDone] = useState(false);
   const [precheckLoading, setPrecheckLoading] = useState(false);
   const [existingMatch, setExistingMatch] = useState<{ id: string; name: string } | null>(null);
+  // Scan sans correspondance : nouveau patient ou lecture ratée -> choix explicite.
+  const [precheckNotFound, setPrecheckNotFound] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -48,7 +50,7 @@ export default function NewPatientPage() {
         setExistingMatch({ id: idFound, name: data?.name ?? "Patient" });
       })();
     } else if (idNotFound) {
-      setPrecheckDone(true);
+      setPrecheckNotFound(true);
     }
 
     if (idFound || idNotFound) {
@@ -63,6 +65,7 @@ export default function NewPatientPage() {
       return;
     }
     setPrecheckLoading(true);
+    setPrecheckNotFound(false);
 
     sessionStorage.setItem(
       "fp:return",
@@ -168,6 +171,37 @@ export default function NewPatientPage() {
             className="border px-4 py-2 rounded hover:bg-gray-50"
           >
             Ce n'est pas le bon patient — créer quand même
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!precheckDone && precheckNotFound) {
+    return (
+      <div className="max-w-xl mx-auto p-6 bg-white rounded-lg shadow mt-6 space-y-4 border border-orange-300">
+        <h2 className="text-xl font-bold text-orange-900">Aucun patient existant trouvé</h2>
+        <p className="text-sm text-orange-800">
+          Cette empreinte ne correspond à aucun patient déjà enregistré. S'il s'agit bien d'un
+          nouveau patient, continuez la création. Si la lecture vous semble mauvaise (doigt mal
+          posé, humide, de travers), réessayez le scan pour éviter un doublon.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => {
+              setPrecheckNotFound(false);
+              setPrecheckDone(true);
+            }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded"
+          >
+            Nouveau patient — continuer la création
+          </button>
+          <button
+            onClick={runPrecheckScan}
+            disabled={precheckLoading}
+            className="border px-4 py-2 rounded hover:bg-gray-50 disabled:opacity-60"
+          >
+            {precheckLoading ? "Lancement..." : "Réessayer le scan"}
           </button>
         </div>
       </div>

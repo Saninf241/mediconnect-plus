@@ -85,6 +85,9 @@ export default function NewPatientWizard() {
   const [message, setMessage] = useState<string>("");
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [existingMatch, setExistingMatch] = useState<{ id: string; name: string } | null>(null);
+  // Scan anti-doublon sans correspondance : soit patient réellement nouveau,
+  // soit lecture ratée -> on laisse choisir entre réessayer et créer la fiche.
+  const [precheckNotFound, setPrecheckNotFound] = useState<boolean>(false);
 
   // Restaurer l’étape si on revient du scanner
   useEffect(() => {
@@ -111,7 +114,8 @@ export default function NewPatientWizard() {
         ...f,
         biometrics: { ...(f.biometrics ?? {}), status: "failed" },
       }));
-      setMessage("Erreur lors de la capture d’empreinte.");
+      // Le message d'échec et le choix Réessayer / Continuer sont affichés à l'étape 3.
+      setMessage("");
     }
 
     if (fp) {
@@ -169,7 +173,8 @@ export default function NewPatientWizard() {
         setExistingMatch({ id: idFound, name: data?.name ?? "Patient" });
       })();
     } else if (idNotFound) {
-      setStep(1);
+      setStep(0);
+      setPrecheckNotFound(true);
     }
 
     if (idFound || idNotFound) {
@@ -187,6 +192,7 @@ export default function NewPatientWizard() {
     try {
       setLoading(true);
       setMessage("");
+      setPrecheckNotFound(false);
       const c = ctx ?? (await resolveSecretaryContext());
       setCtx(c);
 
@@ -538,6 +544,52 @@ export default function NewPatientWizard() {
     }
   }
 
+  async function launchEnrollScan() {
+    try {
+      setLoading(true);
+      setMessage("");
+      const pid = await ensureDraftPatient();
+      const c = ctx ?? (await resolveSecretaryContext());
+
+      sessionStorage.setItem("wizard:returnStep", "3");
+      sessionStorage.setItem(
+        "fp:return",
+        window.location.pathname +
+          window.location.search +
+          window.location.hash
+      );
+
+      const { deeplink, intentUri } = buildZKDeeplink({
+        mode: "enroll",
+        clinicId: c.clinicId,
+        operatorId: c.staffId,
+        patientId: pid,
+        redirectOriginForPhone: getOriginForPhone(),
+        redirectPath: "/fp-callback?scope=secretary",
+      });
+
+      try {
+        window.location.href = deeplink;
+        setTimeout(() => {
+          window.location.href = intentUri;
+        }, 900);
+      } catch {
+        window.location.href = intentUri;
+      }
+
+      setMessage(
+        "Capture lancée sur la tablette. Revenez ici après la lecture de l’empreinte."
+      );
+    } catch (e: any) {
+      setMessage(
+        e.message ||
+          "Échec du lancement de la capture biométrique."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // UI
   return (
     <div className="space-y-6">
@@ -549,7 +601,32 @@ export default function NewPatientWizard() {
       </header>
 
       {/* Étape 0 – Vérification anti-doublon (scan avant toute création) */}
-      {step === 0 && !existingMatch && (
+      {step === 0 && !existingMatch && precheckNotFound && (
+        <section className={`${card} space-y-4 border-orange-300 bg-orange-50`}>
+          <h3 className="font-semibold text-orange-900">Aucun patient existant trouvé</h3>
+          <p className="text-sm text-orange-800">
+            Cette empreinte ne correspond à aucun patient déjà enregistré. S’il s’agit bien
+            d’un nouveau patient, continuez la création. Si la lecture vous semble mauvaise
+            (doigt mal posé, humide, de travers), réessayez le scan pour éviter un doublon.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className={button}
+              onClick={() => {
+                setPrecheckNotFound(false);
+                setStep(1);
+              }}
+            >
+              Nouveau patient — continuer la création
+            </button>
+            <button className={ghostBtn} onClick={runPrecheckScan} disabled={loading}>
+              {loading ? "Lancement..." : "Réessayer le scan"}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === 0 && !existingMatch && !precheckNotFound && (
         <section className={`${card} space-y-4`}>
           <h3 className="font-semibold">Vérification préalable</h3>
           <p className="text-sm text-gray-600">
@@ -826,57 +903,43 @@ export default function NewPatientWizard() {
             manquante”).
           </p>
 
+          {form.biometrics?.status === "failed" && (
+            <div className="rounded-lg border border-orange-300 bg-orange-50 p-3 space-y-2">
+              <p className="font-semibold text-orange-800">La capture de l’empreinte a échoué</p>
+              <p className="text-sm text-orange-700">
+                Vérifiez que le doigt est bien posé (propre, sec, bien à plat) puis réessayez.
+                Vous pouvez aussi continuer sans empreinte : le dossier sera marqué
+                “empreinte manquante” et l’empreinte pourra être capturée plus tard.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button className={button} onClick={launchEnrollScan} disabled={loading}>
+                  Réessayer la capture
+                </button>
+                <button
+                  className={ghostBtn}
+                  onClick={() => {
+                    setForm((f) => ({ ...f, biometrics: { status: "skipped" } }));
+                    setMessage("");
+                    setStep(4);
+                  }}
+                >
+                  Continuer sans empreinte
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <button
               className={button}
-              onClick={async () => {
-                try {
-                  setLoading(true);
-                  setMessage("");
-                  const pid = await ensureDraftPatient();
-                  const c = ctx ?? (await resolveSecretaryContext());
-
-                  sessionStorage.setItem("wizard:returnStep", "3");
-                  sessionStorage.setItem(
-                    "fp:return",
-                    window.location.pathname +
-                      window.location.search +
-                      window.location.hash
-                  );
-
-                  const { deeplink, intentUri } = buildZKDeeplink({
-                    mode: "enroll",
-                    clinicId: c.clinicId,
-                    operatorId: c.staffId,
-                    patientId: pid,
-                    redirectOriginForPhone: getOriginForPhone(),
-                    redirectPath: "/fp-callback?scope=secretary",
-                  });
-
-                  try {
-                    window.location.href = deeplink;
-                    setTimeout(() => {
-                      window.location.href = intentUri;
-                    }, 900);
-                  } catch {
-                    window.location.href = intentUri;
-                  }
-
-                  setMessage(
-                    "Capture lancée sur la tablette. Revenez ici après la lecture de l’empreinte."
-                  );
-                } catch (e: any) {
-                  setMessage(
-                    e.message ||
-                      "Échec du lancement de la capture biométrique."
-                  );
-                } finally {
-                  setLoading(false);
-                }
-              }}
+              onClick={launchEnrollScan}
               disabled={loading}
             >
-              {loading ? "Initialisation..." : "Scanner l’empreinte"}
+              {loading
+                ? "Initialisation..."
+                : form.biometrics?.status === "failed"
+                ? "Réessayer la capture"
+                : "Scanner l’empreinte"}
             </button>
 
             {form.biometrics?.status === "captured" && (
