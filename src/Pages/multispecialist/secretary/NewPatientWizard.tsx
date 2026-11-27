@@ -115,8 +115,16 @@ export default function NewPatientWizard() {
         ...f,
         biometrics: { ...(f.biometrics ?? {}), status: "failed" },
       }));
-      // Le message d'échec et le choix Réessayer / Continuer sont affichés à l'étape 3.
-      setMessage("");
+      // Le choix Réessayer / Continuer est affiché à l'étape 3 ; on précise
+      // seulement la cause quand l'appli la renvoie.
+      const reason = params.get("fp_reason");
+      setMessage(
+        reason === "different_finger"
+          ? "Capture annulée : posez le même doigt les 3 fois."
+          : reason === "already_enrolled"
+          ? "Capture annulée : cette empreinte est déjà connue de la tablette."
+          : ""
+      );
     }
 
     if (fp) {
@@ -162,6 +170,7 @@ export default function NewPatientWizard() {
     const params = new URLSearchParams(window.location.search);
     const idFound = params.get("id_found");
     const idNotFound = params.get("id_not_found");
+    const idError = params.get("id_error");
 
     if (idFound) {
       setPatientId(idFound);
@@ -176,9 +185,16 @@ export default function NewPatientWizard() {
     } else if (idNotFound) {
       setStep(1);
       setPrecheckNotFound(true);
+    } else if (idError) {
+      // Erreur technique (empreintes non chargées) : surtout PAS "aucun
+      // patient", on reste sur la vérification pour réessayer.
+      setStep(0);
+      setMessage(
+        "Vérification impossible : la tablette n’a pas pu charger les empreintes. Vérifiez sa connexion puis relancez le scan."
+      );
     }
 
-    if (idFound || idNotFound) {
+    if (idFound || idNotFound || idError) {
       const clean = window.location.pathname + window.location.hash;
       window.history.replaceState(null, "", clean);
     }

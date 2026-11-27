@@ -41,6 +41,7 @@ export default function NewPatientPage() {
     const params = new URLSearchParams(window.location.search);
     const idFound = params.get("id_found");
     const idNotFound = params.get("id_not_found");
+    const idError = params.get("id_error");
 
     if (idFound) {
       (async () => {
@@ -54,6 +55,11 @@ export default function NewPatientPage() {
     } else if (idNotFound) {
       setPrecheckNotFound(true);
       setPrecheckDone(true);
+    } else if (idError) {
+      // Erreur technique : on reste sur l'écran de vérification.
+      toast.error(
+        "Vérification impossible : la tablette n'a pas pu charger les empreintes. Vérifiez sa connexion puis relancez le scan."
+      );
     }
 
     // Consommer le résultat du scan anti-doublon : sinon fp:last (identify)
@@ -69,7 +75,7 @@ export default function NewPatientPage() {
       sessionStorage.removeItem("fp:last");
     }
 
-    if (idFound || idNotFound) {
+    if (idFound || idNotFound || idError) {
       const clean = window.location.pathname + window.location.hash;
       window.history.replaceState(null, "", clean);
     }

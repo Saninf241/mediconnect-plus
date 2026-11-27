@@ -270,6 +270,7 @@ const [searchParams] = useSearchParams();
       const urlCid     = searchParams.get("consultation_id");
       const urlIdFound = searchParams.get("id_found");
       const urlIdNot   = searchParams.get("id_not_found");
+      const urlIdError = searchParams.get("id_error");
 
       // 🔹 Lecture de fp:last (set par FingerprintCallback)
       let last: any = null;
@@ -328,6 +329,12 @@ const [searchParams] = useSearchParams();
         setBiometryFailed(true);
         setStep("biometry");
         toast.warn("Empreinte non reconnue.");
+      } else if (urlIdError === "1") {
+        // Erreur technique côté tablette (empreintes non chargées) : même
+        // choix Réessayer / Continuer sans empreinte.
+        setBiometryFailed(true);
+        setStep("biometry");
+        toast.error("Vérification impossible : la tablette n'a pas pu charger les empreintes. Vérifiez sa connexion puis réessayez.");
       }
 
       // Le patient attendu est conservé en cas d'échec pour que la détection

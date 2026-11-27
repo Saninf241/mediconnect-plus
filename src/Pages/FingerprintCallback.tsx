@@ -144,7 +144,11 @@ export default function FingerprintCallback() {
         }
 
         sessionStorage.removeItem("fp:return");
-        const suffix = ok ? "?fp=captured" : "?fp=error";
+        // fp_reason : code d'échec renvoyé par l'appli (different_finger,
+        // already_enrolled, enroll_fail...) pour un message précis côté wizard.
+        const suffix = ok
+          ? "?fp=captured"
+          : `?fp=error${error ? `&fp_reason=${encodeURIComponent(error)}` : ""}`;
         setTimeout(() => navigate(back + suffix, { replace: true }), 600);
         return;
       }
@@ -152,6 +156,16 @@ export default function FingerprintCallback() {
        if (mode === "identify") {
         const identifiedPatientId = patientId || userId;
         const ok = found === "true" && !!identifiedPatientId;
+        // L'appli renvoie error="identify_fail_ret_X" quand le doigt ne
+        // correspond à personne (vrai "non trouvé"). Tout autre code
+        // (templates_load_failed_...) est une erreur technique : on ne doit
+        // PAS le présenter comme "aucun patient", sinon la secrétaire
+        // créerait un doublon.
+        const technicalError = !ok && !!error && !error.startsWith("identify_fail");
+        const failParam = technicalError ? "id_error" : "id_not_found";
+        const failMessage = technicalError
+          ? "Vérification impossible (chargement des empreintes)."
+          : "Aucun patient reconnu correspondant.";
 
         try {
           sessionStorage.setItem(
@@ -177,9 +191,9 @@ export default function FingerprintCallback() {
           dest.searchParams.set("patient_id", identifiedPatientId!);
 
         } else {
-          setMessage("Aucun patient reconnu correspondant.");
+          setMessage(failMessage);
 
-          dest.searchParams.set("id_not_found","1");
+          dest.searchParams.set(failParam, "1");
               }
 
           sessionStorage.removeItem("fp:return");
@@ -199,8 +213,8 @@ export default function FingerprintCallback() {
           setMessage("Patient reconnu ✅");
           dest.searchParams.set("patient_id", identifiedPatientId!);
         } else {
-          setMessage("Aucun patient reconnu correspondant.");
-          dest.searchParams.set("id_not_found", "1");
+          setMessage(failMessage);
+          dest.searchParams.set(failParam, "1");
         }
 
         sessionStorage.removeItem("fp:return");
@@ -223,9 +237,9 @@ export default function FingerprintCallback() {
             600
           );
         } else {
-          setMessage("Aucun patient reconnu correspondant.");
+          setMessage(failMessage);
           setTimeout(
-            () => navigate(`${back}${sep}id_not_found=1`, 
+            () => navigate(`${back}${sep}${failParam}=1`, 
               { replace: true }),
               900
           );
