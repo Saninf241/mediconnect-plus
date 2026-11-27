@@ -1,4 +1,17 @@
 User-agent: *
 Allow: /
+# Espaces connectés de l'application : rien à indexer
+Disallow: /doctor/
+Disallow: /assureur/
+Disallow: /multispecialist/
+Disallow: /specialist/
+Disallow: /pharmacy/
+Disallow: /patient/
+Disallow: /developer/
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /role-redirect
+Disallow: /debug/
+Disallow: /fp-callback
 
 Sitemap: https://mediconnect-plus.com/sitemap.xml

@@ -2,10 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
-# SPA fallback
+# SPA fallback : les routes de l'application reçoivent la coquille vide
+# (app-shell.html). Les pages publiques pré-rendues (/, /mentions-legales,
+# /politique-confidentialite) existent comme fichiers et sont servies en
+# priorité par Netlify (pas de force = true ici).
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 # Caching simple (ok)
