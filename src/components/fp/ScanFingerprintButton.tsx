@@ -1,6 +1,6 @@
 // src/components/fp/ScanFingerprintButton.tsx
 import React from "react";
-import { buildZKDeeplink } from "../../lib/deeplink";
+import { buildZKDeeplink, launchZKDeeplink } from "../../lib/deeplink";
 
 type Mode = "enroll" | "identify";
 
@@ -37,17 +37,7 @@ export default function ScanFingerprintButton(props: ScanFingerprintButtonProps)
       redirectPath,
     });
 
-    // 1) tentative schéma custom (zkfp://…)
-    try {
-      window.location.replace(deeplink);
-    } catch {}
-
-    // 2) fallback rapide vers intent:// (Android)
-    setTimeout(() => {
-      try {
-        window.location.replace(intentUri);
-      } catch {}
-    }, 250);
+    launchZKDeeplink({ deeplink, intentUri });
   }, [mode, clinicId, operatorId, patientId, redirectOriginForPhone, redirectPath]);
 
   return (

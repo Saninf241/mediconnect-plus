@@ -10,7 +10,7 @@ import { toast } from 'react-toastify';
 import { useSearchParams, useLocation } from "react-router-dom";
 import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { useDoctorScope } from "../../../hooks/useDoctorScope";
-import { buildZKDeeplink } from "../../../lib/deeplink";
+import { buildZKDeeplink, launchZKDeeplink } from "../../../lib/deeplink";
 import { generateConsultationPdf } from "../../../lib/api/generateConsultationPdf";
 import DiagnosisSelector, { type SelectedItem } from "../../../components/ui/uidoctor/DiagnosisSelector";
 import ActSelector, { SelectedAct } from "../../../components/ui/uidoctor/ActSelector";
@@ -214,10 +214,7 @@ export default function NewConsultationPage() {
         redirectPath: `/fp-callback?scope=${fingerprintScope}`,
       });
 
-      window.location.href = deeplink;
-      setTimeout(() => {
-        window.location.href = intentUri;
-      }, 800);
+      launchZKDeeplink({ deeplink, intentUri });
     } catch (e) {
       console.error(e);
       toast.error("Erreur lancement biométrie");

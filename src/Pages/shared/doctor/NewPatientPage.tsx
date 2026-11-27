@@ -7,7 +7,7 @@ import { useDoctorContext } from "../../../hooks/useDoctorContext";
 import { useDoctorScope } from "../../../hooks/useDoctorScope";
 import { createPatientDraft } from "../../../lib/api/secretary";
 import { supabase } from "../../../lib/supabase";
-import { buildZKDeeplink } from "../../../lib/deeplink";
+import { buildZKDeeplink, launchZKDeeplink } from "../../../lib/deeplink";
 
 function getOriginForPhone(): string {
   const host = window.location.hostname;
@@ -102,14 +102,7 @@ export default function NewPatientPage() {
       redirectPath: "/fp-callback?scope=doctor_new_patient",
     });
 
-    try {
-      window.location.href = deeplink;
-      setTimeout(() => {
-        window.location.href = intentUri;
-      }, 900);
-    } catch {
-      window.location.href = intentUri;
-    }
+    launchZKDeeplink({ deeplink, intentUri });
     setPrecheckLoading(false);
   };
 

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { supabase } from "../../../lib/supabase";
 import { createPatientDraft, finalizeUninsured, generatePatientAccessCode, resolveExistingPatient, matchInsurerDirectory } from "../../../lib/api/secretary";
-import { buildZKDeeplink } from "../../../lib/deeplink";
+import { buildZKDeeplink, launchZKDeeplink } from "../../../lib/deeplink";
 
 type PatientType = "insured_card" | "insured_no_card" | "uninsured";
 
@@ -101,10 +101,13 @@ export default function NewPatientWizard() {
     const params = new URLSearchParams(window.location.search);
     const isScanReturn =
       !!params.get("fp") || !!params.get("id_found") || !!params.get("id_not_found") || !!params.get("id_error");
+    // On ne consomme l'instantané qu'au vrai retour du scanner : une simple
+    // ouverture de la page (ou la page de secours de Chrome) ne doit pas
+    // l'effacer avant que l'onglet du résultat ne l'utilise.
+    if (!isScanReturn) return;
     const raw = localStorage.getItem(WIZARD_SNAPSHOT_KEY);
     if (!raw) return;
     localStorage.removeItem(WIZARD_SNAPSHOT_KEY);
-    if (!isScanReturn) return;
     try {
       const snap = JSON.parse(raw);
       if (Date.now() - Number(snap.ts) > 30 * 60 * 1000) return;
@@ -163,6 +166,8 @@ export default function NewPatientWizard() {
           ? "Capture annulée : posez le même doigt les 3 fois."
           : reason === "already_enrolled"
           ? "Capture annulée : cette empreinte est déjà connue de la tablette."
+          : reason?.startsWith("upload_failed")
+          ? "Empreinte lue mais pas enregistrée sur le serveur (connexion de la tablette ?). Réessayez la capture."
           : ""
       );
     }
@@ -267,14 +272,7 @@ export default function NewPatientWizard() {
         redirectPath: "/fp-callback?scope=secretary",
       });
 
-      try {
-        window.location.href = deeplink;
-        setTimeout(() => {
-          window.location.href = intentUri;
-        }, 900);
-      } catch {
-        window.location.href = intentUri;
-      }
+      launchZKDeeplink({ deeplink, intentUri });
 
       setMessage(
         "Vérification lancée sur la tablette. Revenez ici après la lecture de l’empreinte."
@@ -625,14 +623,7 @@ export default function NewPatientWizard() {
         redirectPath: "/fp-callback?scope=secretary",
       });
 
-      try {
-        window.location.href = deeplink;
-        setTimeout(() => {
-          window.location.href = intentUri;
-        }, 900);
-      } catch {
-        window.location.href = intentUri;
-      }
+      launchZKDeeplink({ deeplink, intentUri });
 
       setMessage(
         "Capture lancée sur la tablette. Revenez ici après la lecture de l’empreinte."

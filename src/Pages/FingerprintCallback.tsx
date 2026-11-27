@@ -89,8 +89,15 @@ export default function FingerprintCallback() {
       console.log("[FP] back destination =", back);
 
       if (!mode) {
-        // On NE bouge pas de page, juste message (l'autre appel au callback fera le job)
-        setMessage("Paramètre 'mode' manquant (appel partiel).");
+        // Page de secours de Chrome (S.browser_fallback_url) : l'appli de
+        // capture n'a pas pu être ouverte. Pas de résultat ici ; on ramène
+        // l'utilisateur vers sa page pour relancer.
+        setMessage(
+          "L'application de capture ne s'est pas ouverte (ou a été fermée). Retour à la page précédente…"
+        );
+        if (storedReturn) {
+          setTimeout(() => navigate(storedReturn, { replace: true }), 1500);
+        }
         return;
       }
 
@@ -142,14 +149,18 @@ export default function FingerprintCallback() {
         }
 
         if (ok) {
-          await supabase
+          // La colonne patients.fingerprint_hash n'existe pas : l'ancien
+          // update échouait donc en entier (et fingerprint_enrolled restait
+          // false). Le gabarit est stocké côté serveur dans
+          // patient_biometrics par l'appli (biometrics-enroll).
+          const { error: flagErr } = await supabase
             .from("patients")
             .update({
               fingerprint_enrolled: true,
               fingerprint_missing: false,
-              fingerprint_hash: templateB64 || null,
             })
             .eq("id", patientId!);
+          if (flagErr) console.error("[FP] maj patients.fingerprint_enrolled échouée:", flagErr);
 
           setMessage("Empreinte enregistrée avec succès ✅");
         } else {

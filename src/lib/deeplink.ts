@@ -67,3 +67,21 @@ export function buildZKDeeplink(opts: {
 
   return { deeplink, intentUri };
 }
+
+/**
+ * Ouvre l'appli de capture UNE seule fois.
+ *
+ * Avant : on tentait le schéma custom puis, 800 ms plus tard, l'intent://.
+ * Sur Android, la 1re tentative ouvre déjà l'appli ; la 2e partait alors
+ * depuis un onglet passé en arrière-plan, Chrome la refusait et chargeait
+ * à la place S.browser_fallback_url (= /fp-callback SANS résultat) dans
+ * l'onglet du formulaire : formulaire détruit, page "Paramètre 'mode'
+ * manquant", et un onglet de plus à chaque scan.
+ *
+ * Maintenant : sur Android -> intent:// seul (Chrome le gère nativement) ;
+ * ailleurs -> schéma custom seul.
+ */
+export function launchZKDeeplink(links: { deeplink: string; intentUri: string }) {
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  window.location.href = isAndroid ? links.intentUri : links.deeplink;
+}
