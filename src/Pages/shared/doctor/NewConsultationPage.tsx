@@ -40,6 +40,9 @@ export default function NewConsultationPage() {
   const [currentMedication, setCurrentMedication] = useState<string>("");
 
   const [fingerprintMissing, setFingerprintMissing] = useState<boolean>(false);
+  // Échec d'identification renvoyé par le scanner : on reste sur l'étape
+  // biométrie pour proposer de réessayer avant de basculer en "sans empreinte".
+  const [biometryFailed, setBiometryFailed] = useState<boolean>(false);
 
   // Patient attendu si on arrive depuis sa fiche (PatientDetailsPage, lien
   // "Nouvelle consultation ?patient_id=..."). Le scan reste obligatoire —
@@ -226,7 +229,10 @@ export default function NewConsultationPage() {
   const cid = await ensureDraftConsultation(ctx);
 
   setFingerprintMissing(true);
+  setBiometryFailed(false);
   setStep("consultation");
+  sessionStorage.removeItem("consult:expectedPatientId");
+  setExpectedPatientId(null);
 
   // ✅ IMPORTANT : écrire aussi en base (sinon l'assureur/PDF voient "non vérifié" sans logique)
   if (cid) {
@@ -293,6 +299,7 @@ const [searchParams] = useSearchParams();
           // ✅ Patient reconnu → on passe en étape consultation
           setPatientId(finalPatientId);
           setFingerprintMissing(false);
+          setBiometryFailed(false);
           setStep("consultation");
 
           const expected =
@@ -316,13 +323,16 @@ const [searchParams] = useSearchParams();
           }
 
       } else if (urlIdNot === "1") {
-        // ❌ Empreinte non trouvée
-        setFingerprintMissing(true);
-        setStep("consultation");
-        toast.warn("Aucun patient correspondant.");
+        // ❌ Empreinte non reconnue : on propose de réessayer la capture
+        // avant de continuer sans empreinte (choix explicite du médecin).
+        setBiometryFailed(true);
+        setStep("biometry");
+        toast.warn("Empreinte non reconnue.");
       }
 
-      if (finalPatientId || urlIdNot === "1") {
+      // Le patient attendu est conservé en cas d'échec pour que la détection
+      // d'un patient différent reste active lors d'une nouvelle tentative.
+      if (finalPatientId) {
         sessionStorage.removeItem("consult:expectedPatientId");
         setExpectedPatientId(null);
       }
@@ -749,7 +759,26 @@ const createConsultation = async () => {
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Démarrer une consultation</h1>
 
-      {step === "biometry" && (
+      {step === "biometry" && biometryFailed && (
+        <div className="space-y-4 rounded-lg border border-orange-300 bg-orange-50 p-4">
+          <div>
+            <p className="font-semibold text-orange-800">L'empreinte n'a pas été reconnue</p>
+            <p className="text-sm text-orange-700">
+              Vérifiez que le doigt est bien posé (propre, sec, bien à plat) puis réessayez.
+              Vous pouvez aussi continuer la consultation sans empreinte : elle sera signalée
+              comme non vérifiée.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleBiometrySuccess}>Réessayer la capture</Button>
+            <Button onClick={handleBiometryFailure} className="bg-orange-600">
+              Continuer sans empreinte
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {step === "biometry" && !biometryFailed && (
         <div className="space-y-4">
           <Button onClick={handleBiometrySuccess}>Empreinte capturée</Button>
           <Button onClick={handleBiometryFailure} className="bg-orange-600">
