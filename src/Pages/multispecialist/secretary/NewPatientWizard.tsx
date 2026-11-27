@@ -85,8 +85,9 @@ export default function NewPatientWizard() {
   const [message, setMessage] = useState<string>("");
   const [accessCode, setAccessCode] = useState<string | null>(null);
   const [existingMatch, setExistingMatch] = useState<{ id: string; name: string } | null>(null);
-  // Scan anti-doublon sans correspondance : soit patient réellement nouveau,
-  // soit lecture ratée -> on laisse choisir entre réessayer et créer la fiche.
+  // Scan anti-doublon sans correspondance : le but de la secrétaire est de
+  // créer/enrôler le patient, on enchaîne donc directement sur la création
+  // (étape 1) avec un simple bandeau d'info + lien pour refaire le scan.
   const [precheckNotFound, setPrecheckNotFound] = useState<boolean>(false);
 
   // Restaurer l’étape si on revient du scanner
@@ -173,7 +174,7 @@ export default function NewPatientWizard() {
         setExistingMatch({ id: idFound, name: data?.name ?? "Patient" });
       })();
     } else if (idNotFound) {
-      setStep(0);
+      setStep(1);
       setPrecheckNotFound(true);
     }
 
@@ -601,32 +602,7 @@ export default function NewPatientWizard() {
       </header>
 
       {/* Étape 0 – Vérification anti-doublon (scan avant toute création) */}
-      {step === 0 && !existingMatch && precheckNotFound && (
-        <section className={`${card} space-y-4 border-orange-300 bg-orange-50`}>
-          <h3 className="font-semibold text-orange-900">Aucun patient existant trouvé</h3>
-          <p className="text-sm text-orange-800">
-            Cette empreinte ne correspond à aucun patient déjà enregistré. S’il s’agit bien
-            d’un nouveau patient, continuez la création. Si la lecture vous semble mauvaise
-            (doigt mal posé, humide, de travers), réessayez le scan pour éviter un doublon.
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              className={button}
-              onClick={() => {
-                setPrecheckNotFound(false);
-                setStep(1);
-              }}
-            >
-              Nouveau patient — continuer la création
-            </button>
-            <button className={ghostBtn} onClick={runPrecheckScan} disabled={loading}>
-              {loading ? "Lancement..." : "Réessayer le scan"}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {step === 0 && !existingMatch && !precheckNotFound && (
+      {step === 0 && !existingMatch && (
         <section className={`${card} space-y-4`}>
           <h3 className="font-semibold">Vérification préalable</h3>
           <p className="text-sm text-gray-600">
@@ -669,6 +645,23 @@ export default function NewPatientWizard() {
             </button>
           </div>
         </section>
+      )}
+
+      {/* Bandeau après un scan anti-doublon sans correspondance */}
+      {step === 1 && !existingMatch && precheckNotFound && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 flex flex-wrap items-center justify-between gap-2">
+          <span>
+            Aucun patient existant avec cette empreinte — poursuivez la création.
+            L’empreinte sera enregistrée (3 poses) à l’étape Biométrie.
+          </span>
+          <button
+            className="text-xs underline text-emerald-800 disabled:opacity-50"
+            onClick={runPrecheckScan}
+            disabled={loading}
+          >
+            {loading ? "Lancement..." : "Lecture douteuse ? Refaire la vérification"}
+          </button>
+        </div>
       )}
 
       {/* Étape 1 – Choix du type */}

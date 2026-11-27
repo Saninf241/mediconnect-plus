@@ -32,7 +32,9 @@ export default function NewPatientPage() {
   const [precheckDone, setPrecheckDone] = useState(false);
   const [precheckLoading, setPrecheckLoading] = useState(false);
   const [existingMatch, setExistingMatch] = useState<{ id: string; name: string } | null>(null);
-  // Scan sans correspondance : nouveau patient ou lecture ratée -> choix explicite.
+  // Scan sans correspondance : on passe directement au formulaire de création
+  // (le but de la page est de créer le patient), avec bandeau + lien pour
+  // refaire le scan si la lecture semblait mauvaise.
   const [precheckNotFound, setPrecheckNotFound] = useState(false);
 
   useEffect(() => {
@@ -51,6 +53,7 @@ export default function NewPatientPage() {
       })();
     } else if (idNotFound) {
       setPrecheckNotFound(true);
+      setPrecheckDone(true);
     }
 
     // Consommer le résultat du scan anti-doublon : sinon fp:last (identify)
@@ -190,37 +193,6 @@ export default function NewPatientPage() {
     );
   }
 
-  if (!precheckDone && precheckNotFound) {
-    return (
-      <div className="max-w-xl mx-auto p-6 bg-white rounded-lg shadow mt-6 space-y-4 border border-orange-300">
-        <h2 className="text-xl font-bold text-orange-900">Aucun patient existant trouvé</h2>
-        <p className="text-sm text-orange-800">
-          Cette empreinte ne correspond à aucun patient déjà enregistré. S'il s'agit bien d'un
-          nouveau patient, continuez la création. Si la lecture vous semble mauvaise (doigt mal
-          posé, humide, de travers), réessayez le scan pour éviter un doublon.
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => {
-              setPrecheckNotFound(false);
-              setPrecheckDone(true);
-            }}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded"
-          >
-            Nouveau patient — continuer la création
-          </button>
-          <button
-            onClick={runPrecheckScan}
-            disabled={precheckLoading}
-            className="border px-4 py-2 rounded hover:bg-gray-50 disabled:opacity-60"
-          >
-            {precheckLoading ? "Lancement..." : "Réessayer le scan"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (!precheckDone) {
     return (
       <div className="max-w-xl mx-auto p-6 bg-white rounded-lg shadow mt-6 space-y-4">
@@ -255,6 +227,20 @@ export default function NewPatientPage() {
         L'empreinte digitale sera capturée lors de la première consultation
         (ou via l'espace secrétaire si le cabinet en dispose un).
       </p>
+
+      {precheckNotFound && (
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 flex flex-wrap items-center justify-between gap-2">
+          <span>Aucun patient existant avec cette empreinte — poursuivez la création.</span>
+          <button
+            type="button"
+            onClick={runPrecheckScan}
+            disabled={precheckLoading}
+            className="text-xs underline text-emerald-800 disabled:opacity-50"
+          >
+            {precheckLoading ? "Lancement..." : "Lecture douteuse ? Refaire la vérification"}
+          </button>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
